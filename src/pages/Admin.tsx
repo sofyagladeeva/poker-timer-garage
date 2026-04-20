@@ -51,71 +51,90 @@ function BlindRow({
   level,
   onChange,
   onDelete,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
 }: {
   level: BlindLevel;
   onChange: (l: BlindLevel) => void;
   onDelete: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  isFirst: boolean;
+  isLast: boolean;
 }) {
   const upd = (patch: Partial<BlindLevel>) => onChange({ ...level, ...patch });
 
+  const moveButtons = (
+    <div className="flex flex-col gap-0.5">
+      <button
+        onClick={onMoveUp}
+        disabled={isFirst}
+        className="w-8 h-7 flex items-center justify-center rounded bg-[#1A1A1A] text-[#666] disabled:opacity-20 hover:bg-[#2D2D2D] hover:text-white transition-colors text-xs"
+      >▲</button>
+      <button
+        onClick={onMoveDown}
+        disabled={isLast}
+        className="w-8 h-7 flex items-center justify-center rounded bg-[#1A1A1A] text-[#666] disabled:opacity-20 hover:bg-[#2D2D2D] hover:text-white transition-colors text-xs"
+      >▼</button>
+    </div>
+  );
+
   if (level.isBreak) {
     return (
-      <div className="bg-blue-900/20 border border-blue-700/30 rounded-xl p-3 flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-[#555] text-base select-none">⠿</span>
-            <span className="text-blue-400 text-xs font-bold uppercase tracking-wider">Перерыв</span>
-          </div>
-          <button onClick={onDelete} className="admin-btn-danger px-3 py-2 text-sm">✕</button>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <input
-            className="admin-input"
-            placeholder="Название"
-            value={level.breakLabel || ''}
-            onChange={e => upd({ breakLabel: e.target.value })}
-          />
-          <div className="flex items-center gap-1">
+      <div className="bg-blue-900/20 border border-blue-700/30 rounded-xl p-3 flex gap-2 items-center">
+        {moveButtons}
+        <div className="flex flex-col gap-2 flex-1 min-w-0">
+          <span className="text-blue-400 text-xs font-bold uppercase tracking-wider">Перерыв</span>
+          <div className="grid grid-cols-2 gap-2">
             <input
-              type="number"
               className="admin-input"
-              placeholder="мин"
-              value={Math.round(level.duration / 60)}
-              onChange={e => upd({ duration: Number(e.target.value) * 60 })}
+              placeholder="Название"
+              value={level.breakLabel || ''}
+              onChange={e => upd({ breakLabel: e.target.value })}
             />
-            <span className="text-[#555] text-xs flex-shrink-0">мин</span>
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                className="admin-input"
+                placeholder="мин"
+                value={Math.round(level.duration / 60)}
+                onChange={e => upd({ duration: Number(e.target.value) * 60 })}
+              />
+              <span className="text-[#555] text-xs flex-shrink-0">мин</span>
+            </div>
           </div>
         </div>
+        <button onClick={onDelete} className="admin-btn-danger px-3 py-2 text-sm flex-shrink-0">✕</button>
       </div>
     );
   }
 
   return (
-    <div className="bg-[#111] border border-[#2D2D2D] rounded-xl p-3 flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-[#555] text-base select-none">⠿</span>
-          <span className="text-[#888] text-xs font-bold">Ур. {level.level}</span>
-        </div>
-        <button onClick={onDelete} className="admin-btn-danger px-3 py-2 text-sm">✕</button>
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        <div>
-          <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">SB</div>
-          <input type="number" className="admin-input text-sm px-2" value={level.sb}
-            onChange={e => upd({ sb: Number(e.target.value) })} />
-        </div>
-        <div>
-          <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">BB</div>
-          <input type="number" className="admin-input text-sm px-2" value={level.bb}
-            onChange={e => upd({ bb: Number(e.target.value) })} />
-        </div>
-        <div>
-          <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">Мин</div>
-          <input type="number" className="admin-input text-sm px-2" value={Math.round(level.duration / 60)}
-            onChange={e => upd({ duration: Number(e.target.value) * 60 })} />
+    <div className="bg-[#111] border border-[#2D2D2D] rounded-xl p-3 flex gap-2 items-center">
+      {moveButtons}
+      <div className="flex flex-col gap-2 flex-1 min-w-0">
+        <span className="text-[#666] text-xs">Ур. {level.level}</span>
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">SB</div>
+            <input type="number" className="admin-input text-sm px-2" value={level.sb}
+              onChange={e => upd({ sb: Number(e.target.value) })} />
+          </div>
+          <div>
+            <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">BB</div>
+            <input type="number" className="admin-input text-sm px-2" value={level.bb}
+              onChange={e => upd({ bb: Number(e.target.value) })} />
+          </div>
+          <div>
+            <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">Мин</div>
+            <input type="number" className="admin-input text-sm px-2" value={Math.round(level.duration / 60)}
+              onChange={e => upd({ duration: Number(e.target.value) * 60 })} />
+          </div>
         </div>
       </div>
+      <button onClick={onDelete} className="admin-btn-danger px-3 py-2 text-sm flex-shrink-0">✕</button>
     </div>
   );
 }
@@ -126,8 +145,6 @@ export function Admin() {
   const [pwInput, setPwInput] = useState('');
   const [pwError, setPwError] = useState(false);
   const [activeTab, setActiveTab] = useState<'control' | 'blinds' | 'combos' | 'settings'>('control');
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
 
   const {
@@ -304,14 +321,12 @@ export function Admin() {
     updateBlindLevels(blindLevels.filter((_, i) => i !== idx));
   };
 
-  const handleDrop = (dropIdx: number) => {
-    if (dragIndex === null || dragIndex === dropIdx) return;
+  const moveLevel = (idx: number, dir: -1 | 1) => {
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= blindLevels.length) return;
     const updated = [...blindLevels];
-    const [item] = updated.splice(dragIndex, 1);
-    updated.splice(dropIdx, 0, item);
+    [updated[idx], updated[newIdx]] = [updated[newIdx], updated[idx]];
     updateBlindLevels(updated);
-    setDragIndex(null);
-    setDragOverIndex(null);
   };
 
   // ── Combinations editor ────────────────────────────────────────────────
@@ -690,7 +705,6 @@ export function Admin() {
                 />
                 <CounterBlock
                   label="Аддоны"
-                  sublabel="(не на табло)"
                   value={gameState.addonCount ?? 0}
                   onAdd={() => {
                     const p = gameState.players ?? 0;
@@ -778,24 +792,16 @@ export function Admin() {
               <button onClick={addBreak} className="admin-btn-secondary px-4 py-3 text-sm flex-1">+ Перерыв</button>
             </div>
             {blindLevels.map((level, idx) => (
-              <div
+              <BlindRow
                 key={level.id}
-                draggable
-                onDragStart={() => setDragIndex(idx)}
-                onDragOver={e => { e.preventDefault(); setDragOverIndex(idx); }}
-                onDrop={() => handleDrop(idx)}
-                onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
-                style={{ cursor: 'grab', opacity: dragIndex === idx ? 0.4 : 1 }}
-                className={dragOverIndex === idx && dragIndex !== idx
-                  ? 'rounded-xl outline outline-2 outline-[#E31E24]'
-                  : ''}
-              >
-                <BlindRow
-                  level={level}
-                  onChange={l => updateLevel(idx, l)}
-                  onDelete={() => deleteLevel(idx)}
-                />
-              </div>
+                level={level}
+                onChange={l => updateLevel(idx, l)}
+                onDelete={() => deleteLevel(idx)}
+                onMoveUp={() => moveLevel(idx, -1)}
+                onMoveDown={() => moveLevel(idx, 1)}
+                isFirst={idx === 0}
+                isLast={idx === blindLevels.length - 1}
+              />
             ))}
           </div>
         )}
