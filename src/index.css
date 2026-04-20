@@ -1,0 +1,155 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #0A0A0A;
+  color: white;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  overflow-x: hidden;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Poker card visual */
+.poker-card {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin: 2px;
+  min-width: 44px;
+  min-height: 56px;
+  font-weight: bold;
+  font-size: 1rem;
+  line-height: 1;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  color: #0A0A0A;
+}
+
+.poker-card.red {
+  color: #C0392B;
+}
+
+/* Timer glow */
+.timer-glow {
+  text-shadow: 0 0 30px rgba(192, 57, 43, 0.8), 0 0 60px rgba(192, 57, 43, 0.4);
+}
+
+.timer-warning {
+  text-shadow: 0 0 30px rgba(243, 156, 18, 0.9), 0 0 60px rgba(243, 156, 18, 0.5);
+  color: #F39C12;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #1A1A1A; }
+::-webkit-scrollbar-thumb { background: #C0392B; border-radius: 3px; }
+
+/* Pulse animation for break */
+@keyframes pulse-red {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.break-pulse {
+  animation: pulse-red 2s ease-in-out infinite;
+}
+
+/* Admin form utilities */
+.admin-input {
+  background: #1A1A1A;
+  border: 1px solid #2D2D2D;
+  color: white;
+  border-radius: 8px;
+  padding: 8px 12px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.admin-input:focus {
+  border-color: #C0392B;
+}
+
+.admin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  font-family: inherit;
+}
+.admin-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.admin-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  background: #C0392B;
+  color: white;
+  transition: background 0.15s;
+  padding: 8px 16px;
+}
+.admin-btn-primary:hover {
+  background: #E74C3C;
+}
+
+.admin-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #2D2D2D;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  background: #1A1A1A;
+  color: #aaa;
+  transition: background 0.15s;
+  padding: 8px 16px;
+}
+.admin-btn-secondary:hover {
+  background: #252525;
+  color: white;
+}
+
+.admin-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  background: #4A1010;
+  color: #E74C3C;
+  transition: background 0.15s;
+  padding: 4px 10px;
+}
+.admin-btn-danger:hover {
+  background: #6B1515;
+}
