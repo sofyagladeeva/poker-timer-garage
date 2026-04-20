@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useGameState } from '../hooks/useGameState';
 import type { BlindLevel, Combination, Card, Suit, Rank } from '../types';
 import { SUIT_SYMBOLS } from '../types';
@@ -46,95 +46,63 @@ function CardPicker({ onAdd }: { onAdd: (card: Card) => void }) {
   );
 }
 
-// ─── Blind level row (mobile-friendly) ────────────────────────────────────
+// ─── Blind level row ──────────────────────────────────────────────────────
 function BlindRow({
   level,
   onChange,
   onDelete,
-  onMoveUp,
-  onMoveDown,
-  isFirst,
-  isLast,
 }: {
   level: BlindLevel;
   onChange: (l: BlindLevel) => void;
   onDelete: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  isFirst: boolean;
-  isLast: boolean;
 }) {
   const upd = (patch: Partial<BlindLevel>) => onChange({ ...level, ...patch });
 
-  const moveButtons = (
-    <div className="flex flex-col gap-0.5">
-      <button
-        onClick={onMoveUp}
-        disabled={isFirst}
-        className="w-8 h-7 flex items-center justify-center rounded bg-[#1A1A1A] text-[#666] disabled:opacity-20 hover:bg-[#2D2D2D] hover:text-white transition-colors text-xs"
-      >▲</button>
-      <button
-        onClick={onMoveDown}
-        disabled={isLast}
-        className="w-8 h-7 flex items-center justify-center rounded bg-[#1A1A1A] text-[#666] disabled:opacity-20 hover:bg-[#2D2D2D] hover:text-white transition-colors text-xs"
-      >▼</button>
-    </div>
-  );
-
   if (level.isBreak) {
     return (
-      <div className="bg-blue-900/20 border border-blue-700/30 rounded-xl p-3 flex gap-2 items-center">
-        {moveButtons}
-        <div className="flex flex-col gap-2 flex-1 min-w-0">
+      <div className="bg-blue-900/20 border border-blue-700/30 rounded-xl p-3 flex flex-col gap-2">
+        <div className="flex items-center justify-between">
           <span className="text-blue-400 text-xs font-bold uppercase tracking-wider">Перерыв</span>
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              className="admin-input"
-              placeholder="Название"
-              value={level.breakLabel || ''}
-              onChange={e => upd({ breakLabel: e.target.value })}
-            />
-            <div className="flex items-center gap-1">
-              <input
-                type="number"
-                className="admin-input"
-                placeholder="мин"
-                value={Math.round(level.duration / 60)}
-                onChange={e => upd({ duration: Number(e.target.value) * 60 })}
-              />
-              <span className="text-[#555] text-xs flex-shrink-0">мин</span>
-            </div>
+          <button onClick={onDelete} className="admin-btn-danger px-3 py-2 text-sm">✕</button>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <input className="admin-input" placeholder="Название" value={level.breakLabel || ''}
+            onChange={e => upd({ breakLabel: e.target.value })} />
+          <div className="flex items-center gap-1">
+            <input type="number" className="admin-input" placeholder="мин"
+              value={Math.round(level.duration / 60)}
+              onChange={e => upd({ duration: Number(e.target.value) * 60 })} />
+            <span className="text-[#555] text-xs flex-shrink-0">мин</span>
           </div>
         </div>
-        <button onClick={onDelete} className="admin-btn-danger px-3 py-2 text-sm flex-shrink-0">✕</button>
       </div>
     );
   }
 
   return (
-    <div className="bg-[#111] border border-[#2D2D2D] rounded-xl p-3 flex gap-2 items-center">
-      {moveButtons}
-      <div className="flex flex-col gap-2 flex-1 min-w-0">
+    <div className="bg-[#111] border border-[#2D2D2D] rounded-xl p-3 flex flex-col gap-2">
+      <div className="flex items-center justify-between">
         <span className="text-[#666] text-xs">Ур. {level.level}</span>
-        <div className="grid grid-cols-3 gap-2">
-          <div>
-            <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">SB</div>
-            <input type="number" className="admin-input text-sm px-2" value={level.sb}
-              onChange={e => upd({ sb: Number(e.target.value) })} />
-          </div>
-          <div>
-            <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">BB</div>
-            <input type="number" className="admin-input text-sm px-2" value={level.bb}
-              onChange={e => upd({ bb: Number(e.target.value) })} />
-          </div>
-          <div>
-            <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">Мин</div>
-            <input type="number" className="admin-input text-sm px-2" value={Math.round(level.duration / 60)}
-              onChange={e => upd({ duration: Number(e.target.value) * 60 })} />
-          </div>
+        <button onClick={onDelete} className="admin-btn-danger px-3 py-2 text-sm">✕</button>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">SB</div>
+          <input type="number" className="admin-input text-sm px-2" value={level.sb}
+            onChange={e => upd({ sb: Number(e.target.value) })} />
+        </div>
+        <div>
+          <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">BB</div>
+          <input type="number" className="admin-input text-sm px-2" value={level.bb}
+            onChange={e => upd({ bb: Number(e.target.value) })} />
+        </div>
+        <div>
+          <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">Мин</div>
+          <input type="number" className="admin-input text-sm px-2"
+            value={Math.round(level.duration / 60)}
+            onChange={e => upd({ duration: Number(e.target.value) * 60 })} />
         </div>
       </div>
-      <button onClick={onDelete} className="admin-btn-danger px-3 py-2 text-sm flex-shrink-0">✕</button>
     </div>
   );
 }
@@ -146,6 +114,11 @@ export function Admin() {
   const [pwError, setPwError] = useState(false);
   const [activeTab, setActiveTab] = useState<'control' | 'blinds' | 'combos' | 'settings'>('control');
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
+  // ── Drag state for blind levels ────────────────────────────────────────
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dropLine, setDropLine] = useState<number | null>(null);
+  const rowEls = useRef<(HTMLDivElement | null)[]>([]);
+  const dragging = useRef(false);
 
   const {
     gameState, blindLevels, combinations,
@@ -327,6 +300,32 @@ export function Admin() {
     const updated = [...blindLevels];
     [updated[idx], updated[newIdx]] = [updated[newIdx], updated[idx]];
     updateBlindLevels(updated);
+  };
+
+  const getDropLine = (y: number): number => {
+    for (let i = 0; i < rowEls.current.length; i++) {
+      const el = rowEls.current[i];
+      if (!el) continue;
+      const { top, height } = el.getBoundingClientRect();
+      if (y < top + height / 2) return i;
+    }
+    return rowEls.current.length;
+  };
+
+  const commitDrop = () => {
+    if (dragging.current && dragIdx !== null && dropLine !== null) {
+      const from = dragIdx;
+      const to = dropLine > from ? dropLine - 1 : dropLine;
+      if (from !== to) {
+        const arr = [...blindLevels];
+        const [item] = arr.splice(from, 1);
+        arr.splice(to, 0, item);
+        updateBlindLevels(arr);
+      }
+    }
+    dragging.current = false;
+    setDragIdx(null);
+    setDropLine(null);
   };
 
   // ── Combinations editor ────────────────────────────────────────────────
@@ -791,18 +790,66 @@ export function Admin() {
               <button onClick={addBlindLevel} className="admin-btn-primary px-4 py-3 text-sm flex-1">+ Уровень</button>
               <button onClick={addBreak} className="admin-btn-secondary px-4 py-3 text-sm flex-1">+ Перерыв</button>
             </div>
+
             {blindLevels.map((level, idx) => (
-              <BlindRow
+              <div
                 key={level.id}
-                level={level}
-                onChange={l => updateLevel(idx, l)}
-                onDelete={() => deleteLevel(idx)}
-                onMoveUp={() => moveLevel(idx, -1)}
-                onMoveDown={() => moveLevel(idx, 1)}
-                isFirst={idx === 0}
-                isLast={idx === blindLevels.length - 1}
-              />
+                ref={el => { rowEls.current[idx] = el; }}
+                className="relative"
+              >
+                {/* Drop indicator line above this row */}
+                {dropLine === idx && dragIdx !== null && dragIdx !== idx && (
+                  <div className="absolute -top-1.5 left-10 right-0 h-0.5 bg-[#E31E24] rounded-full z-10 pointer-events-none" />
+                )}
+
+                <div className={`flex items-start gap-2 ${dragIdx === idx ? 'opacity-30' : ''}`}>
+                  {/* Drag handle column */}
+                  <div className="flex flex-col items-center gap-0.5 pt-2 flex-shrink-0">
+                    <button
+                      onClick={() => moveLevel(idx, -1)}
+                      disabled={idx === 0}
+                      className="w-8 h-7 flex items-center justify-center text-[#444] disabled:opacity-20 hover:text-white transition-colors text-xs"
+                    >▲</button>
+                    <div
+                      className="w-8 h-8 flex items-center justify-center text-[#555] hover:text-[#888] text-xl select-none cursor-grab active:cursor-grabbing"
+                      style={{ touchAction: 'none' }}
+                      onPointerDown={e => {
+                        e.preventDefault();
+                        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                        dragging.current = true;
+                        setDragIdx(idx);
+                        setDropLine(null);
+                      }}
+                      onPointerMove={e => {
+                        if (!dragging.current) return;
+                        setDropLine(getDropLine(e.clientY));
+                      }}
+                      onPointerUp={commitDrop}
+                      onPointerCancel={commitDrop}
+                    >⠿</div>
+                    <button
+                      onClick={() => moveLevel(idx, 1)}
+                      disabled={idx === blindLevels.length - 1}
+                      className="w-8 h-7 flex items-center justify-center text-[#444] disabled:opacity-20 hover:text-white transition-colors text-xs"
+                    >▼</button>
+                  </div>
+
+                  {/* Row content */}
+                  <div className="flex-1 min-w-0">
+                    <BlindRow
+                      level={level}
+                      onChange={l => updateLevel(idx, l)}
+                      onDelete={() => deleteLevel(idx)}
+                    />
+                  </div>
+                </div>
+              </div>
             ))}
+
+            {/* Drop indicator at end of list */}
+            {dropLine === blindLevels.length && dragIdx !== null && (
+              <div className="h-0.5 bg-[#E31E24] rounded-full ml-10" />
+            )}
           </div>
         )}
 

@@ -36,6 +36,11 @@ export function useGameState() {
     import.meta.env.VITE_SUPABASE_URL &&
     import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+  // Skip realtime blind_levels updates for a short window after we write
+  // (prevents overwriting local optimistic state with stale DB order)
+  const skipBlindRealtime = useRef(false);
+  const skipBlindTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // ─── Supabase real-time subscriptions ───────────────────────────────────
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -43,7 +48,7 @@ export function useGameState() {
     // Initial fetch
     Promise.all([
       supabase.from('game_state').select('*').single(),
-      supabase.from('blind_levels').select('*').order('level'),
+      supabase.from('blind_levels').select('*').order('id'),
       supabase.from('combinations').select('*').order('created_at'),
     ]).then(([gs, bl, combs]) => {
       if (gs.data) setGameState(gs.data);
@@ -58,7 +63,8 @@ export function useGameState() {
         if (payload.new) setGameState(payload.new as GameState);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_levels' }, () => {
-        supabase.from('blind_levels').select('*').order('level').then(({ data }) => {
+        if (skipBlindRealtime.current) return;
+        supabase.from('blind_levels').select('*').order('id').then(({ data }) => {
           if (data) setBlindLevels(data);
         });
       })
@@ -153,13 +159,22 @@ export function useGameState() {
   }, [blindLevels, updateGameState]);
 
   const updateBlindLevels = useCallback(async (levels: BlindLevel[]) => {
-    setBlindLevels(levels);
+    // Assign sortable IDs so ORDER BY id always returns rows in our desired order
+    const ordered = levels.map((l, idx) => ({
+      ...l,
+      id: `${String(idx).padStart(5, '0')}_${l.id.replace(/^\d{5}_/, '')}`,
+    }));
+    setBlindLevels(ordered);
     if (!isSupabaseConfigured) {
-      saveLocal(BLINDS_KEY, levels);
+      saveLocal(BLINDS_KEY, ordered);
       return;
     }
+    // Suppress realtime echo for 4s so our optimistic update isn't overwritten
+    skipBlindRealtime.current = true;
+    if (skipBlindTimer.current) clearTimeout(skipBlindTimer.current);
+    skipBlindTimer.current = setTimeout(() => { skipBlindRealtime.current = false; }, 4000);
     await supabase.from('blind_levels').delete().neq('id', '');
-    await supabase.from('blind_levels').insert(levels);
+    await supabase.from('blind_levels').insert(ordered);
   }, [isSupabaseConfigured]);
 
   const updateCombinations = useCallback(async (combs: Combination[]) => {
