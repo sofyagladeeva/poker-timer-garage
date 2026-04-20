@@ -38,7 +38,7 @@ function CardPicker({ onAdd }: { onAdd: (card: Card) => void }) {
       </select>
       <button
         onClick={() => onAdd({ rank, suit })}
-        className="admin-btn-primary px-3 py-1.5 text-sm"
+        className="admin-btn-primary px-3 py-2 text-sm"
       >
         + Добавить карту
       </button>
@@ -46,7 +46,7 @@ function CardPicker({ onAdd }: { onAdd: (card: Card) => void }) {
   );
 }
 
-// ─── Blind level row ──────────────────────────────────────────────────────
+// ─── Blind level row (mobile-friendly) ────────────────────────────────────
 function BlindRow({
   level,
   onChange,
@@ -60,50 +60,62 @@ function BlindRow({
 
   if (level.isBreak) {
     return (
-      <div className="flex items-center gap-2 bg-blue-900/20 border border-blue-700/30 rounded-lg p-2">
-        <span className="text-[#555] text-base select-none mr-1">⠿</span>
-        <span className="text-blue-400 text-sm font-bold w-20">ПЕРЕРЫВ</span>
-        <input
-          className="admin-input w-36"
-          placeholder="Название"
-          value={level.breakLabel || ''}
-          onChange={e => upd({ breakLabel: e.target.value })}
-        />
-        <div className="flex items-center gap-1">
-          <input
-            type="number"
-            className="admin-input w-20"
-            placeholder="мин"
-            value={Math.round(level.duration / 60)}
-            onChange={e => upd({ duration: Number(e.target.value) * 60 })}
-          />
-          <span className="text-[#555] text-xs">мин</span>
+      <div className="bg-blue-900/20 border border-blue-700/30 rounded-xl p-3 flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-[#555] text-base select-none">⠿</span>
+            <span className="text-blue-400 text-xs font-bold uppercase tracking-wider">Перерыв</span>
+          </div>
+          <button onClick={onDelete} className="admin-btn-danger px-3 py-2 text-sm">✕</button>
         </div>
-        <button onClick={onDelete} className="admin-btn-danger px-2 py-1 text-sm ml-auto">✕</button>
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            className="admin-input"
+            placeholder="Название"
+            value={level.breakLabel || ''}
+            onChange={e => upd({ breakLabel: e.target.value })}
+          />
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              className="admin-input"
+              placeholder="мин"
+              value={Math.round(level.duration / 60)}
+              onChange={e => upd({ duration: Number(e.target.value) * 60 })}
+            />
+            <span className="text-[#555] text-xs flex-shrink-0">мин</span>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-2 bg-[#111] border border-[#2D2D2D] rounded-lg p-2 flex-wrap">
-      <span className="text-[#555] text-base select-none mr-1">⠿</span>
-      <span className="text-[#555] text-xs w-5">{level.level}</span>
-      <div className="flex items-center gap-1">
-        <span className="text-[#555] text-xs">SB</span>
-        <input type="number" className="admin-input w-20" value={level.sb}
-          onChange={e => upd({ sb: Number(e.target.value) })} />
+    <div className="bg-[#111] border border-[#2D2D2D] rounded-xl p-3 flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-[#555] text-base select-none">⠿</span>
+          <span className="text-[#888] text-xs font-bold">Ур. {level.level}</span>
+        </div>
+        <button onClick={onDelete} className="admin-btn-danger px-3 py-2 text-sm">✕</button>
       </div>
-      <div className="flex items-center gap-1">
-        <span className="text-[#555] text-xs">BB</span>
-        <input type="number" className="admin-input w-20" value={level.bb}
-          onChange={e => upd({ bb: Number(e.target.value) })} />
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">SB</div>
+          <input type="number" className="admin-input text-sm px-2" value={level.sb}
+            onChange={e => upd({ sb: Number(e.target.value) })} />
+        </div>
+        <div>
+          <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">BB</div>
+          <input type="number" className="admin-input text-sm px-2" value={level.bb}
+            onChange={e => upd({ bb: Number(e.target.value) })} />
+        </div>
+        <div>
+          <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">Мин</div>
+          <input type="number" className="admin-input text-sm px-2" value={Math.round(level.duration / 60)}
+            onChange={e => upd({ duration: Number(e.target.value) * 60 })} />
+        </div>
       </div>
-      <div className="flex items-center gap-1">
-        <input type="number" className="admin-input w-20" value={Math.round(level.duration / 60)}
-          onChange={e => upd({ duration: Number(e.target.value) * 60 })} />
-        <span className="text-[#555] text-xs">мин</span>
-      </div>
-      <button onClick={onDelete} className="admin-btn-danger px-2 py-1 text-sm ml-auto">✕</button>
     </div>
   );
 }
@@ -164,8 +176,8 @@ export function Admin() {
 
   if (!authed) {
     return (
-      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
-        <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-8 w-80">
+      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center px-4">
+        <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-8 w-full max-w-sm">
           <div className="text-[#C0392B] text-2xl font-bold text-center mb-6">🃏 POKER TIMER</div>
           <div className="text-[#888] text-sm mb-4 text-center">Введите пароль администратора</div>
           <input
@@ -178,7 +190,7 @@ export function Admin() {
             autoFocus
           />
           {pwError && <div className="text-red-500 text-sm text-center mb-2">Неверный пароль</div>}
-          <button onClick={handleLogin} className="admin-btn-primary w-full py-2">Войти</button>
+          <button onClick={handleLogin} className="admin-btn-primary w-full py-3">Войти</button>
         </div>
       </div>
     );
@@ -193,7 +205,6 @@ export function Admin() {
 
   // ── Demo data ──────────────────────────────────────────────────────────
   const loadDemo = () => {
-    // 16 уровней по 15 мин, потом перерыв
     const demoLevels: import('../types').BlindLevel[] = [
       { id: 'd1',  level: 1,  sb: 50,   bb: 100,  ante: 0,    duration: 900, isBreak: false },
       { id: 'd2',  level: 2,  sb: 100,  bb: 200,  ante: 200,  duration: 900, isBreak: false },
@@ -216,7 +227,7 @@ export function Admin() {
     updateBlindLevels(demoLevels);
     updateGameState({
       status: 'running',
-      currentLevelIndex: 1,  // уровень 2: SB=100 BB=200 Ante=200
+      currentLevelIndex: 1,
       timeLeft: 900,
       players: 18,
       outs: 2,
@@ -231,7 +242,6 @@ export function Admin() {
       prizePlaces: 5,
       nextGameInfo: '',
     });
-    // Demo combinations
     updateCombinations([
       {
         id: 'demo1',
@@ -341,25 +351,28 @@ export function Admin() {
   // ── Tabs ──────────────────────────────────────────────────────────────
   const tabs = [
     { id: 'control', label: '▶ Управление' },
-    { id: 'blinds', label: '💰 Блайнды' },
-    { id: 'combos', label: '🃏 Комбо' },
-    { id: 'settings', label: '⚙️ Настройки' },
+    { id: 'blinds',  label: '💰 Блайнды' },
+    { id: 'combos',  label: '🃏 Комбо' },
+    { id: 'settings',label: '⚙️ Настройки' },
   ] as const;
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white">
+
       {/* Header */}
-      <div className="bg-[#111] border-b border-[#2D2D2D] px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="text-[#C0392B] font-bold text-lg">🃏 POKER TIMER — Админ</div>
+      <div className="bg-[#111] border-b border-[#2D2D2D] px-3 sm:px-6 py-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="text-[#C0392B] font-bold text-base sm:text-lg whitespace-nowrap">🃏 ADMIN</div>
           {gameState.tournamentTitle && (
-            <span className="text-[#444] text-sm font-medium uppercase tracking-wide">· {gameState.tournamentTitle}</span>
+            <span className="text-[#555] text-xs sm:text-sm font-medium uppercase tracking-wide truncate">
+              · {gameState.tournamentTitle}
+            </span>
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <button
             onClick={loadDemo}
-            className="text-[#F39C12] text-sm border border-[#F39C12]/30 rounded-lg px-3 py-1 hover:bg-[#F39C12]/10 transition-colors"
+            className="text-[#F39C12] text-xs border border-[#F39C12]/30 rounded-lg px-2 py-1.5 hover:bg-[#F39C12]/10 transition-colors"
           >
             ★ Демо
           </button>
@@ -367,20 +380,20 @@ export function Admin() {
             href="#/"
             target="_blank"
             rel="noopener noreferrer"
-            className="bg-[#C0392B] text-white text-sm font-bold rounded-lg px-3 py-1.5 hover:bg-[#E31E24] transition-colors"
+            className="bg-[#C0392B] text-white text-xs font-bold rounded-lg px-2 py-1.5 hover:bg-[#E31E24] transition-colors whitespace-nowrap"
           >
-            ↗ Открыть табло
+            ↗ Табло
           </a>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 px-4 pt-4 border-b border-[#2D2D2D]">
+      {/* Tabs — scrollable on mobile */}
+      <div className="flex gap-1 px-3 pt-3 border-b border-[#2D2D2D] overflow-x-auto">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2 text-sm rounded-t-lg transition-colors ${
+            className={`px-3 py-2 text-xs sm:text-sm rounded-t-lg transition-colors whitespace-nowrap flex-shrink-0 ${
               activeTab === tab.id
                 ? 'bg-[#1A1A1A] text-white border border-b-0 border-[#2D2D2D]'
                 : 'text-[#666] hover:text-white'
@@ -391,11 +404,11 @@ export function Admin() {
         ))}
       </div>
 
-      <div className="p-6 max-w-4xl">
+      <div className="p-3 sm:p-6 max-w-4xl">
 
         {/* ─── CONTROL TAB ─────────────────────────────────────────────── */}
         {activeTab === 'control' && (
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4">
 
             {/* ── Выбор игры из бота ─────────────────────────────────── */}
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
@@ -403,12 +416,12 @@ export function Admin() {
                 onClick={() => setGamePickerOpen(o => !o)}
                 className="flex items-center justify-between w-full"
               >
-                <div className="text-[#888] text-sm uppercase tracking-widest">
+                <div className="text-sm">
                   {gameState.tournamentTitle
-                    ? <span className="text-white">✓ {gameState.tournamentTitle}</span>
-                    : 'Выбрать игру'}
+                    ? <span className="text-white font-bold">✓ {gameState.tournamentTitle}</span>
+                    : <span className="text-[#888]">Выбрать игру из бота</span>}
                 </div>
-                <span className="text-[#555] text-xs">{gamePickerOpen ? '▲' : '▼'}</span>
+                <span className="text-[#555] text-xs ml-2">{gamePickerOpen ? '▲' : '▼'}</span>
               </button>
               {gamePickerOpen && <div className="mt-3">
               {botGames.length === 0 ? (
@@ -430,12 +443,12 @@ export function Admin() {
                         }`}
                       >
                         <div>
-                          <div className={`font-bold uppercase ${isSelected ? 'text-white' : 'text-[#666]'}`}>{g.title}</div>
+                          <div className={`font-bold uppercase text-sm ${isSelected ? 'text-white' : 'text-[#666]'}`}>{g.title}</div>
                           <div className="text-xs text-[#444] mt-0.5">{dateStr}</div>
                         </div>
-                        <div className="text-right">
+                        <div className="text-right ml-3">
                           <div className={`text-sm font-bold ${isSelected ? 'text-[#C0392B]' : 'text-[#444]'}`}>{g.confirmed} / {g.max_players}</div>
-                          {isSelected && <div className="text-[#C0392B] text-xs">✓ выбрана</div>}
+                          {isSelected && <div className="text-[#C0392B] text-xs">✓</div>}
                         </div>
                       </button>
                     );
@@ -443,7 +456,7 @@ export function Admin() {
                   {gameState.tournamentTitle && (
                     <button
                       onClick={() => updateGameState({ tournamentTitle: '', tournamentBotId: null })}
-                      className="text-[#444] text-xs text-center hover:text-[#888] mt-1"
+                      className="text-[#444] text-xs text-center hover:text-[#888] mt-1 py-2"
                     >
                       Сбросить выбор
                     </button>
@@ -456,9 +469,9 @@ export function Admin() {
             {/* ── Статус турнира ───────────────────────────────────── */}
             {gameState.status === 'ended' ? (
               /* Экран завершения */
-              <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-6 text-center flex flex-col gap-4">
-                <div className="text-white font-black text-2xl uppercase tracking-widest">Турнир завершён</div>
-                <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-5 text-center flex flex-col gap-4">
+                <div className="text-white font-black text-xl uppercase tracking-widest">Турнир завершён</div>
+                <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="bg-[#0A0A0A] rounded-xl p-3">
                     <div className="text-[#555] text-xs uppercase mb-1">Игроков</div>
                     <div className="text-white font-black text-2xl">{gameState.players}</div>
@@ -478,7 +491,7 @@ export function Admin() {
                 </div>
                 <button
                   onClick={() => { if (confirm('Сбросить и начать новый турнир?')) resetTournament(); }}
-                  className="admin-btn-primary py-3 text-base font-bold"
+                  className="admin-btn-primary py-4 text-base font-bold"
                 >
                   ↺ Новый турнир
                 </button>
@@ -486,7 +499,7 @@ export function Admin() {
             ) : (
               <>
                 {/* Timer display */}
-                <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-5">
+                <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
                   {/* Прогресс уровней */}
                   {(() => {
                     const total = blindLevels.length;
@@ -512,10 +525,10 @@ export function Admin() {
                   })()}
 
                   {/* Время + статус */}
-                  <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center justify-between gap-3">
                     <div
                       className="font-mono font-black tabular-nums"
-                      style={{ fontSize: 'clamp(40px, 6vw, 72px)', lineHeight: 1 }}
+                      style={{ fontSize: 'clamp(44px, 12vw, 72px)', lineHeight: 1 }}
                     >
                       {gameState.status === 'idle'
                         ? <span className="text-[#444]">--:--</span>
@@ -527,53 +540,53 @@ export function Admin() {
                     <div className="text-right">
                       <StatusBadge status={gameState.status} />
                       {currentLevel && !currentLevel.isBreak && (
-                        <div className="text-[#555] text-sm mt-2">
-                          SB {currentLevel.sb} / BB {currentLevel.bb} / Анте {currentLevel.bb}
+                        <div className="text-[#555] text-xs mt-2">
+                          {currentLevel.sb} / {currentLevel.bb} / {currentLevel.bb}
                         </div>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* Control buttons */}
+                {/* Play/Pause — большая кнопка */}
+                <button
+                  onClick={isRunning ? pauseTimer : startTimer}
+                  className={`w-full py-5 rounded-xl font-black text-2xl tracking-wide transition-colors ${
+                    isRunning
+                      ? 'bg-[#2D2D2D] hover:bg-[#3D3D3D] text-white'
+                      : 'bg-[#C0392B] hover:bg-[#E31E24] text-white'
+                  }`}
+                >
+                  {isRunning ? '⏸ Пауза' : '▶ Запустить'}
+                </button>
+
+                {/* Уровни и сброс */}
                 <div className="grid grid-cols-2 gap-3">
-                  {/* Play / Pause — большая */}
-                  <button
-                    onClick={isRunning ? pauseTimer : startTimer}
-                    className={`col-span-2 py-4 rounded-xl font-black text-xl tracking-wide transition-colors ${
-                      isRunning
-                        ? 'bg-[#2D2D2D] hover:bg-[#3D3D3D] text-white'
-                        : 'bg-[#C0392B] hover:bg-[#E31E24] text-white'
-                    }`}
-                  >
-                    {isRunning ? '⏸ Пауза' : '▶ Запустить'}
-                    <span className="text-xs font-normal text-[#888] ml-2">[Пробел]</span>
-                  </button>
-                  <button onClick={prevLevel} className="admin-btn-secondary py-3 text-base">← Уровень</button>
-                  <button onClick={nextLevel} className="admin-btn-secondary py-3 text-base">Уровень →</button>
+                  <button onClick={prevLevel} className="admin-btn-secondary py-4 text-base">← Уровень</button>
+                  <button onClick={nextLevel} className="admin-btn-secondary py-4 text-base">Уровень →</button>
                   <button
                     onClick={() => {
                       const lvl = blindLevels[gameState.currentLevelIndex];
                       if (lvl) updateGameState({ timeLeft: lvl.duration });
                     }}
-                    className="admin-btn-secondary py-3 text-sm"
+                    className="admin-btn-secondary py-4 text-sm"
                   >
-                    ↺ Сбросить время уровня
+                    ↺ Сбросить время
                   </button>
                   <button
                     onClick={() => { if (confirm('Сбросить турнир?')) resetTournament(); }}
-                    className="admin-btn-danger py-3 text-sm"
+                    className="admin-btn-danger py-4 text-sm"
                   >
-                    ✕ Сбросить турнир
+                    ✕ Сбросить
                   </button>
                 </div>
               </>
             )}
 
-            {/* Time adjustment */}
+            {/* Time adjustment — 3x2 grid */}
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
-              <div className="text-[#888] text-sm uppercase tracking-widest mb-3">Время</div>
-              <div className="flex gap-2 flex-wrap">
+              <div className="text-[#888] text-xs uppercase tracking-widest mb-3">Корректировка времени</div>
+              <div className="grid grid-cols-3 gap-2">
                 {([-300, -60, -30, +30, +60, +300] as const).map(delta => {
                   const isNeg = delta < 0;
                   const abs = Math.abs(delta);
@@ -582,7 +595,7 @@ export function Admin() {
                     <button
                       key={delta}
                       onClick={() => updateGameState({ timeLeft: Math.max(0, gameState.timeLeft + delta) })}
-                      className={`flex-1 py-2 rounded-lg font-bold text-sm transition-colors ${
+                      className={`py-3 rounded-lg font-bold text-sm transition-colors ${
                         isNeg
                           ? 'bg-red-900/60 hover:bg-red-800 text-red-300'
                           : 'bg-green-900/60 hover:bg-green-800 text-green-300'
@@ -597,12 +610,12 @@ export function Admin() {
 
             {/* Player / Stack */}
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-4">
-              <div className="text-[#888] text-sm uppercase tracking-widest">Участники и стеки</div>
+              <div className="text-[#888] text-xs uppercase tracking-widest">Участники и стеки</div>
 
               {/* Стартовый стек */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[#666] text-xs block mb-1">Стартовый стек (фишек)</label>
+                  <label className="text-[#666] text-xs block mb-1">Стартовый стек</label>
                   <input
                     type="number"
                     className="admin-input"
@@ -613,11 +626,11 @@ export function Admin() {
                       updateGameState({ startStack: ss, totalStack: total });
                     }}
                     placeholder="напр. 15000"
-                    min={0}
+                    inputMode="numeric"
                   />
                 </div>
                 <div>
-                  <label className="text-[#666] text-xs block mb-1">Стек аддона (фишек)</label>
+                  <label className="text-[#666] text-xs block mb-1">Стек аддона</label>
                   <input
                     type="number"
                     className="admin-input"
@@ -628,13 +641,13 @@ export function Admin() {
                       updateGameState({ addonStack: as, totalStack: total });
                     }}
                     placeholder="напр. 20000"
-                    min={0}
+                    inputMode="numeric"
                   />
                 </div>
               </div>
 
-              {/* Игроки · Ребаи · Аддоны — влияют на стек */}
-              <div className="grid grid-cols-3 gap-3">
+              {/* Игроки · Ребаи · Аддоны */}
+              <div className="grid grid-cols-3 gap-2">
                 <CounterBlock
                   label="Игроки"
                   value={gameState.players ?? 0}
@@ -709,11 +722,11 @@ export function Admin() {
               )}
             </div>
 
-            {/* Ауты — отдельно, не влияют на стек */}
+            {/* Ауты */}
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
-              <div className="text-[#888] text-sm uppercase tracking-widest mb-3">Выбыли</div>
-              <div className="flex items-center gap-6">
-                <div className="w-36 flex-shrink-0">
+              <div className="text-[#888] text-xs uppercase tracking-widest mb-3">Выбыли</div>
+              <div className="flex items-center gap-4">
+                <div className="w-32 flex-shrink-0">
                   <CounterBlock
                     label="Ауты"
                     value={gameState.outs ?? 0}
@@ -723,7 +736,7 @@ export function Admin() {
                 </div>
                 {(gameState.players ?? 0) > 0 && (
                   <div className="text-sm leading-relaxed">
-                    <div className="text-[#555] mb-1">Осталось в игре</div>
+                    <div className="text-[#555] mb-1 text-xs">Осталось в игре</div>
                     <div>
                       <span className="text-white font-black text-4xl">
                         {(gameState.players ?? 0) - (gameState.outs ?? 0)}
@@ -739,12 +752,12 @@ export function Admin() {
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-white font-medium">Показать рейтинг на экране</div>
-                  <div className="text-[#555] text-sm">Заменяет таймер на таблицу рейтинга</div>
+                  <div className="text-white font-medium text-sm">Показать рейтинг на экране</div>
+                  <div className="text-[#555] text-xs mt-0.5">Заменяет таймер на таблицу рейтинга</div>
                 </div>
                 <button
                   onClick={() => updateGameState({ showRating: !gameState.showRating })}
-                  className={`w-14 h-7 rounded-full transition-colors ${
+                  className={`w-14 h-7 rounded-full transition-colors flex-shrink-0 ml-4 ${
                     gameState.showRating ? 'bg-[#C0392B]' : 'bg-[#2D2D2D]'
                   }`}
                 >
@@ -760,9 +773,9 @@ export function Admin() {
         {/* ─── BLINDS TAB ──────────────────────────────────────────────── */}
         {activeTab === 'blinds' && (
           <div className="flex flex-col gap-3">
-            <div className="flex gap-2 mb-2">
-              <button onClick={addBlindLevel} className="admin-btn-primary px-4 py-2 text-sm">+ Уровень</button>
-              <button onClick={addBreak} className="admin-btn-secondary px-4 py-2 text-sm">+ Перерыв</button>
+            <div className="flex gap-2 mb-1">
+              <button onClick={addBlindLevel} className="admin-btn-primary px-4 py-3 text-sm flex-1">+ Уровень</button>
+              <button onClick={addBreak} className="admin-btn-secondary px-4 py-3 text-sm flex-1">+ Перерыв</button>
             </div>
             {blindLevels.map((level, idx) => (
               <div
@@ -774,7 +787,7 @@ export function Admin() {
                 onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
                 style={{ cursor: 'grab', opacity: dragIndex === idx ? 0.4 : 1 }}
                 className={dragOverIndex === idx && dragIndex !== idx
-                  ? 'rounded-lg outline outline-2 outline-[#E31E24]'
+                  ? 'rounded-xl outline outline-2 outline-[#E31E24]'
                   : ''}
               >
                 <BlindRow
@@ -790,7 +803,7 @@ export function Admin() {
         {/* ─── COMBOS TAB ──────────────────────────────────────────────── */}
         {activeTab === 'combos' && (
           <div className="flex flex-col gap-4">
-            <button onClick={addCombo} className="admin-btn-primary px-4 py-2 text-sm self-start">+ Добавить комбинацию</button>
+            <button onClick={addCombo} className="admin-btn-primary px-4 py-3 text-sm">+ Добавить комбинацию</button>
 
             {combinations.map((combo, comboIdx) => (
               <div key={combo.id} className="bg-[#111] border border-[#2D2D2D] rounded-xl p-4">
@@ -799,12 +812,12 @@ export function Admin() {
                     <span className="text-[#888] text-sm">Комбо {comboIdx + 1}</span>
                     <button
                       onClick={() => updateCombo(comboIdx, { ...combo, enabled: !combo.enabled })}
-                      className={`text-xs px-2 py-0.5 rounded ${combo.enabled ? 'bg-green-700 text-white' : 'bg-[#2D2D2D] text-[#666]'}`}
+                      className={`text-xs px-2 py-1 rounded ${combo.enabled ? 'bg-green-700 text-white' : 'bg-[#2D2D2D] text-[#666]'}`}
                     >
                       {combo.enabled ? 'Вкл' : 'Выкл'}
                     </button>
                   </div>
-                  <button onClick={() => deleteCombo(comboIdx)} className="admin-btn-danger px-2 py-1 text-sm">✕</button>
+                  <button onClick={() => deleteCombo(comboIdx)} className="admin-btn-danger px-3 py-2 text-sm">✕</button>
                 </div>
 
                 {/* Cards */}
@@ -814,16 +827,16 @@ export function Admin() {
                       <PokerCard card={card} size="sm" />
                       <button
                         onClick={() => removeCardFromCombo(comboIdx, cardIdx)}
-                        className="absolute -top-1 -right-1 bg-red-700 text-white text-xs w-4 h-4 rounded-full hidden group-hover:flex items-center justify-center"
+                        className="absolute -top-1 -right-1 bg-red-700 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center"
                       >✕</button>
                     </div>
                   ))}
-                  <CardPicker onAdd={card => addCardToCombo(comboIdx, card)} />
                 </div>
+                <CardPicker onAdd={card => addCardToCombo(comboIdx, card)} />
 
                 {/* Description */}
                 <input
-                  className="admin-input"
+                  className="admin-input mt-3"
                   placeholder="Описание (напр: +5 очков к рейтингу)"
                   value={combo.description}
                   onChange={e => updateCombo(comboIdx, { ...combo, description: e.target.value })}
@@ -833,13 +846,12 @@ export function Admin() {
           </div>
         )}
 
-
         {/* ─── SETTINGS TAB ────────────────────────────────────────────── */}
         {activeTab === 'settings' && (
           <div className="flex flex-col gap-4">
             {/* Next game info */}
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
-              <div className="text-[#888] text-sm uppercase tracking-widest mb-3">Следующая игра</div>
+              <div className="text-[#888] text-xs uppercase tracking-widest mb-3">Следующая игра</div>
               <input
                 className="admin-input"
                 placeholder="напр: Ребайный турнир · 24.04.26 · 20:00"
@@ -851,7 +863,7 @@ export function Admin() {
 
             {/* Background */}
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
-              <div className="text-[#888] text-sm uppercase tracking-widest mb-3">Фон экрана</div>
+              <div className="text-[#888] text-xs uppercase tracking-widest mb-3">Фон экрана</div>
               <div className="flex gap-2 mb-3">
                 <button
                   onClick={() => updateGameState({ backgroundUrl: null })}
@@ -870,7 +882,6 @@ export function Admin() {
                 Вставьте ссылку на изображение (jpg, png, webp)
               </div>
             </div>
-
           </div>
         )}
 
@@ -890,7 +901,7 @@ function StatusBadge({ status }: { status: string }) {
   };
   const c = cfg[status] ?? cfg.idle;
   return (
-    <span className={`inline-block px-3 py-1 rounded-full text-sm font-bold ${c.color}`}>
+    <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${c.color}`}>
       {c.label}
     </span>
   );
@@ -911,22 +922,22 @@ function CounterBlock({
   onRemove: () => void;
 }) {
   return (
-    <div className="bg-[#0A0A0A] rounded-xl px-3 py-3 flex flex-col items-center gap-2">
+    <div className="bg-[#0A0A0A] rounded-xl px-2 py-3 flex flex-col items-center gap-2">
       <div className="text-center">
-        <div className="text-[#666] text-xs uppercase tracking-widest">{label}</div>
-        {sublabel && <div className="text-[#444] text-[10px]">{sublabel}</div>}
+        <div className="text-[#666] text-[10px] uppercase tracking-widest leading-tight">{label}</div>
+        {sublabel && <div className="text-[#444] text-[9px] leading-tight">{sublabel}</div>}
       </div>
-      <div className="text-white font-black text-4xl leading-none">{value}</div>
-      <div className="flex gap-2 w-full">
+      <div className="text-white font-black text-3xl leading-none">{value}</div>
+      <div className="flex gap-1 w-full">
         <button
           onClick={onRemove}
-          className="flex-1 py-1.5 rounded-lg bg-[#2D2D2D] text-[#888] hover:bg-[#3D3D3D] font-bold text-lg transition-colors"
+          className="flex-1 py-3 rounded-lg bg-[#2D2D2D] text-[#888] hover:bg-[#3D3D3D] font-bold text-lg transition-colors"
         >
           −
         </button>
         <button
           onClick={onAdd}
-          className="flex-1 py-1.5 rounded-lg bg-[#C0392B] text-white hover:bg-[#E31E24] font-bold text-lg transition-colors"
+          className="flex-1 py-3 rounded-lg bg-[#C0392B] text-white hover:bg-[#E31E24] font-bold text-base transition-colors"
         >
           +1
         </button>
