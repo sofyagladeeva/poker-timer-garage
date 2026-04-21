@@ -218,7 +218,7 @@ function BlindRow({
               }
 
               setBbDraft(String(nextBb));
-              upd({ bb: nextBb, ante: nextBb });
+              upd({ bb: nextBb, ante: level.ante > 0 ? nextBb : 0 });
             }}
             onKeyDown={e => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
           />
@@ -676,6 +676,23 @@ export function Admin() {
   const seconds = gameState.timeLeft % 60;
 
   const currentLevel = blindLevels[gameState.currentLevelIndex];
+  const regularBlindLevels = blindLevels.filter(level => !level.isBreak);
+  const anteStartLevel = regularBlindLevels.find(level => level.ante > 0)?.level ?? 0;
+
+  const applyAnteStartLevel = (startLevel: number) => {
+    updateBlindLevels(
+      blindLevels.map(level => {
+        if (level.isBreak) {
+          return { ...level, ante: 0 };
+        }
+
+        return {
+          ...level,
+          ante: startLevel > 0 && level.level >= startLevel ? level.bb : 0,
+        };
+      })
+    );
+  };
 
   // ── Demo data ──────────────────────────────────────────────────────────
   const loadDemo = () => {
@@ -726,12 +743,13 @@ export function Admin() {
   // ── Blind levels editor ────────────────────────────────────────────────
   const addBlindLevel = () => {
     const nextPair = getNextGarageBlindPair(blindLevels);
+    const lastRegularLevel = regularBlindLevels[regularBlindLevels.length - 1];
     const newLevel: BlindLevel = {
       id: Date.now().toString(),
-      level: blindLevels.filter(l => !l.isBreak).length + 1,
+      level: regularBlindLevels.length + 1,
       sb: nextPair.sb,
       bb: nextPair.bb,
-      ante: nextPair.bb,
+      ante: lastRegularLevel?.ante > 0 ? nextPair.bb : 0,
       duration: 1200,
       isBreak: false,
     };
@@ -1028,7 +1046,8 @@ export function Admin() {
                       <StatusBadge status={gameState.status} />
                       {currentLevel && !currentLevel.isBreak && (
                         <div className="text-[#555] text-xs mt-2">
-                          {currentLevel.sb} / {currentLevel.bb} / {currentLevel.bb}
+                          {currentLevel.sb} / {currentLevel.bb}
+                          {currentLevel.ante > 0 ? ` + ${currentLevel.ante}` : ''}
                         </div>
                       )}
                     </div>
@@ -1264,6 +1283,33 @@ export function Admin() {
         {/* ─── BLINDS TAB ──────────────────────────────────────────────── */}
         {activeTab === 'blinds' && (
           <div className="flex flex-col gap-3">
+            <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <div className="text-[#888] text-xs uppercase tracking-widest">Анте</div>
+                  <div className="text-[#555] text-xs mt-1">
+                    Анте всегда равно BB. Здесь можно быстро включить его с нужного уровня, и эта схема сохранится в шаблонах.
+                  </div>
+                </div>
+
+                <div className="w-full sm:w-[240px]">
+                  <select
+                    className="admin-input"
+                    value={String(anteStartLevel)}
+                    onChange={e => applyAnteStartLevel(Number(e.target.value))}
+                    disabled={regularBlindLevels.length === 0}
+                  >
+                    <option value="0">Без анте</option>
+                    {regularBlindLevels.map(level => (
+                      <option key={level.id} value={level.level}>
+                        С уровня {level.level}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
               <div className="flex flex-col gap-3">
                 <div className="flex items-start justify-between gap-3">

@@ -19,13 +19,13 @@ export const GARAGE_BLIND_PAIRS = [
   { sb: 15000, bb: 30000 },
 ] as const;
 
-export function createGarageBlindTemplate(duration = 1200): BlindLevel[] {
+export function createGarageBlindTemplate(duration = 1200, anteStartLevel = 0): BlindLevel[] {
   return GARAGE_BLIND_PAIRS.map((pair, idx) => ({
     id: `garage_${idx + 1}`,
     level: idx + 1,
     sb: pair.sb,
     bb: pair.bb,
-    ante: pair.bb,
+    ante: anteStartLevel > 0 && idx + 1 >= anteStartLevel ? pair.bb : 0,
     duration,
     isBreak: false,
   }));

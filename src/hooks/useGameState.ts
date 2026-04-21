@@ -47,6 +47,7 @@ function normalizeBlindLevels(levels: BlindLevel[]) {
 
     const sb = normalizeBlindNumber(level.sb);
     const bb = normalizeBlindNumber(level.bb);
+    const anteEnabled = normalizeBlindNumber(level.ante) > 0;
 
     return {
       ...level,
@@ -54,7 +55,7 @@ function normalizeBlindLevels(levels: BlindLevel[]) {
       level: currentLevelNumber++,
       sb,
       bb,
-      ante: bb,
+      ante: anteEnabled ? bb : 0,
       duration: Math.max(60, Math.round(level.duration || 1200)),
       isBreak: false,
     };

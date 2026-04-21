@@ -316,8 +316,12 @@ export function Display() {
                 <BlindBox label="SB" value={fmt(currentLevel.sb)} />
                 <span className="text-[#202020] text-5xl font-thin">/</span>
                 <BlindBox label="BB" value={fmt(currentLevel.bb)} />
-                <span className="text-[#202020] text-3xl">+</span>
-                <BlindBox label="АНТЕ" value={fmt(currentLevel.bb)} accent />
+                {currentLevel.ante > 0 && (
+                  <>
+                    <span className="text-[#202020] text-3xl">+</span>
+                    <BlindBox label="АНТЕ" value={fmt(currentLevel.ante)} accent />
+                  </>
+                )}
               </div>
             )}
 
@@ -334,7 +338,9 @@ export function Display() {
                     </span>
                   : <span className="text-white font-black text-2xl">
                       {fmt(nextLevel.sb)} / {fmt(nextLevel.bb)}
-                      <span className="text-[#E31E24]"> + {fmt(nextLevel.bb)}</span>
+                      {nextLevel.ante > 0 && (
+                        <span className="text-[#E31E24]"> + {fmt(nextLevel.ante)}</span>
+                      )}
                     </span>
                 }
               </div>
