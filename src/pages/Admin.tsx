@@ -100,6 +100,40 @@ function BlindRow({
   onDelete: () => void;
 }) {
   const upd = (patch: Partial<BlindLevel>) => onChange({ ...level, ...patch });
+  const [sbDraft, setSbDraft] = useState(String(level.sb));
+  const [bbDraft, setBbDraft] = useState(String(level.bb));
+  const [minutesDraft, setMinutesDraft] = useState(String(Math.round(level.duration / 60)));
+
+  useEffect(() => {
+    setMinutesDraft(String(Math.round(level.duration / 60)));
+
+    if (!level.isBreak) {
+      setSbDraft(String(level.sb));
+      setBbDraft(String(level.bb));
+    }
+  }, [level.id, level.isBreak, level.sb, level.bb, level.duration]);
+
+  const parseDraftNumber = (value: string) => {
+    const trimmed = value.trim();
+    if (trimmed === '') return null;
+
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) return null;
+
+    return Math.max(0, Math.round(parsed));
+  };
+
+  const commitMinutes = () => {
+    const nextMinutes = parseDraftNumber(minutesDraft);
+    if (nextMinutes === null) {
+      setMinutesDraft(String(Math.round(level.duration / 60)));
+      return;
+    }
+
+    const normalizedMinutes = Math.max(1, nextMinutes);
+    setMinutesDraft(String(normalizedMinutes));
+    upd({ duration: normalizedMinutes * 60 });
+  };
 
   if (level.isBreak) {
     return (
@@ -112,9 +146,16 @@ function BlindRow({
           <input className="admin-input" placeholder="Название" value={level.breakLabel || ''}
             onChange={e => upd({ breakLabel: e.target.value })} />
           <div className="flex items-center gap-1">
-            <input type="number" className="admin-input" placeholder="мин"
-              value={Math.round(level.duration / 60)}
-              onChange={e => upd({ duration: Number(e.target.value) * 60 })} />
+            <input
+              type="text"
+              inputMode="numeric"
+              className="admin-input"
+              placeholder="мин"
+              value={minutesDraft}
+              onChange={e => setMinutesDraft(e.target.value)}
+              onBlur={commitMinutes}
+              onKeyDown={e => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
+            />
             <span className="text-[#555] text-xs flex-shrink-0">мин</span>
           </div>
         </div>
@@ -131,22 +172,57 @@ function BlindRow({
       <div className="grid grid-cols-3 gap-2">
         <div>
           <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">SB</div>
-          <input type="number" step={100} className="admin-input text-sm px-2" value={level.sb}
-            onChange={e => upd({ sb: Number(e.target.value) })} />
+          <input
+            type="text"
+            inputMode="numeric"
+            className="admin-input text-sm px-2"
+            value={sbDraft}
+            onChange={e => setSbDraft(e.target.value)}
+            onBlur={() => {
+              const nextSb = parseDraftNumber(sbDraft);
+              if (nextSb === null) {
+                setSbDraft(String(level.sb));
+                return;
+              }
+
+              setSbDraft(String(nextSb));
+              upd({ sb: nextSb });
+            }}
+            onKeyDown={e => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
+          />
         </div>
         <div>
           <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">BB</div>
-          <input type="number" step={100} className="admin-input text-sm px-2" value={level.bb}
-            onChange={e => {
-              const bb = Number(e.target.value);
-              upd({ bb, ante: bb });
-            }} />
+          <input
+            type="text"
+            inputMode="numeric"
+            className="admin-input text-sm px-2"
+            value={bbDraft}
+            onChange={e => setBbDraft(e.target.value)}
+            onBlur={() => {
+              const nextBb = parseDraftNumber(bbDraft);
+              if (nextBb === null) {
+                setBbDraft(String(level.bb));
+                return;
+              }
+
+              setBbDraft(String(nextBb));
+              upd({ bb: nextBb, ante: nextBb });
+            }}
+            onKeyDown={e => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
+          />
         </div>
         <div>
           <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">Мин</div>
-          <input type="number" className="admin-input text-sm px-2"
-            value={Math.round(level.duration / 60)}
-            onChange={e => upd({ duration: Number(e.target.value) * 60 })} />
+          <input
+            type="text"
+            inputMode="numeric"
+            className="admin-input text-sm px-2"
+            value={minutesDraft}
+            onChange={e => setMinutesDraft(e.target.value)}
+            onBlur={commitMinutes}
+            onKeyDown={e => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
+          />
         </div>
       </div>
     </div>

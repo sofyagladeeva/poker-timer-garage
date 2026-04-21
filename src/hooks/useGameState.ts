@@ -21,9 +21,9 @@ function saveLocal<T>(key: string, value: T) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
-function roundToHundreds(value: number) {
+function normalizeBlindNumber(value: number) {
   if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.round(value / 100) * 100);
+  return Math.max(0, Math.round(value));
 }
 
 function normalizeBlindLevels(levels: BlindLevel[]) {
@@ -45,9 +45,8 @@ function normalizeBlindLevels(levels: BlindLevel[]) {
       };
     }
 
-    const sb = Math.max(100, roundToHundreds(level.sb));
-    const rawBb = Math.max(100, roundToHundreds(level.bb));
-    const bb = Math.max(rawBb, sb);
+    const sb = normalizeBlindNumber(level.sb);
+    const bb = normalizeBlindNumber(level.bb);
 
     return {
       ...level,
