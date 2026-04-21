@@ -1117,10 +1117,10 @@ export function Admin() {
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
               <div className="text-[#888] text-xs uppercase tracking-widest mb-3">Корректировка времени</div>
               <div className="grid grid-cols-3 gap-2">
-                {([-300, -60, -30, +30, +60, +300] as const).map(delta => {
+                {([-600, -300, -60, +60, +300, +600] as const).map(delta => {
                   const isNeg = delta < 0;
                   const abs = Math.abs(delta);
-                  const label = abs >= 60 ? `${abs / 60} мин` : `${abs} с`;
+                  const label = `${abs / 60} мин`;
                   return (
                     <button
                       key={delta}
