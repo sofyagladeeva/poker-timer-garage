@@ -1081,14 +1081,14 @@ export function Admin() {
                   </button>
                   <button
                     onClick={async () => {
-                      if (confirm('Сбросить турнир? Данные будут сохранены в архив.')) {
+                      if (confirm('Завершить турнир? Данные будут сохранены в архив.')) {
                         await saveTournament(gameState, gameState.currentLevelIndex + 1);
                         resetTournament();
                       }
                     }}
                     className="admin-btn-danger py-4 text-sm"
                   >
-                    ✕ Сбросить
+                    ✕ Завершить
                   </button>
                 </div>
               </>
@@ -1523,7 +1523,7 @@ export function Admin() {
                 <div className="text-[#444] text-4xl mb-3">📋</div>
                 <div className="text-[#555] text-sm">Архив пуст</div>
                 <div className="text-[#333] text-xs mt-1">
-                  После сброса турнира данные появятся здесь
+                  После завершения турнира данные появятся здесь
                 </div>
               </div>
             )}
