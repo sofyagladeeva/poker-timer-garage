@@ -24,6 +24,13 @@ export interface BlindLevel {
   breakLabel?: string;
 }
 
+export interface BlindTemplate {
+  id: string;
+  name: string;
+  levels: BlindLevel[];
+  createdAt: string;
+}
+
 export type GameStatus = 'idle' | 'running' | 'paused' | 'break' | 'ended';
 
 export interface GameState {

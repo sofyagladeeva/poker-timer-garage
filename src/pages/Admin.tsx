@@ -2,9 +2,20 @@ import { useState, useEffect, useRef, Component } from 'react';
 import type { ChangeEvent, ReactNode } from 'react';
 import { useGameState } from '../hooks/useGameState';
 import { createGarageBlindTemplate, getNextGarageBlindPair } from '../blindStructure';
-import type { BlindLevel, Combination, Card, Suit, Rank, TournamentRecord } from '../types';
+import type { BlindLevel, BlindTemplate, Combination, Card, Suit, Rank, TournamentRecord } from '../types';
 import { SUIT_SYMBOLS } from '../types';
 import { PokerCard } from '../components/PokerCard';
+import {
+  buildBlindTemplate,
+  deleteSharedBlindTemplates,
+  fetchSharedBlindTemplates,
+  isSharedBlindTemplateLibraryEnabled,
+  loadBlindTemplates,
+  mergeBlindTemplates,
+  PRESET_BLIND_TEMPLATES,
+  saveBlindTemplates,
+  upsertSharedBlindTemplate,
+} from '../blindTemplateLibrary';
 import {
   createBackgroundFromFile,
   deleteSharedBackgrounds,
@@ -232,11 +243,17 @@ function BlindRow({
 // ─── Main Admin page ───────────────────────────────────────────────────────
 export function Admin() {
   const sharedBackgroundLibraryEnabled = isSharedBackgroundLibraryEnabled();
+  const sharedBlindTemplateLibraryEnabled = isSharedBlindTemplateLibraryEnabled();
   const [authed, setAuthed] = useState(false);
   const [pwInput, setPwInput] = useState('');
   const [pwError, setPwError] = useState(false);
   const [activeTab, setActiveTab] = useState<'control' | 'blinds' | 'combos' | 'archive' | 'settings'>('control');
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
+  const [blindTemplates, setBlindTemplates] = useState<BlindTemplate[]>(() => loadBlindTemplates());
+  const [templateName, setTemplateName] = useState('');
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+  const [templateNote, setTemplateNote] = useState<string | null>(null);
   const [backgroundLibrary, setBackgroundLibrary] = useState<StoredBackground[]>(() => loadBackgroundLibrary());
   const [backgroundUploadBusy, setBackgroundUploadBusy] = useState(false);
   const [backgroundUploadError, setBackgroundUploadError] = useState<string | null>(null);
@@ -246,6 +263,7 @@ export function Admin() {
   const [dropLine, setDropLine] = useState<number | null>(null);
   const rowEls = useRef<(HTMLDivElement | null)[]>([]);
   const dragging = useRef(false);
+  const blindTemplatesRef = useRef(blindTemplates);
   const backgroundLibraryRef = useRef(backgroundLibrary);
 
   const {
@@ -265,6 +283,10 @@ export function Admin() {
       .then(setBotGames)
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    blindTemplatesRef.current = blindTemplates;
+  }, [blindTemplates]);
 
   useEffect(() => {
     backgroundLibraryRef.current = backgroundLibrary;
@@ -308,6 +330,92 @@ export function Admin() {
       setArchiveLoading(false);
     });
   }, [activeTab, fetchTournaments]);
+
+  const syncBlindTemplateState = (next: BlindTemplate[]) => {
+    const result = saveBlindTemplates(next);
+    if (!result.ok) {
+      return result;
+    }
+
+    setBlindTemplates(next);
+    return { ok: true as const };
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'blinds') return;
+
+    let cancelled = false;
+
+    const loadTemplateLibrary = async () => {
+      setTemplateError(null);
+
+      try {
+        if (!sharedBlindTemplateLibraryEnabled) {
+          if (!cancelled) {
+            const localTemplates = loadBlindTemplates().filter(template => !template.id.startsWith('preset_'));
+            const cacheResult = syncBlindTemplateState(localTemplates);
+            if (!cacheResult.ok) setTemplateError(cacheResult.error);
+          }
+          return;
+        }
+
+        const remote = await fetchSharedBlindTemplates();
+        const local = loadBlindTemplates();
+        const mergedCustom = mergeBlindTemplates(remote, local).filter(template => !template.id.startsWith('preset_'));
+
+        if (!cancelled) {
+          const cacheResult = syncBlindTemplateState(mergedCustom);
+          if (!cacheResult.ok) {
+            setTemplateError(cacheResult.error);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const fallbackTemplates = loadBlindTemplates().filter(template => !template.id.startsWith('preset_'));
+          const cacheResult = syncBlindTemplateState(fallbackTemplates);
+          if (!cacheResult.ok) {
+            setTemplateError(cacheResult.error);
+            return;
+          }
+
+          const baseError = err instanceof Error ? err.message : 'Не удалось загрузить шаблоны блайндов';
+          setTemplateError(`${baseError} Шаблоны доступны локально только на этом устройстве.`);
+        }
+      }
+    };
+
+    loadTemplateLibrary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, sharedBlindTemplateLibraryEnabled]);
+
+  const persistBlindTemplates = async (next: BlindTemplate[], templateToSave?: BlindTemplate) => {
+    const customTemplates = next.filter(template => !template.id.startsWith('preset_'));
+
+    if (templateToSave) {
+      const saveResult = await upsertSharedBlindTemplate(templateToSave);
+      if (!saveResult.ok) {
+        const cacheResult = syncBlindTemplateState(customTemplates);
+        if (!cacheResult.ok) {
+          setTemplateError(cacheResult.error);
+          return false;
+        }
+
+        setTemplateError(`${saveResult.error} Шаблон сохранен локально только на этом устройстве.`);
+        return true;
+      }
+    }
+
+    const cacheResult = syncBlindTemplateState(customTemplates);
+    if (!cacheResult.ok) {
+      setTemplateError(cacheResult.error);
+      return false;
+    }
+
+    return true;
+  };
 
   const syncBackgroundLibraryState = (next: StoredBackground[]) => {
     const result = saveBackgroundLibrary(next);
@@ -463,6 +571,81 @@ export function Admin() {
     }
   };
 
+  const saveCurrentBlindTemplate = async () => {
+    const name = templateName.trim();
+    if (!name) {
+      setTemplateError('Введите название шаблона');
+      setTemplateNote(null);
+      return;
+    }
+
+    setTemplateBusy(true);
+    setTemplateError(null);
+    setTemplateNote(null);
+
+    try {
+      const existing = blindTemplatesRef.current.find(
+        template => template.name.trim().toLowerCase() === name.toLowerCase()
+      );
+      const template = buildBlindTemplate(name, blindLevels, existing?.id);
+      const next = mergeBlindTemplates(
+        blindTemplatesRef.current.filter(item => item.id !== template.id),
+        [template]
+      );
+
+      if (await persistBlindTemplates(next, template)) {
+        setTemplateName('');
+        setTemplateNote(existing ? `Шаблон «${name}» обновлен.` : `Шаблон «${name}» сохранен.`);
+      }
+    } finally {
+      setTemplateBusy(false);
+    }
+  };
+
+  const applyBlindTemplate = async (template: BlindTemplate) => {
+    setTemplateError(null);
+    setTemplateNote(null);
+
+    const levels = template.levels.map(level => ({ ...level }));
+    await updateBlindLevels(levels);
+
+    const firstLevel = levels[0];
+    await updateGameState({
+      currentLevelIndex: 0,
+      timeLeft: firstLevel?.duration ?? 1200,
+      status: 'paused',
+    });
+
+    setTemplateNote(`Применен шаблон «${template.name}».`);
+  };
+
+  const removeBlindTemplate = async (templateId: string) => {
+    setTemplateError(null);
+    setTemplateNote(null);
+
+    const next = blindTemplatesRef.current.filter(template => template.id !== templateId);
+    const deleteResult = await deleteSharedBlindTemplates([templateId]);
+    if (!deleteResult.ok) {
+      const cacheResult = syncBlindTemplateState(next);
+      if (!cacheResult.ok) {
+        setTemplateError(cacheResult.error);
+        return;
+      }
+
+      setTemplateError(`${deleteResult.error} Шаблон удален локально только на этом устройстве.`);
+      return;
+    }
+
+    const cacheResult = syncBlindTemplateState(next);
+    if (!cacheResult.ok) {
+      setTemplateError(cacheResult.error);
+      return;
+    }
+
+    setTemplateNote('Шаблон удален.');
+  };
+
+  const allBlindTemplates = mergeBlindTemplates(PRESET_BLIND_TEMPLATES, blindTemplates);
   const allBackgrounds = [...PRESET_BACKGROUNDS, ...backgroundLibrary];
 
   if (!authed) {
@@ -1081,6 +1264,90 @@ export function Admin() {
         {/* ─── BLINDS TAB ──────────────────────────────────────────────── */}
         {activeTab === 'blinds' && (
           <div className="flex flex-col gap-3">
+            <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[#888] text-xs uppercase tracking-widest">Шаблоны блайндов</div>
+                    <div className="text-[#555] text-xs mt-1">
+                      Сохраните текущую структуру под именем и потом быстро применяйте нужный шаблон.
+                    </div>
+                  </div>
+                  <div className="rounded-full border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-1 text-[11px] uppercase tracking-wide text-[#777]">
+                    {sharedBlindTemplateLibraryEnabled ? 'Общая библиотека' : 'Локально на этом устройстве'}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_220px] gap-2">
+                  <input
+                    className="admin-input"
+                    placeholder="Название шаблона"
+                    value={templateName}
+                    onChange={e => setTemplateName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && void saveCurrentBlindTemplate()}
+                  />
+                  <button
+                    onClick={() => void saveCurrentBlindTemplate()}
+                    className={`admin-btn-primary px-4 py-3 text-sm ${templateBusy ? 'opacity-60 pointer-events-none' : ''}`}
+                  >
+                    {templateBusy ? 'Сохранение...' : 'Сохранить текущий шаблон'}
+                  </button>
+                </div>
+
+                {templateError && (
+                  <div className="rounded-xl border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-300">
+                    {templateError}
+                  </div>
+                )}
+
+                {templateNote && (
+                  <div className="rounded-xl border border-[#3A3A3A] bg-[#0A0A0A] px-3 py-2 text-sm text-[#AAA]">
+                    {templateNote}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  {allBlindTemplates.map(template => (
+                    <div key={template.id} className="rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-white font-bold text-sm">{template.name}</div>
+                          <div className="text-[#666] text-xs mt-1">
+                            Уровней: {template.levels.filter(level => !level.isBreak).length}
+                            {template.levels.some(level => level.isBreak)
+                              ? ` · Перерывов: ${template.levels.filter(level => level.isBreak).length}`
+                              : ''}
+                          </div>
+                        </div>
+                        {template.id.startsWith('preset_') && (
+                          <span className="rounded-full bg-[#1F1F1F] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#AAA]">
+                            Базовый
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          onClick={() => void applyBlindTemplate(template)}
+                          className="admin-btn-primary px-4 py-2 text-sm"
+                        >
+                          Применить
+                        </button>
+                        {!template.id.startsWith('preset_') && (
+                          <button
+                            onClick={() => void removeBlindTemplate(template.id)}
+                            className="admin-btn-danger px-4 py-2 text-sm"
+                          >
+                            Удалить
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-1">
               <button onClick={addBlindLevel} className="admin-btn-primary px-4 py-3 text-sm">+ Уровень</button>
               <button onClick={addBreak} className="admin-btn-secondary px-4 py-3 text-sm">+ Перерыв</button>
