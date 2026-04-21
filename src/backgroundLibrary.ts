@@ -104,21 +104,6 @@ export const PRESET_BACKGROUNDS: StoredBackground[] = [
     'Красный неон',
     buildPresetSvg('#220707', '#5A0E0E', '#F05B5B', '#B31B1B')
   ),
-  createPresetBackground(
-    'green_felt',
-    'Зеленое сукно',
-    buildPresetSvg('#071B12', '#123F2E', '#5FE1A5', '#1E8F64')
-  ),
-  createPresetBackground(
-    'gold_room',
-    'Золотой зал',
-    buildPresetSvg('#1B1208', '#4A2E11', '#F4C16E', '#C47A1E')
-  ),
-  createPresetBackground(
-    'steel_night',
-    'Стальной дым',
-    buildPresetSvg('#0A1016', '#182633', '#8FD2FF', '#325A78')
-  ),
 ];
 
 function isSupabaseConfigured() {
