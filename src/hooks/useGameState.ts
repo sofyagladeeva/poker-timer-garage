@@ -47,7 +47,7 @@ function normalizeBlindLevels(levels: BlindLevel[]) {
 
     const sb = Math.max(100, roundToHundreds(level.sb));
     const rawBb = Math.max(100, roundToHundreds(level.bb));
-    const bb = Math.max(rawBb, sb + 100);
+    const bb = Math.max(rawBb, sb);
 
     return {
       ...level,

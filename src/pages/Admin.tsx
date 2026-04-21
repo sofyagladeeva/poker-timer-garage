@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, Component } from 'react';
 import type { ChangeEvent, ReactNode } from 'react';
 import { useGameState } from '../hooks/useGameState';
+import { createGarageBlindTemplate, getNextGarageBlindPair } from '../blindStructure';
 import type { BlindLevel, Combination, Card, Suit, Rank, TournamentRecord } from '../types';
 import { SUIT_SYMBOLS } from '../types';
 import { PokerCard } from '../components/PokerCard';
@@ -419,21 +420,7 @@ export function Admin() {
 
   // ── Demo data ──────────────────────────────────────────────────────────
   const loadDemo = () => {
-    const demoLevels: import('../types').BlindLevel[] = [
-      { id: 'd1',  level: 1,  sb: 100,  bb: 200,  ante: 200,   duration: 900, isBreak: false },
-      { id: 'd2',  level: 2,  sb: 200,  bb: 400,  ante: 400,   duration: 900, isBreak: false },
-      { id: 'd3',  level: 3,  sb: 300,  bb: 600,  ante: 600,   duration: 900, isBreak: false },
-      { id: 'd4',  level: 4,  sb: 400,  bb: 800,  ante: 800,   duration: 900, isBreak: false },
-      { id: 'd5',  level: 5,  sb: 500,  bb: 1000, ante: 1000,  duration: 900, isBreak: false },
-      { id: 'd6',  level: 6,  sb: 700,  bb: 1400, ante: 1400,  duration: 900, isBreak: false },
-      { id: 'd7',  level: 7,  sb: 1000, bb: 2000, ante: 2000,  duration: 900, isBreak: false },
-      { id: 'd8',  level: 8,  sb: 1500, bb: 3000, ante: 3000,  duration: 900, isBreak: false },
-      { id: 'd9',  level: 9,  sb: 2000, bb: 4000, ante: 4000,  duration: 900, isBreak: false },
-      { id: 'd10', level: 10, sb: 3000, bb: 6000, ante: 6000,  duration: 900, isBreak: false },
-      { id: 'd11', level: 11, sb: 4000, bb: 8000, ante: 8000,  duration: 900, isBreak: false },
-      { id: 'd12', level: 12, sb: 5000, bb: 10000, ante: 10000, duration: 900, isBreak: false },
-      { id: 'db1', level: 0,  sb: 0,    bb: 0,    ante: 0,    duration: 900, isBreak: true, breakLabel: 'ПЕРЕРЫВ' },
-    ];
+    const demoLevels = createGarageBlindTemplate(900);
     updateBlindLevels(demoLevels);
     updateGameState({
       status: 'running',
@@ -479,19 +466,27 @@ export function Admin() {
 
   // ── Blind levels editor ────────────────────────────────────────────────
   const addBlindLevel = () => {
-    const last = blindLevels.filter(l => !l.isBreak).slice(-1)[0];
-    const nextSb = Math.max(last?.bb ?? 100, 100);
-    const nextBb = nextSb * 2;
+    const nextPair = getNextGarageBlindPair(blindLevels);
     const newLevel: BlindLevel = {
       id: Date.now().toString(),
-      level: (last?.level ?? 0) + 1,
-      sb: nextSb,
-      bb: nextBb,
-      ante: nextBb,
+      level: blindLevels.filter(l => !l.isBreak).length + 1,
+      sb: nextPair.sb,
+      bb: nextPair.bb,
+      ante: nextPair.bb,
       duration: 1200,
       isBreak: false,
     };
     updateBlindLevels([...blindLevels, newLevel]);
+  };
+
+  const applyGarageTemplate = () => {
+    const template = createGarageBlindTemplate();
+    updateBlindLevels(template);
+    updateGameState({
+      currentLevelIndex: 0,
+      timeLeft: template[0]?.duration ?? 1200,
+      status: 'paused',
+    });
   };
 
   const addBreak = () => {
@@ -1020,9 +1015,12 @@ export function Admin() {
         {/* ─── BLINDS TAB ──────────────────────────────────────────────── */}
         {activeTab === 'blinds' && (
           <div className="flex flex-col gap-3">
-            <div className="flex gap-2 mb-1">
-              <button onClick={addBlindLevel} className="admin-btn-primary px-4 py-3 text-sm flex-1">+ Уровень</button>
-              <button onClick={addBreak} className="admin-btn-secondary px-4 py-3 text-sm flex-1">+ Перерыв</button>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-1">
+              <button onClick={applyGarageTemplate} className="admin-btn-secondary px-4 py-3 text-sm">
+                Шаблон 100-30000
+              </button>
+              <button onClick={addBlindLevel} className="admin-btn-primary px-4 py-3 text-sm">+ Уровень</button>
+              <button onClick={addBreak} className="admin-btn-secondary px-4 py-3 text-sm">+ Перерыв</button>
             </div>
 
             {blindLevels.map((level, idx) => (
