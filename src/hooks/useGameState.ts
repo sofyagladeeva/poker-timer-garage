@@ -21,13 +21,54 @@ function saveLocal<T>(key: string, value: T) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function roundToHundreds(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.round(value / 100) * 100);
+}
+
+function normalizeBlindLevels(levels: BlindLevel[]) {
+  let currentLevelNumber = 1;
+
+  return levels.map((level, idx) => {
+    const baseId = level.id.replace(/^\d{5}_/, '') || `level_${idx + 1}`;
+
+    if (level.isBreak) {
+      return {
+        ...level,
+        id: `${String(idx).padStart(5, '0')}_${baseId}`,
+        level: 0,
+        sb: 0,
+        bb: 0,
+        ante: 0,
+        duration: Math.max(60, Math.round(level.duration || 900)),
+        breakLabel: (level.breakLabel || 'ПЕРЕРЫВ').trim() || 'ПЕРЕРЫВ',
+      };
+    }
+
+    const sb = Math.max(100, roundToHundreds(level.sb));
+    const rawBb = Math.max(100, roundToHundreds(level.bb));
+    const bb = Math.max(rawBb, sb + 100);
+
+    return {
+      ...level,
+      id: `${String(idx).padStart(5, '0')}_${baseId}`,
+      level: currentLevelNumber++,
+      sb,
+      bb,
+      ante: bb,
+      duration: Math.max(60, Math.round(level.duration || 1200)),
+      isBreak: false,
+    };
+  });
+}
+
 // ─── Hook ──────────────────────────────────────────────────────────────────
 export function useGameState() {
   const [gameState, setGameState] = useState<GameState>(() =>
     loadLocal(STATE_KEY, DEFAULT_GAME_STATE)
   );
   const [blindLevels, setBlindLevels] = useState<BlindLevel[]>(() =>
-    loadLocal(BLINDS_KEY, DEFAULT_BLIND_LEVELS)
+    normalizeBlindLevels(loadLocal(BLINDS_KEY, DEFAULT_BLIND_LEVELS))
   );
   const [combinations, setCombinations] = useState<Combination[]>(() =>
     loadLocal(COMBINATIONS_KEY, [])
@@ -60,7 +101,7 @@ export function useGameState() {
       supabase.from('combinations').select('*').order('created_at'),
     ]).then(([gs, bl, combs]) => {
       if (gs.data) setGameState(gs.data);
-      if (bl.data && bl.data.length > 0) setBlindLevels(bl.data);
+      if (bl.data && bl.data.length > 0) setBlindLevels(normalizeBlindLevels(bl.data));
       if (combs.data) setCombinations(combs.data);
     }).catch(() => {});
 
@@ -73,7 +114,7 @@ export function useGameState() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_levels' }, () => {
         if (skipBlindRealtime.current) return;
         supabase.from('blind_levels').select('*').order('id').then(({ data }) => {
-          if (data) setBlindLevels(data);
+          if (data) setBlindLevels(normalizeBlindLevels(data));
         });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'combinations' }, () => {
@@ -169,10 +210,7 @@ export function useGameState() {
   }, [updateGameState]);
 
   const updateBlindLevels = useCallback(async (levels: BlindLevel[]) => {
-    const ordered = levels.map((l, idx) => ({
-      ...l,
-      id: `${String(idx).padStart(5, '0')}_${l.id.replace(/^\d{5}_/, '')}`,
-    }));
+    const ordered = normalizeBlindLevels(levels);
     setBlindLevels(ordered);
     if (!isSupabaseConfigured) {
       saveLocal(BLINDS_KEY, ordered);

@@ -130,13 +130,16 @@ function BlindRow({
       <div className="grid grid-cols-3 gap-2">
         <div>
           <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">SB</div>
-          <input type="number" className="admin-input text-sm px-2" value={level.sb}
+          <input type="number" step={100} className="admin-input text-sm px-2" value={level.sb}
             onChange={e => upd({ sb: Number(e.target.value) })} />
         </div>
         <div>
           <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">BB</div>
-          <input type="number" className="admin-input text-sm px-2" value={level.bb}
-            onChange={e => upd({ bb: Number(e.target.value) })} />
+          <input type="number" step={100} className="admin-input text-sm px-2" value={level.bb}
+            onChange={e => {
+              const bb = Number(e.target.value);
+              upd({ bb, ante: bb });
+            }} />
         </div>
         <div>
           <div className="text-[#555] text-[10px] uppercase tracking-wider mb-1">Мин</div>
@@ -417,22 +420,18 @@ export function Admin() {
   // ── Demo data ──────────────────────────────────────────────────────────
   const loadDemo = () => {
     const demoLevels: import('../types').BlindLevel[] = [
-      { id: 'd1',  level: 1,  sb: 50,   bb: 100,  ante: 0,    duration: 900, isBreak: false },
-      { id: 'd2',  level: 2,  sb: 100,  bb: 200,  ante: 200,  duration: 900, isBreak: false },
-      { id: 'd3',  level: 3,  sb: 150,  bb: 300,  ante: 200,  duration: 900, isBreak: false },
-      { id: 'd4',  level: 4,  sb: 200,  bb: 400,  ante: 300,  duration: 900, isBreak: false },
-      { id: 'd5',  level: 5,  sb: 300,  bb: 600,  ante: 400,  duration: 900, isBreak: false },
-      { id: 'd6',  level: 6,  sb: 400,  bb: 800,  ante: 500,  duration: 900, isBreak: false },
-      { id: 'd7',  level: 7,  sb: 500,  bb: 1000, ante: 500,  duration: 900, isBreak: false },
-      { id: 'd8',  level: 8,  sb: 600,  bb: 1200, ante: 600,  duration: 900, isBreak: false },
-      { id: 'd9',  level: 9,  sb: 800,  bb: 1600, ante: 800,  duration: 900, isBreak: false },
-      { id: 'd10', level: 10, sb: 1000, bb: 2000, ante: 1000, duration: 900, isBreak: false },
-      { id: 'd11', level: 11, sb: 1200, bb: 2400, ante: 1000, duration: 900, isBreak: false },
-      { id: 'd12', level: 12, sb: 1500, bb: 3000, ante: 1500, duration: 900, isBreak: false },
-      { id: 'd13', level: 13, sb: 2000, bb: 4000, ante: 2000, duration: 900, isBreak: false },
-      { id: 'd14', level: 14, sb: 2500, bb: 5000, ante: 2500, duration: 900, isBreak: false },
-      { id: 'd15', level: 15, sb: 3000, bb: 6000, ante: 3000, duration: 900, isBreak: false },
-      { id: 'd16', level: 16, sb: 4000, bb: 8000, ante: 4000, duration: 900, isBreak: false },
+      { id: 'd1',  level: 1,  sb: 100,  bb: 200,  ante: 200,   duration: 900, isBreak: false },
+      { id: 'd2',  level: 2,  sb: 200,  bb: 400,  ante: 400,   duration: 900, isBreak: false },
+      { id: 'd3',  level: 3,  sb: 300,  bb: 600,  ante: 600,   duration: 900, isBreak: false },
+      { id: 'd4',  level: 4,  sb: 400,  bb: 800,  ante: 800,   duration: 900, isBreak: false },
+      { id: 'd5',  level: 5,  sb: 500,  bb: 1000, ante: 1000,  duration: 900, isBreak: false },
+      { id: 'd6',  level: 6,  sb: 700,  bb: 1400, ante: 1400,  duration: 900, isBreak: false },
+      { id: 'd7',  level: 7,  sb: 1000, bb: 2000, ante: 2000,  duration: 900, isBreak: false },
+      { id: 'd8',  level: 8,  sb: 1500, bb: 3000, ante: 3000,  duration: 900, isBreak: false },
+      { id: 'd9',  level: 9,  sb: 2000, bb: 4000, ante: 4000,  duration: 900, isBreak: false },
+      { id: 'd10', level: 10, sb: 3000, bb: 6000, ante: 6000,  duration: 900, isBreak: false },
+      { id: 'd11', level: 11, sb: 4000, bb: 8000, ante: 8000,  duration: 900, isBreak: false },
+      { id: 'd12', level: 12, sb: 5000, bb: 10000, ante: 10000, duration: 900, isBreak: false },
       { id: 'db1', level: 0,  sb: 0,    bb: 0,    ante: 0,    duration: 900, isBreak: true, breakLabel: 'ПЕРЕРЫВ' },
     ];
     updateBlindLevels(demoLevels);
@@ -481,12 +480,14 @@ export function Admin() {
   // ── Blind levels editor ────────────────────────────────────────────────
   const addBlindLevel = () => {
     const last = blindLevels.filter(l => !l.isBreak).slice(-1)[0];
+    const nextSb = Math.max(last?.bb ?? 100, 100);
+    const nextBb = nextSb * 2;
     const newLevel: BlindLevel = {
       id: Date.now().toString(),
       level: (last?.level ?? 0) + 1,
-      sb: (last?.bb ?? 0),
-      bb: (last?.bb ?? 100) * 2,
-      ante: last?.ante ?? 0,
+      sb: nextSb,
+      bb: nextBb,
+      ante: nextBb,
       duration: 1200,
       isBreak: false,
     };
