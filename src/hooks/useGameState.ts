@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, DEFAULT_BLIND_LEVELS, DEFAULT_GAME_STATE } from '../supabase';
-import type { GameState, BlindLevel, Combination } from '../types';
+import type { GameState, BlindLevel, Combination, TournamentRecord } from '../types';
 
 const STATE_KEY = 'poker_game_state';
 const BLINDS_KEY = 'poker_blind_levels';
 const COMBINATIONS_KEY = 'poker_combinations';
+const TOURNAMENTS_KEY = 'poker_tournaments';
 
 // ─── Local storage fallback (when Supabase not configured) ─────────────────
 function loadLocal<T>(key: string, defaultValue: T): T {
@@ -177,6 +178,37 @@ export function useGameState() {
     await supabase.from('blind_levels').insert(ordered);
   }, [isSupabaseConfigured]);
 
+  const saveTournament = useCallback(async (gs: GameState, levelsPlayed: number) => {
+    if (gs.players === 0 && gs.totalStack === 0) return; // ничего не было — не сохраняем
+    const record = {
+      title: gs.tournamentTitle || null,
+      players: gs.players,
+      rebuys: gs.rebuys ?? 0,
+      addon_count: gs.addonCount ?? 0,
+      total_stack: gs.totalStack,
+      levels_played: levelsPlayed,
+    };
+    if (!isSupabaseConfigured) {
+      const existing = loadLocal<TournamentRecord[]>(TOURNAMENTS_KEY, []);
+      const local: TournamentRecord = { ...record, id: Date.now(), finished_at: new Date().toISOString() };
+      saveLocal(TOURNAMENTS_KEY, [local, ...existing]);
+      return;
+    }
+    await supabase.from('tournaments').insert(record);
+  }, [isSupabaseConfigured]);
+
+  const fetchTournaments = useCallback(async (): Promise<TournamentRecord[]> => {
+    if (!isSupabaseConfigured) {
+      return loadLocal<TournamentRecord[]>(TOURNAMENTS_KEY, []);
+    }
+    const { data } = await supabase
+      .from('tournaments')
+      .select('*')
+      .order('finished_at', { ascending: false })
+      .limit(50);
+    return data ?? [];
+  }, [isSupabaseConfigured]);
+
   const updateCombinations = useCallback(async (combs: Combination[]) => {
     setCombinations(combs);
     if (!isSupabaseConfigured) {
@@ -199,5 +231,7 @@ export function useGameState() {
     resetTournament,
     updateBlindLevels,
     updateCombinations,
+    saveTournament,
+    fetchTournaments,
   };
 }

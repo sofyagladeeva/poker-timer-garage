@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useGameState } from '../hooks/useGameState';
-import type { BlindLevel, Combination, Card, Suit, Rank } from '../types';
+import type { BlindLevel, Combination, Card, Suit, Rank, TournamentRecord } from '../types';
 import { SUIT_SYMBOLS } from '../types';
 import { PokerCard } from '../components/PokerCard';
 
@@ -112,7 +112,7 @@ export function Admin() {
   const [authed, setAuthed] = useState(false);
   const [pwInput, setPwInput] = useState('');
   const [pwError, setPwError] = useState(false);
-  const [activeTab, setActiveTab] = useState<'control' | 'blinds' | 'combos' | 'settings'>('control');
+  const [activeTab, setActiveTab] = useState<'control' | 'blinds' | 'combos' | 'archive' | 'settings'>('control');
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
   // ── Drag state for blind levels ────────────────────────────────────────
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -123,8 +123,11 @@ export function Admin() {
   const {
     gameState, blindLevels, combinations,
     updateGameState, startTimer, pauseTimer, nextLevel, prevLevel, resetTournament,
-    updateBlindLevels, updateCombinations,
+    updateBlindLevels, updateCombinations, saveTournament, fetchTournaments,
   } = useGameState();
+
+  const [tournaments, setTournaments] = useState<TournamentRecord[]>([]);
+  const [archiveLoading, setArchiveLoading] = useState(false);
 
   // ── Bot games list ─────────────────────────────────────────────────────
   const [botGames, setBotGames] = useState<{ id: number; title: string; date: string; confirmed: number; max_players: number }[]>([]);
@@ -362,11 +365,22 @@ export function Admin() {
     });
   };
 
+  // ── Load archive when tab opens ────────────────────────────────────────
+  useEffect(() => {
+    if (activeTab !== 'archive') return;
+    setArchiveLoading(true);
+    fetchTournaments().then(data => {
+      setTournaments(data);
+      setArchiveLoading(false);
+    });
+  }, [activeTab, fetchTournaments]);
+
   // ── Tabs ──────────────────────────────────────────────────────────────
   const tabs = [
     { id: 'control', label: '▶ Управление' },
     { id: 'blinds',  label: '💰 Блайнды' },
     { id: 'combos',  label: '🃏 Комбо' },
+    { id: 'archive', label: '📋 Архив' },
     { id: 'settings',label: '⚙️ Настройки' },
   ] as const;
 
@@ -504,7 +518,12 @@ export function Admin() {
                   <div className="text-[#C0392B] font-black text-3xl">{(gameState.totalStack ?? 0).toLocaleString('ru-RU')}</div>
                 </div>
                 <button
-                  onClick={() => { if (confirm('Сбросить и начать новый турнир?')) resetTournament(); }}
+                  onClick={async () => {
+                    if (confirm('Завершить и начать новый турнир? Данные сохранятся в архив.')) {
+                      await saveTournament(gameState, gameState.currentLevelIndex + 1);
+                      resetTournament();
+                    }
+                  }}
                   className="admin-btn-primary py-4 text-base font-bold"
                 >
                   ↺ Новый турнир
@@ -588,7 +607,12 @@ export function Admin() {
                     ↺ Сбросить время
                   </button>
                   <button
-                    onClick={() => { if (confirm('Сбросить турнир?')) resetTournament(); }}
+                    onClick={async () => {
+                      if (confirm('Сбросить турнир? Данные будут сохранены в архив.')) {
+                        await saveTournament(gameState, gameState.currentLevelIndex + 1);
+                        resetTournament();
+                      }
+                    }}
                     className="admin-btn-danger py-4 text-sm"
                   >
                     ✕ Сбросить
@@ -896,6 +920,84 @@ export function Admin() {
                 />
               </div>
             ))}
+          </div>
+        )}
+
+        {/* ─── ARCHIVE TAB ─────────────────────────────────────────────── */}
+        {activeTab === 'archive' && (
+          <div className="flex flex-col gap-3">
+            <div className="text-[#555] text-xs uppercase tracking-widest mb-1">
+              История завершённых турниров
+            </div>
+
+            {archiveLoading && (
+              <div className="text-[#444] text-sm text-center py-8">Загрузка...</div>
+            )}
+
+            {!archiveLoading && tournaments.length === 0 && (
+              <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-8 text-center">
+                <div className="text-[#444] text-4xl mb-3">📋</div>
+                <div className="text-[#555] text-sm">Архив пуст</div>
+                <div className="text-[#333] text-xs mt-1">
+                  После сброса турнира данные появятся здесь
+                </div>
+              </div>
+            )}
+
+            {tournaments.map(t => {
+              const date = new Date(t.finished_at);
+              const dateStr = date.toLocaleDateString('ru-RU', {
+                day: 'numeric', month: 'short', year: 'numeric',
+              });
+              const timeStr = date.toLocaleTimeString('ru-RU', {
+                hour: '2-digit', minute: '2-digit',
+              });
+              const activePlayers = t.players - 0; // players who finished
+              return (
+                <div key={t.id} className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-3">
+                  {/* Header */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-white font-bold text-sm uppercase tracking-wide">
+                        {t.title || 'Без названия'}
+                      </div>
+                      <div className="text-[#444] text-xs mt-0.5">{dateStr} · {timeStr}</div>
+                    </div>
+                    <div className="text-[#C0392B] font-black text-lg whitespace-nowrap">
+                      {(t.total_stack ?? 0).toLocaleString('ru-RU')}
+                      <span className="text-[#555] text-xs font-normal ml-1">фишек</span>
+                    </div>
+                  </div>
+
+                  {/* Stats grid */}
+                  <div className="grid grid-cols-4 gap-2">
+                    <div className="bg-[#0A0A0A] rounded-xl p-2 text-center">
+                      <div className="text-[#555] text-[10px] uppercase mb-0.5">Игроки</div>
+                      <div className="text-white font-black text-lg">{t.players}</div>
+                    </div>
+                    <div className="bg-[#0A0A0A] rounded-xl p-2 text-center">
+                      <div className="text-[#555] text-[10px] uppercase mb-0.5">Ребаи</div>
+                      <div className="text-white font-black text-lg">{t.rebuys}</div>
+                    </div>
+                    <div className="bg-[#0A0A0A] rounded-xl p-2 text-center">
+                      <div className="text-[#555] text-[10px] uppercase mb-0.5">Аддоны</div>
+                      <div className="text-white font-black text-lg">{t.addon_count}</div>
+                    </div>
+                    <div className="bg-[#0A0A0A] rounded-xl p-2 text-center">
+                      <div className="text-[#555] text-[10px] uppercase mb-0.5">Уровней</div>
+                      <div className="text-white font-black text-lg">{t.levels_played}</div>
+                    </div>
+                  </div>
+
+                  {/* Buy-ins */}
+                  {activePlayers > 0 && (
+                    <div className="text-[#444] text-xs">
+                      Всего buy-in: {t.players + t.rebuys + t.addon_count}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 

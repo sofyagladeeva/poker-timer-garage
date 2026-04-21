@@ -64,6 +64,17 @@ export interface Tournament {
   status: 'ongoing' | 'completed';
 }
 
+export interface TournamentRecord {
+  id: number;
+  finished_at: string;
+  title: string | null;
+  players: number;
+  rebuys: number;
+  addon_count: number;
+  total_stack: number;
+  levels_played: number;
+}
+
 // Rank points based on actual Excel formula:
 // Total pool = n*(n+1)/2 where n = number of players
 // Points per place = pool * percentage (only top 9 places get points)
