@@ -272,6 +272,7 @@ export function Admin() {
     updateGameState, startTimer, pauseTimer, nextLevel, prevLevel, resetTournament,
     updateBlindLevels, updateCombinations, saveTournament, fetchTournaments,
   } = useGameState();
+  const gameStateSnapshotRef = useRef(gameState);
 
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([]);
   const [archiveLoading, setArchiveLoading] = useState(false);
@@ -288,6 +289,10 @@ export function Admin() {
   useEffect(() => {
     blindTemplatesRef.current = blindTemplates;
   }, [blindTemplates]);
+
+  useEffect(() => {
+    gameStateSnapshotRef.current = gameState;
+  }, [gameState]);
 
   useEffect(() => {
     backgroundLibraryRef.current = backgroundLibrary;
@@ -683,7 +688,7 @@ export function Admin() {
   const updateStackState = (
     patch: Partial<Pick<GameState, 'players' | 'rebuys' | 'addonCount' | 'bonusCount' | 'startStack' | 'addonStack' | 'bonusStack'>>
   ) => {
-    const nextState = { ...gameState, ...patch };
+    const nextState = { ...gameStateSnapshotRef.current, ...patch };
     updateGameState({ ...patch, totalStack: calcTotalStack(nextState) });
   };
 
