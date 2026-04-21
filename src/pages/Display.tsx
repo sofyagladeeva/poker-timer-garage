@@ -149,31 +149,39 @@ export function Display() {
     : '0 0 40px rgba(255,255,255,0.15)';
 
   const bgStyle = gameState.backgroundUrl
-    ? { backgroundImage: `url(${gameState.backgroundUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    ? {
+        backgroundImage: `url("${gameState.backgroundUrl}")`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+      }
     : {};
 
   /* ══════════════ RATING MODE ══════════════ */
   if (gameState.showRating) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center gap-8 px-12"
-           style={{ background: '#0D0D0D' }}>
-        <div className="text-[#444] uppercase tracking-[0.4em] text-sm">
-          Рейтинг · {new Date().toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
-        </div>
-        <div className="flex items-end justify-center gap-6 w-full max-w-4xl">
-          {top3[1] && <RatingCard player={top3[1]} medal="🥈" big={false} />}
-          {top3[0] && <RatingCard player={top3[0]} medal="🥇" big />}
-          {top3[2] && <RatingCard player={top3[2]} medal="🥉" big={false} />}
-        </div>
-        <div className="flex gap-4 flex-wrap justify-center">
-          {ratingPlayers.slice(3, 7).map((p, i) => (
-            <div key={p.telegram_id}
-                 className="bg-[#141414] border border-[#222] rounded-xl px-6 py-3 flex items-center gap-4 min-w-[220px]">
-              <span className="text-[#444] font-bold w-5">{i + 4}</span>
-              <span className="text-white font-bold flex-1 truncate">{p.name}</span>
-              <span className="text-[#E31E24] font-black text-lg">{p.points.toFixed(1)}</span>
-            </div>
-          ))}
+      <div className="h-screen relative overflow-hidden" style={{ background: '#0D0D0D', ...bgStyle }}>
+        {gameState.backgroundUrl && <div className="absolute inset-0 bg-black/75 z-0" />}
+
+        <div className="relative z-10 h-full flex flex-col items-center justify-center gap-8 px-12">
+          <div className="text-[#444] uppercase tracking-[0.4em] text-sm">
+            Рейтинг · {new Date().toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
+          </div>
+          <div className="flex items-end justify-center gap-6 w-full max-w-4xl">
+            {top3[1] && <RatingCard player={top3[1]} medal="🥈" big={false} />}
+            {top3[0] && <RatingCard player={top3[0]} medal="🥇" big />}
+            {top3[2] && <RatingCard player={top3[2]} medal="🥉" big={false} />}
+          </div>
+          <div className="flex gap-4 flex-wrap justify-center">
+            {ratingPlayers.slice(3, 7).map((p, i) => (
+              <div key={p.telegram_id}
+                   className="bg-[#141414] border border-[#222] rounded-xl px-6 py-3 flex items-center gap-4 min-w-[220px]">
+                <span className="text-[#444] font-bold w-5">{i + 4}</span>
+                <span className="text-white font-bold flex-1 truncate">{p.name}</span>
+                <span className="text-[#E31E24] font-black text-lg">{p.points.toFixed(1)}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );

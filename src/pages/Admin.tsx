@@ -1,9 +1,21 @@
 import { useState, useEffect, useRef, Component } from 'react';
-import type { ReactNode } from 'react';
+import type { ChangeEvent, ReactNode } from 'react';
 import { useGameState } from '../hooks/useGameState';
 import type { BlindLevel, Combination, Card, Suit, Rank, TournamentRecord } from '../types';
 import { SUIT_SYMBOLS } from '../types';
 import { PokerCard } from '../components/PokerCard';
+import {
+  createBackgroundFromFile,
+  deleteSharedBackgrounds,
+  fetchSharedBackgroundLibrary,
+  isSharedBackgroundLibraryEnabled,
+  loadBackgroundLibrary,
+  mergeBackgroundLibraries,
+  PRESET_BACKGROUNDS,
+  saveBackgroundLibrary,
+  upsertSharedBackgrounds,
+} from '../backgroundLibrary';
+import type { StoredBackground } from '../backgroundLibrary';
 
 // ─── Error Boundary ────────────────────────────────────────────────────────
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
@@ -36,6 +48,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: string |
 const BOT_API = import.meta.env.VITE_BOT_API_URL || 'https://web-production-6035.up.railway.app';
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'poker2024';
+const MAX_BACKGROUND_ITEMS = 24;
 
 // ─── Card picker ──────────────────────────────────────────────────────────
 const RANKS: Rank[] = ['A','K','Q','J','T','9','8','7','6','5','4','3','2'];
@@ -138,16 +151,22 @@ function BlindRow({
 
 // ─── Main Admin page ───────────────────────────────────────────────────────
 export function Admin() {
+  const sharedBackgroundLibraryEnabled = isSharedBackgroundLibraryEnabled();
   const [authed, setAuthed] = useState(false);
   const [pwInput, setPwInput] = useState('');
   const [pwError, setPwError] = useState(false);
   const [activeTab, setActiveTab] = useState<'control' | 'blinds' | 'combos' | 'archive' | 'settings'>('control');
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
+  const [backgroundLibrary, setBackgroundLibrary] = useState<StoredBackground[]>(() => loadBackgroundLibrary());
+  const [backgroundUploadBusy, setBackgroundUploadBusy] = useState(false);
+  const [backgroundUploadError, setBackgroundUploadError] = useState<string | null>(null);
+  const [backgroundUploadNote, setBackgroundUploadNote] = useState<string | null>(null);
   // ── Drag state for blind levels ────────────────────────────────────────
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropLine, setDropLine] = useState<number | null>(null);
   const rowEls = useRef<(HTMLDivElement | null)[]>([]);
   const dragging = useRef(false);
+  const backgroundLibraryRef = useRef(backgroundLibrary);
 
   const {
     gameState, blindLevels, combinations,
@@ -166,6 +185,10 @@ export function Admin() {
       .then(setBotGames)
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    backgroundLibraryRef.current = backgroundLibrary;
+  }, [backgroundLibrary]);
 
   // ── Пробел = play/pause ────────────────────────────────────────────────
   useEffect(() => {
@@ -205,6 +228,162 @@ export function Admin() {
       setArchiveLoading(false);
     });
   }, [activeTab, fetchTournaments]);
+
+  const syncBackgroundLibraryState = (next: StoredBackground[]) => {
+    const result = saveBackgroundLibrary(next);
+    if (!result.ok) {
+      return result;
+    }
+
+    setBackgroundLibrary(next);
+    return { ok: true as const };
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'settings' || !sharedBackgroundLibraryEnabled) return;
+
+    let cancelled = false;
+
+    const loadSharedLibrary = async () => {
+      setBackgroundUploadError(null);
+
+      try {
+        const remote = await fetchSharedBackgroundLibrary();
+        const local = loadBackgroundLibrary();
+        const missingLocal = local.filter(item =>
+          !remote.some(remoteItem => remoteItem.url === item.url)
+        );
+        const merged = mergeBackgroundLibraries(remote, local).slice(0, MAX_BACKGROUND_ITEMS);
+        const trimmedCount = remote.length + missingLocal.length - merged.length;
+        const acceptedMissingLocal = missingLocal.filter(item =>
+          merged.some(mergedItem => mergedItem.id === item.id)
+        );
+
+        if (acceptedMissingLocal.length > 0) {
+          const uploadResult = await upsertSharedBackgrounds(acceptedMissingLocal);
+          if (!uploadResult.ok) throw new Error(uploadResult.error);
+        }
+
+        if (!cancelled) {
+          const cacheResult = syncBackgroundLibraryState(merged);
+          if (!cacheResult.ok) {
+            setBackgroundUploadError(cacheResult.error);
+          } else if (acceptedMissingLocal.length > 0) {
+            const noteParts = [`Синхронизировано локальных фонов: ${acceptedMissingLocal.length}.`];
+            if (trimmedCount > 0) {
+              noteParts.push(`Лишние ${trimmedCount} шт. не вошли в общий лимит ${MAX_BACKGROUND_ITEMS}.`);
+            }
+            setBackgroundUploadNote(noteParts.join(' '));
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setBackgroundUploadError(
+            err instanceof Error ? err.message : 'Не удалось загрузить общую библиотеку фонов'
+          );
+        }
+      }
+    };
+
+    loadSharedLibrary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, sharedBackgroundLibraryEnabled]);
+
+  const persistBackgroundLibrary = async (next: StoredBackground[], removedIds: string[] = []) => {
+    if (!sharedBackgroundLibraryEnabled) {
+      const cacheResult = syncBackgroundLibraryState(next);
+      if (!cacheResult.ok) {
+        setBackgroundUploadError(cacheResult.error);
+        return false;
+      }
+      return true;
+    }
+
+    const current = backgroundLibraryRef.current;
+    const toAdd = next.filter(item => !current.some(existing => existing.id === item.id));
+
+    if (toAdd.length > 0) {
+      const addResult = await upsertSharedBackgrounds(toAdd);
+      if (!addResult.ok) {
+        setBackgroundUploadError(addResult.error);
+        return false;
+      }
+    }
+
+    if (removedIds.length > 0) {
+      const deleteResult = await deleteSharedBackgrounds(removedIds);
+      if (!deleteResult.ok) {
+        setBackgroundUploadError(deleteResult.error);
+        return false;
+      }
+    }
+
+    const cacheResult = syncBackgroundLibraryState(next);
+    if (!cacheResult.ok) {
+      setBackgroundUploadError(cacheResult.error);
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleBackgroundUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+
+    setBackgroundUploadBusy(true);
+    setBackgroundUploadError(null);
+    setBackgroundUploadNote(null);
+
+    try {
+      const uploaded = await Promise.all(files.map(createBackgroundFromFile));
+      const current = backgroundLibraryRef.current;
+      const dedupedCurrent = current.filter(existing =>
+        !uploaded.some(item => item.url === existing.url)
+      );
+      const merged = [...uploaded, ...dedupedCurrent].slice(0, MAX_BACKGROUND_ITEMS);
+      const removedFromLibrary = current.filter(existing =>
+        !merged.some(item => item.id === existing.id)
+      );
+      const trimmedCount = uploaded.length + dedupedCurrent.length - merged.length;
+
+      if (await persistBackgroundLibrary(merged, removedFromLibrary.map(item => item.id))) {
+        const parts = [`Загружено фонов: ${uploaded.length}.`];
+        if (trimmedCount > 0) {
+          parts.push(`Лишние ${trimmedCount} шт. не сохранены, лимит: ${MAX_BACKGROUND_ITEMS}.`);
+        }
+        if (sharedBackgroundLibraryEnabled) {
+          parts.push('Библиотека синхронизирована для всех устройств.');
+        }
+        setBackgroundUploadNote(parts.join(' '));
+      }
+    } catch (err) {
+      setBackgroundUploadError(err instanceof Error ? err.message : 'Не удалось загрузить изображения');
+    } finally {
+      setBackgroundUploadBusy(false);
+      e.target.value = '';
+    }
+  };
+
+  const removeBackground = async (backgroundId: string) => {
+    setBackgroundUploadError(null);
+    setBackgroundUploadNote(null);
+
+    const current = backgroundLibraryRef.current;
+    const toRemove = current.find(item => item.id === backgroundId);
+    const next = current.filter(item => item.id !== backgroundId);
+
+    if (!(await persistBackgroundLibrary(next, [backgroundId]))) return;
+
+    if (toRemove && gameState.backgroundUrl === toRemove.url) {
+      updateGameState({ backgroundUrl: null });
+    }
+  };
+
+  const allBackgrounds = [...PRESET_BACKGROUNDS, ...backgroundLibrary];
 
   if (!authed) {
     return (
@@ -1048,23 +1227,100 @@ export function Admin() {
 
             {/* Background */}
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
-              <div className="text-[#888] text-xs uppercase tracking-widest mb-3">Фон экрана</div>
-              <div className="flex gap-2 mb-3">
-                <button
-                  onClick={() => updateGameState({ backgroundUrl: null })}
-                  className={`admin-btn px-4 py-2 text-sm ${!gameState.backgroundUrl ? 'bg-[#C0392B] text-white' : 'bg-[#2D2D2D] text-[#888]'}`}
-                >
-                  По умолчанию
-                </button>
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <div className="text-[#888] text-xs uppercase tracking-widest">Фон экрана</div>
+                  <div className="text-[#555] text-xs mt-1">
+                    {sharedBackgroundLibraryEnabled
+                      ? 'Готовая библиотека доступна сразу. Загруженные изображения сохраняются в общей библиотеке и видны с любого устройства.'
+                      : 'Готовая библиотека доступна сразу. Без Supabase свои изображения сохраняются только в браузере админа.'}
+                  </div>
+                </div>
+                <label className={`admin-btn-primary px-4 py-2 text-sm ${backgroundUploadBusy ? 'opacity-60 pointer-events-none' : ''}`}>
+                  {backgroundUploadBusy ? 'Загрузка...' : '+ Загрузить фон'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleBackgroundUpload}
+                  />
+                </label>
               </div>
-              <input
-                className="admin-input"
-                placeholder="URL изображения"
-                value={gameState.backgroundUrl || ''}
-                onChange={e => updateGameState({ backgroundUrl: e.target.value || null })}
-              />
-              <div className="text-[#555] text-xs mt-1">
-                Вставьте ссылку на изображение (jpg, png, webp)
+
+              {backgroundUploadError && (
+                <div className="mb-3 rounded-xl border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-300">
+                  {backgroundUploadError}
+                </div>
+              )}
+
+              {backgroundUploadNote && (
+                <div className="mb-3 rounded-xl border border-[#3A3A3A] bg-[#0A0A0A] px-3 py-2 text-sm text-[#AAA]">
+                  {backgroundUploadNote}
+                </div>
+              )}
+
+              <div className="mb-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-wide text-[#777]">
+                <span className="rounded-full border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-1">
+                  Готовые: {PRESET_BACKGROUNDS.length}
+                </span>
+                <span className="rounded-full border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-1">
+                  Свои: {backgroundLibrary.length}
+                </span>
+                <span className="rounded-full border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-1">
+                  {sharedBackgroundLibraryEnabled ? 'Общая библиотека' : 'Локально на этом устройстве'}
+                </span>
+              </div>
+
+              <div className="mb-3 text-[#666] text-xs uppercase tracking-widest">Библиотека фонов</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+                <BackgroundTile
+                  title="По умолчанию"
+                  subtitle="Темный фон без картинки"
+                  selected={!gameState.backgroundUrl}
+                  onClick={() => updateGameState({ backgroundUrl: null })}
+                />
+
+                {allBackgrounds.map(background => (
+                  <BackgroundTile
+                    key={background.id}
+                    title={background.name}
+                    subtitle={
+                      background.id.startsWith('preset_')
+                        ? 'Готовый фон'
+                        : `${background.width}×${background.height}`
+                    }
+                    previewUrl={background.url}
+                    selected={gameState.backgroundUrl === background.url}
+                    onClick={() => updateGameState({ backgroundUrl: background.url })}
+                    onDelete={
+                      background.id.startsWith('preset_')
+                        ? undefined
+                        : () => removeBackground(background.id)
+                    }
+                  />
+                ))}
+              </div>
+
+              {backgroundLibrary.length === 0 && (
+                <div className="rounded-xl border border-dashed border-[#2D2D2D] bg-[#0A0A0A] px-4 py-5 text-sm text-[#666]">
+                  {sharedBackgroundLibraryEnabled
+                    ? 'Пока нет своих загруженных фонов в общей библиотеке. Готовые варианты уже доступны в сетке выше, а свои можно добавить кнопкой справа.'
+                    : 'Пока нет своих загруженных фонов. Готовые варианты уже доступны в сетке выше, а свои можно добавить кнопкой справа.'}
+                </div>
+              )}
+
+              <div className="mt-4 border-t border-[#1F1F1F] pt-4">
+                <div className="text-[#666] text-xs uppercase tracking-widest mb-2">Ручной URL</div>
+                <input
+                  className="admin-input"
+                  placeholder="https://.../background.jpg"
+                  value={gameState.backgroundUrl || ''}
+                  onChange={e => updateGameState({ backgroundUrl: e.target.value || null })}
+                />
+                <div className="text-[#555] text-xs mt-1">
+                  Если нужен внешний файл, ссылку можно вставить вручную. Загруженные выше фоны выбирать удобнее через сетку.
+                </div>
               </div>
             </div>
           </div>
@@ -1073,6 +1329,66 @@ export function Admin() {
       </div>
     </div>
     </ErrorBoundary>
+  );
+}
+
+function BackgroundTile({
+  title,
+  subtitle,
+  previewUrl,
+  selected,
+  onClick,
+  onDelete,
+}: {
+  title: string;
+  subtitle: string;
+  previewUrl?: string;
+  selected: boolean;
+  onClick: () => void;
+  onDelete?: () => void;
+}) {
+  return (
+    <div
+      className={`relative overflow-hidden rounded-2xl border text-left transition-all ${
+        selected
+          ? 'border-[#C0392B] ring-1 ring-[#C0392B] bg-[#140909]'
+          : 'border-[#2D2D2D] bg-[#0A0A0A] hover:border-[#4A4A4A]'
+      }`}
+    >
+      <button type="button" onClick={onClick} className="block w-full text-left">
+        {previewUrl ? (
+          <div className="relative h-40 w-full bg-black">
+            <img src={previewUrl} alt={title} className="h-full w-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
+          </div>
+        ) : (
+          <div className="h-40 w-full bg-[radial-gradient(circle_at_top,#301010_0%,#0A0A0A_72%)]" />
+        )}
+
+        <div className="absolute left-0 right-0 top-0 flex items-start justify-between p-3">
+          {selected && (
+            <span className="rounded-full bg-[#C0392B] px-2.5 py-1 text-[11px] font-black uppercase tracking-wide text-white">
+              Активен
+            </span>
+          )}
+        </div>
+
+        <div className="relative z-10 px-3 pb-3 pt-2">
+          <div className="truncate text-sm font-bold text-white">{title}</div>
+          <div className="mt-1 text-xs text-[#777]">{subtitle}</div>
+        </div>
+      </button>
+
+      {onDelete && (
+        <button
+          type="button"
+          onClick={onDelete}
+          className="absolute right-2 top-2 z-20 rounded-full bg-black/75 px-2 py-1 text-xs font-bold text-red-300 transition-colors hover:bg-red-900/70"
+        >
+          Удалить
+        </button>
+      )}
+    </div>
   );
 }
 
