@@ -37,8 +37,15 @@ export function useGameState() {
     import.meta.env.VITE_SUPABASE_URL &&
     import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+  // ─── Refs to avoid stale closures in stable callbacks ───────────────────
+  // Updated synchronously on every render so callbacks always see fresh state
+  const gameStateRef = useRef(gameState);
+  gameStateRef.current = gameState;
+
+  const blindLevelsRef = useRef(blindLevels);
+  blindLevelsRef.current = blindLevels;
+
   // Skip realtime blind_levels updates for a short window after we write
-  // (prevents overwriting local optimistic state with stale DB order)
   const skipBlindRealtime = useRef(false);
   const skipBlindTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -55,7 +62,7 @@ export function useGameState() {
       if (gs.data) setGameState(gs.data);
       if (bl.data && bl.data.length > 0) setBlindLevels(bl.data);
       if (combs.data) setCombinations(combs.data);
-    });
+    }).catch(() => {});
 
     // Real-time
     const channel = supabase
@@ -96,16 +103,16 @@ export function useGameState() {
     return () => clearInterval(interval);
   }, [gameState.status, isSupabaseConfigured]);
 
-  // ─── Admin actions ──────────────────────────────────────────────────────
+  // ─── Admin actions (stable — don't depend on gameState/blindLevels) ─────
   const updateGameState = useCallback(async (patch: Partial<GameState>) => {
-    const updated = { ...gameState, ...patch };
+    const updated = { ...gameStateRef.current, ...patch };
     setGameState(updated);
     if (!isSupabaseConfigured) {
       saveLocal(STATE_KEY, updated);
       return;
     }
     await supabase.from('game_state').upsert({ id: 1, ...updated });
-  }, [gameState, isSupabaseConfigured]);
+  }, [isSupabaseConfigured]);
 
   const startTimer = useCallback(() => {
     updateGameState({ status: 'running', lastTickAt: Date.now() });
@@ -116,51 +123,52 @@ export function useGameState() {
   }, [updateGameState]);
 
   const nextLevel = useCallback(() => {
-    const nextIndex = gameState.currentLevelIndex + 1;
-    if (nextIndex >= blindLevels.length) {
+    const gs = gameStateRef.current;
+    const bl = blindLevelsRef.current;
+    const nextIndex = gs.currentLevelIndex + 1;
+    if (nextIndex >= bl.length) {
       updateGameState({ status: 'ended' });
       return;
     }
-    const nextLvl = blindLevels[nextIndex];
+    const nextLvl = bl[nextIndex];
     updateGameState({
       currentLevelIndex: nextIndex,
       timeLeft: nextLvl.duration,
       status: nextLvl.isBreak ? 'break' : 'running',
     });
-  }, [gameState.currentLevelIndex, blindLevels, updateGameState]);
+  }, [updateGameState]);
 
-  // Держим актуальную ссылку на nextLevel, чтобы не было stale closure
-  const nextLevelRef = useRef(nextLevel);
-  useEffect(() => { nextLevelRef.current = nextLevel; }, [nextLevel]);
-
-  // ─── Авто-переход: таймер дошёл до 0 → 2 сек паузы → следующий уровень ──
+  // ─── Авто-переход: таймер дошёл до 0 → следующий уровень ──────────────
   useEffect(() => {
     if (gameState.timeLeft !== 0) return;
     if (gameState.status !== 'running' && gameState.status !== 'break') return;
 
-    nextLevelRef.current();
-  }, [gameState.timeLeft, gameState.status]);
+    nextLevel();
+  }, [gameState.timeLeft, gameState.status, nextLevel]);
 
   const prevLevel = useCallback(() => {
-    const prevIndex = Math.max(0, gameState.currentLevelIndex - 1);
-    const level = blindLevels[prevIndex];
+    const gs = gameStateRef.current;
+    const bl = blindLevelsRef.current;
+    const prevIndex = Math.max(0, gs.currentLevelIndex - 1);
+    const level = bl[prevIndex];
+    if (!level) return;
     updateGameState({
       currentLevelIndex: prevIndex,
       timeLeft: level.duration,
       status: 'paused',
     });
-  }, [gameState.currentLevelIndex, blindLevels, updateGameState]);
+  }, [updateGameState]);
 
   const resetTournament = useCallback(() => {
-    const first = blindLevels[0];
+    const bl = blindLevelsRef.current;
+    const first = bl[0];
     updateGameState({
       ...DEFAULT_GAME_STATE,
       timeLeft: first?.duration ?? 1200,
     });
-  }, [blindLevels, updateGameState]);
+  }, [updateGameState]);
 
   const updateBlindLevels = useCallback(async (levels: BlindLevel[]) => {
-    // Assign sortable IDs so ORDER BY id always returns rows in our desired order
     const ordered = levels.map((l, idx) => ({
       ...l,
       id: `${String(idx).padStart(5, '0')}_${l.id.replace(/^\d{5}_/, '')}`,
@@ -170,7 +178,6 @@ export function useGameState() {
       saveLocal(BLINDS_KEY, ordered);
       return;
     }
-    // Suppress realtime echo for 4s so our optimistic update isn't overwritten
     skipBlindRealtime.current = true;
     if (skipBlindTimer.current) clearTimeout(skipBlindTimer.current);
     skipBlindTimer.current = setTimeout(() => { skipBlindRealtime.current = false; }, 4000);
@@ -179,7 +186,7 @@ export function useGameState() {
   }, [isSupabaseConfigured]);
 
   const saveTournament = useCallback(async (gs: GameState, levelsPlayed: number) => {
-    if (gs.players === 0 && gs.totalStack === 0) return; // ничего не было — не сохраняем
+    if (gs.players === 0 && gs.totalStack === 0) return;
     const record = {
       title: gs.tournamentTitle || null,
       players: gs.players,
