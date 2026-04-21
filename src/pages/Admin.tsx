@@ -1,8 +1,37 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Component } from 'react';
+import type { ReactNode } from 'react';
 import { useGameState } from '../hooks/useGameState';
 import type { BlindLevel, Combination, Card, Suit, Rank, TournamentRecord } from '../types';
 import { SUIT_SYMBOLS } from '../types';
 import { PokerCard } from '../components/PokerCard';
+
+// ─── Error Boundary ────────────────────────────────────────────────────────
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(err: unknown) {
+    return { error: err instanceof Error ? err.message + '\n' + err.stack : String(err) };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center px-4">
+          <div className="bg-red-950 border border-red-700 rounded-2xl p-6 w-full max-w-lg">
+            <div className="text-red-400 font-bold text-lg mb-3">Ошибка рендера</div>
+            <pre className="text-red-300 text-xs whitespace-pre-wrap break-all">{this.state.error}</pre>
+            <button
+              onClick={() => this.setState({ error: null })}
+              className="mt-4 admin-btn-primary px-4 py-2 text-sm"
+            >Попробовать снова</button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const BOT_API = import.meta.env.VITE_BOT_API_URL || 'https://web-production-6035.up.railway.app';
 
@@ -385,6 +414,7 @@ export function Admin() {
   ] as const;
 
   return (
+    <ErrorBoundary>
     <div className="min-h-screen bg-[#0A0A0A] text-white">
 
       {/* Header */}
@@ -1042,6 +1072,7 @@ export function Admin() {
 
       </div>
     </div>
+    </ErrorBoundary>
   );
 }
 
