@@ -188,22 +188,13 @@ export function Display() {
       <div className="relative z-10 flex flex-col h-full">
 
         {/* ── Header ─────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-8 py-2 border-b border-[#181818] flex-shrink-0">
-          <div className="flex items-center gap-4">
-            <span className="text-white font-black text-lg tracking-widest uppercase">
-              GARAGE <span className="text-[#E31E24]">GAME</span> CLUB
+        {gameState.tournamentTitle && (
+          <div className="flex items-center justify-center px-8 py-2 border-b border-[#181818] flex-shrink-0">
+            <span className="text-[#E31E24] font-black text-lg uppercase tracking-widest">
+              {gameState.tournamentTitle}
             </span>
-            {gameState.tournamentTitle && (
-              <>
-                <span className="text-[#2A2A2A] text-xl">·</span>
-                <span className="text-[#E31E24] font-black text-lg uppercase tracking-wide">
-                  {gameState.tournamentTitle}
-                </span>
-              </>
-            )}
           </div>
-          <div />
-        </div>
+        )}
 
         {/* ── 3 columns ──────────────────────────────────────────────── */}
         <div className="flex flex-1 min-h-0">
@@ -263,6 +254,14 @@ export function Display() {
 
           {/* ═══ CENTER: timer + blinds ═══ */}
           <div className="flex flex-col items-center justify-center flex-1 gap-6 px-4 overflow-hidden">
+
+            {/* Логотип */}
+            <img
+              src={`${import.meta.env.BASE_URL}logo.png`}
+              alt="Garage Game Club"
+              style={{ height: 'clamp(70px, 10vh, 130px)', width: 'auto' }}
+              className="opacity-90 select-none pointer-events-none"
+            />
 
             {/* Номер уровня — над таймером */}
             {!isBreak && currentLevel && !currentLevel.isBreak && (
