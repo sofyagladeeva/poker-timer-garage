@@ -196,6 +196,16 @@ export function Admin() {
     if (sessionStorage.getItem('admin_authed') === '1') setAuthed(true);
   }, []);
 
+  // ── Load archive when tab opens — MUST be before any early return ──────
+  useEffect(() => {
+    if (activeTab !== 'archive') return;
+    setArchiveLoading(true);
+    fetchTournaments().then(data => {
+      setTournaments(data);
+      setArchiveLoading(false);
+    });
+  }, [activeTab, fetchTournaments]);
+
   if (!authed) {
     return (
       <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center px-4">
@@ -393,16 +403,6 @@ export function Admin() {
       cards: combo.cards.filter((_, i) => i !== cardIdx),
     });
   };
-
-  // ── Load archive when tab opens ────────────────────────────────────────
-  useEffect(() => {
-    if (activeTab !== 'archive') return;
-    setArchiveLoading(true);
-    fetchTournaments().then(data => {
-      setTournaments(data);
-      setArchiveLoading(false);
-    });
-  }, [activeTab, fetchTournaments]);
 
   // ── Tabs ──────────────────────────────────────────────────────────────
   const tabs = [
