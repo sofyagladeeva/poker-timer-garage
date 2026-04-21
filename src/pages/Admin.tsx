@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Component } from 'react';
+import React, { useState, useEffect, useRef, Component } from 'react';
 import type { ChangeEvent, ReactNode } from 'react';
 import { useGameState } from '../hooks/useGameState';
 import { createGarageBlindTemplate, getNextGarageBlindPair } from '../blindStructure';
@@ -1777,7 +1777,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // ─── Counter block ────────────────────────────────────────────────────────
-function CounterBlock({
+const CounterBlock = React.memo(function CounterBlock({
   label,
   sublabel,
   value,
@@ -1813,4 +1813,4 @@ function CounterBlock({
       </div>
     </div>
   );
-}
+})

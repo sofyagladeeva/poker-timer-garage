@@ -91,6 +91,14 @@ export function useGameState() {
   const skipBlindRealtime = useRef(false);
   const skipBlindTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Skip realtime game_state updates for a short window after we write
+  const skipGameStateRealtime = useRef(false);
+  const skipGameStateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounce Supabase upsert for rapid counter updates
+  const supabaseUpsertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingUpsertState = useRef<GameState | null>(null);
+
   // ─── Supabase real-time subscriptions ───────────────────────────────────
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -134,6 +142,7 @@ export function useGameState() {
     const channel = supabase
       .channel('poker-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, (payload) => {
+        if (skipGameStateRealtime.current) return;
         if (payload.new) {
           const normalizedState = normalizeGameState(payload.new, gameStateRef.current);
           setGameState(normalizedState);
@@ -177,18 +186,26 @@ export function useGameState() {
   }, [gameState.status, isSupabaseConfigured]);
 
   // ─── Admin actions (stable — don't depend on gameState/blindLevels) ─────
-  const updateGameState = useCallback(async (patch: Partial<GameState>) => {
+  const updateGameState = useCallback((patch: Partial<GameState>) => {
     const updated = normalizeGameState({ ...gameStateRef.current, ...patch }, gameStateRef.current);
     setGameState(updated);
     saveLocal(STATE_KEY, updated);
-    if (!isSupabaseConfigured) {
-      return;
-    }
+    if (!isSupabaseConfigured) return;
 
-    let { error } = await supabase.from('game_state').upsert({ id: 1, ...updated });
-    if (error && hasMissingBonusColumns(error)) {
-      ({ error } = await supabase.from('game_state').upsert({ id: 1, ...toLegacyGameState(updated) }));
-    }
+    // Debounce Supabase writes to avoid a DB call on every counter click
+    pendingUpsertState.current = updated;
+    if (supabaseUpsertTimer.current) clearTimeout(supabaseUpsertTimer.current);
+    supabaseUpsertTimer.current = setTimeout(async () => {
+      const stateToSave = pendingUpsertState.current;
+      if (!stateToSave) return;
+      skipGameStateRealtime.current = true;
+      if (skipGameStateTimer.current) clearTimeout(skipGameStateTimer.current);
+      skipGameStateTimer.current = setTimeout(() => { skipGameStateRealtime.current = false; }, 4000);
+      let { error } = await supabase.from('game_state').upsert({ id: 1, ...stateToSave });
+      if (error && hasMissingBonusColumns(error)) {
+        await supabase.from('game_state').upsert({ id: 1, ...toLegacyGameState(stateToSave) });
+      }
+    }, 300);
   }, [isSupabaseConfigured]);
 
   const startTimer = useCallback(() => {
