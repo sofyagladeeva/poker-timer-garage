@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, Component } from 'react';
 import type { ChangeEvent, ReactNode } from 'react';
 import { useGameState } from '../hooks/useGameState';
 import { createGarageBlindTemplate, getNextGarageBlindPair } from '../blindStructure';
-import type { BlindLevel, BlindTemplate, Combination, Card, Suit, Rank, TournamentRecord } from '../types';
+import { calcTotalStack } from '../gameStateMath';
+import type { BlindLevel, BlindTemplate, Combination, Card, Suit, Rank, TournamentRecord, GameState } from '../types';
 import { SUIT_SYMBOLS } from '../types';
 import { PokerCard } from '../components/PokerCard';
 import {
@@ -679,6 +680,13 @@ export function Admin() {
   const regularBlindLevels = blindLevels.filter(level => !level.isBreak);
   const anteStartLevel = regularBlindLevels.find(level => level.ante > 0)?.level ?? 0;
 
+  const updateStackState = (
+    patch: Partial<Pick<GameState, 'players' | 'rebuys' | 'addonCount' | 'bonusCount' | 'startStack' | 'addonStack' | 'bonusStack'>>
+  ) => {
+    const nextState = { ...gameState, ...patch };
+    updateGameState({ ...patch, totalStack: calcTotalStack(nextState) });
+  };
+
   const applyAnteStartLevel = (startLevel: number) => {
     updateBlindLevels(
       blindLevels.map(level => {
@@ -706,8 +714,10 @@ export function Admin() {
       outs: 2,
       rebuys: 5,
       addonCount: 3,
+      bonusCount: 0,
       startStack: 12000,
       addonStack: 20000,
+      bonusStack: 0,
       totalStack: (18 + 5) * 12000 + 3 * 20000,
       tournamentTitle: 'CRAZY FRIDAY',
       tournamentBotId: null,
@@ -971,7 +981,7 @@ export function Admin() {
               /* Экран завершения */
               <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-5 text-center flex flex-col gap-4">
                 <div className="text-white font-black text-xl uppercase tracking-widest">Турнир завершён</div>
-                <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                   <div className="bg-[#0A0A0A] rounded-xl p-3">
                     <div className="text-[#555] text-xs uppercase mb-1">Игроков</div>
                     <div className="text-white font-black text-2xl">{gameState.players}</div>
@@ -983,6 +993,10 @@ export function Admin() {
                   <div className="bg-[#0A0A0A] rounded-xl p-3">
                     <div className="text-[#555] text-xs uppercase mb-1">Аддонов</div>
                     <div className="text-white font-black text-2xl">{gameState.addonCount ?? 0}</div>
+                  </div>
+                  <div className="bg-[#0A0A0A] rounded-xl p-3">
+                    <div className="text-[#555] text-xs uppercase mb-1">Бонусов</div>
+                    <div className="text-white font-black text-2xl">{gameState.bonusCount ?? 0}</div>
                   </div>
                 </div>
                 <div className="bg-[#0A0A0A] rounded-xl p-3">
@@ -1124,7 +1138,7 @@ export function Admin() {
               <div className="text-[#888] text-xs uppercase tracking-widest">Участники и стеки</div>
 
               {/* Стартовый стек */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="text-[#666] text-xs block mb-1">Стартовый стек</label>
                   <input
@@ -1132,9 +1146,7 @@ export function Admin() {
                     className="admin-input"
                     value={gameState.startStack || ''}
                     onChange={e => {
-                      const ss = Number(e.target.value);
-                      const total = (gameState.players + gameState.rebuys) * ss + gameState.addonCount * gameState.addonStack;
-                      updateGameState({ startStack: ss, totalStack: total });
+                      updateStackState({ startStack: Number(e.target.value) });
                     }}
                     placeholder="напр. 15000"
                     inputMode="numeric"
@@ -1147,77 +1159,52 @@ export function Admin() {
                     className="admin-input"
                     value={gameState.addonStack || ''}
                     onChange={e => {
-                      const as = Number(e.target.value);
-                      const total = (gameState.players + gameState.rebuys) * gameState.startStack + gameState.addonCount * as;
-                      updateGameState({ addonStack: as, totalStack: total });
+                      updateStackState({ addonStack: Number(e.target.value) });
                     }}
                     placeholder="напр. 20000"
                     inputMode="numeric"
                   />
                 </div>
+                <div>
+                  <label className="text-[#666] text-xs block mb-1">Стек бонуса</label>
+                  <input
+                    type="number"
+                    className="admin-input"
+                    value={gameState.bonusStack || ''}
+                    onChange={e => {
+                      updateStackState({ bonusStack: Number(e.target.value) });
+                    }}
+                    placeholder="напр. 5000"
+                    inputMode="numeric"
+                  />
+                </div>
               </div>
 
-              {/* Игроки · Ребаи · Аддоны */}
-              <div className="grid grid-cols-3 gap-2">
+              {/* Игроки · Ребаи · Аддоны · Бонусы */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <CounterBlock
                   label="Игроки"
                   value={gameState.players ?? 0}
-                  onAdd={() => {
-                    const p = (gameState.players ?? 0) + 1;
-                    const r = gameState.rebuys ?? 0;
-                    const a = gameState.addonCount ?? 0;
-                    const ss = gameState.startStack ?? 0;
-                    const as = gameState.addonStack ?? 0;
-                    updateGameState({ players: p, totalStack: (p + r) * ss + a * as });
-                  }}
-                  onRemove={() => {
-                    const p = Math.max(0, (gameState.players ?? 0) - 1);
-                    const r = gameState.rebuys ?? 0;
-                    const a = gameState.addonCount ?? 0;
-                    const ss = gameState.startStack ?? 0;
-                    const as = gameState.addonStack ?? 0;
-                    updateGameState({ players: p, totalStack: (p + r) * ss + a * as });
-                  }}
+                  onAdd={() => updateStackState({ players: (gameState.players ?? 0) + 1 })}
+                  onRemove={() => updateStackState({ players: Math.max(0, (gameState.players ?? 0) - 1) })}
                 />
                 <CounterBlock
                   label="Ребаи"
                   value={gameState.rebuys ?? 0}
-                  onAdd={() => {
-                    const p = gameState.players ?? 0;
-                    const r = (gameState.rebuys ?? 0) + 1;
-                    const a = gameState.addonCount ?? 0;
-                    const ss = gameState.startStack ?? 0;
-                    const as = gameState.addonStack ?? 0;
-                    updateGameState({ rebuys: r, totalStack: (p + r) * ss + a * as });
-                  }}
-                  onRemove={() => {
-                    const p = gameState.players ?? 0;
-                    const r = Math.max(0, (gameState.rebuys ?? 0) - 1);
-                    const a = gameState.addonCount ?? 0;
-                    const ss = gameState.startStack ?? 0;
-                    const as = gameState.addonStack ?? 0;
-                    updateGameState({ rebuys: r, totalStack: (p + r) * ss + a * as });
-                  }}
+                  onAdd={() => updateStackState({ rebuys: (gameState.rebuys ?? 0) + 1 })}
+                  onRemove={() => updateStackState({ rebuys: Math.max(0, (gameState.rebuys ?? 0) - 1) })}
                 />
                 <CounterBlock
                   label="Аддоны"
                   value={gameState.addonCount ?? 0}
-                  onAdd={() => {
-                    const p = gameState.players ?? 0;
-                    const r = gameState.rebuys ?? 0;
-                    const a = (gameState.addonCount ?? 0) + 1;
-                    const ss = gameState.startStack ?? 0;
-                    const as = gameState.addonStack ?? 0;
-                    updateGameState({ addonCount: a, totalStack: (p + r) * ss + a * as });
-                  }}
-                  onRemove={() => {
-                    const p = gameState.players ?? 0;
-                    const r = gameState.rebuys ?? 0;
-                    const a = Math.max(0, (gameState.addonCount ?? 0) - 1);
-                    const ss = gameState.startStack ?? 0;
-                    const as = gameState.addonStack ?? 0;
-                    updateGameState({ addonCount: a, totalStack: (p + r) * ss + a * as });
-                  }}
+                  onAdd={() => updateStackState({ addonCount: (gameState.addonCount ?? 0) + 1 })}
+                  onRemove={() => updateStackState({ addonCount: Math.max(0, (gameState.addonCount ?? 0) - 1) })}
+                />
+                <CounterBlock
+                  label="Бонусы"
+                  value={gameState.bonusCount ?? 0}
+                  onAdd={() => updateStackState({ bonusCount: (gameState.bonusCount ?? 0) + 1 })}
+                  onRemove={() => updateStackState({ bonusCount: Math.max(0, (gameState.bonusCount ?? 0) - 1) })}
                 />
               </div>
 

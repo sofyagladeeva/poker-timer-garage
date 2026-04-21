@@ -42,9 +42,11 @@ export interface GameState {
   outs: number;
   rebuys: number;
   addonCount: number;
+  bonusCount: number;
   startStack: number;   // фишек на старт (= стоимость ребая)
   addonStack: number;   // фишек за аддон
-  totalStack: number;   // авто: (players+rebuys)*startStack + addonCount*addonStack
+  bonusStack: number;   // фишек за бонус
+  totalStack: number;   // авто: (players+rebuys)*startStack + addonCount*addonStack + bonusCount*bonusStack
   backgroundUrl: string | null;
   nextGameInfo: string;
   showRating: boolean;
@@ -78,6 +80,8 @@ export interface TournamentRecord {
   players: number;
   rebuys: number;
   addon_count: number;
+  bonus_count?: number;
+  bonus_stack?: number;
   total_stack: number;
   levels_played: number;
 }

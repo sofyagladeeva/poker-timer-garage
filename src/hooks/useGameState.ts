@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, DEFAULT_BLIND_LEVELS, DEFAULT_GAME_STATE } from '../supabase';
+import { hasMissingBonusColumns, normalizeGameState, toLegacyGameState } from '../gameStateMath';
 import type { GameState, BlindLevel, Combination, TournamentRecord } from '../types';
 
 const STATE_KEY = 'poker_game_state';
@@ -65,7 +66,7 @@ function normalizeBlindLevels(levels: BlindLevel[]) {
 // ─── Hook ──────────────────────────────────────────────────────────────────
 export function useGameState() {
   const [gameState, setGameState] = useState<GameState>(() =>
-    loadLocal(STATE_KEY, DEFAULT_GAME_STATE)
+    normalizeGameState(loadLocal(STATE_KEY, DEFAULT_GAME_STATE), DEFAULT_GAME_STATE)
   );
   const [blindLevels, setBlindLevels] = useState<BlindLevel[]>(() =>
     normalizeBlindLevels(loadLocal(BLINDS_KEY, DEFAULT_BLIND_LEVELS))
@@ -104,7 +105,11 @@ export function useGameState() {
     ]).then(async ([gs, bl, combs]) => {
       if (cancelled) return;
 
-      if (gs.data) setGameState(gs.data);
+      if (gs.data) {
+        const normalizedState = normalizeGameState(gs.data, gameStateRef.current);
+        setGameState(normalizedState);
+        saveLocal(STATE_KEY, normalizedState);
+      }
 
       if (bl.data && bl.data.length > 0) {
         const normalized = normalizeBlindLevels(bl.data);
@@ -129,7 +134,11 @@ export function useGameState() {
     const channel = supabase
       .channel('poker-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, (payload) => {
-        if (payload.new) setGameState(payload.new as GameState);
+        if (payload.new) {
+          const normalizedState = normalizeGameState(payload.new, gameStateRef.current);
+          setGameState(normalizedState);
+          saveLocal(STATE_KEY, normalizedState);
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_levels' }, () => {
         if (skipBlindRealtime.current) return;
@@ -169,13 +178,17 @@ export function useGameState() {
 
   // ─── Admin actions (stable — don't depend on gameState/blindLevels) ─────
   const updateGameState = useCallback(async (patch: Partial<GameState>) => {
-    const updated = { ...gameStateRef.current, ...patch };
+    const updated = normalizeGameState({ ...gameStateRef.current, ...patch }, gameStateRef.current);
     setGameState(updated);
+    saveLocal(STATE_KEY, updated);
     if (!isSupabaseConfigured) {
-      saveLocal(STATE_KEY, updated);
       return;
     }
-    await supabase.from('game_state').upsert({ id: 1, ...updated });
+
+    let { error } = await supabase.from('game_state').upsert({ id: 1, ...updated });
+    if (error && hasMissingBonusColumns(error)) {
+      ({ error } = await supabase.from('game_state').upsert({ id: 1, ...toLegacyGameState(updated) }));
+    }
   }, [isSupabaseConfigured]);
 
   const startTimer = useCallback(() => {
@@ -253,6 +266,8 @@ export function useGameState() {
       players: gs.players,
       rebuys: gs.rebuys ?? 0,
       addon_count: gs.addonCount ?? 0,
+      bonus_count: gs.bonusCount ?? 0,
+      bonus_stack: gs.bonusStack ?? 0,
       total_stack: gs.totalStack,
       levels_played: levelsPlayed,
     };
@@ -262,7 +277,12 @@ export function useGameState() {
       saveLocal(TOURNAMENTS_KEY, [local, ...existing]);
       return;
     }
-    await supabase.from('tournaments').insert(record);
+
+    let { error } = await supabase.from('tournaments').insert(record);
+    if (error && hasMissingBonusColumns(error)) {
+      const { bonus_count, bonus_stack, ...legacyRecord } = record;
+      ({ error } = await supabase.from('tournaments').insert(legacyRecord));
+    }
   }, [isSupabaseConfigured]);
 
   const fetchTournaments = useCallback(async (): Promise<TournamentRecord[]> => {
