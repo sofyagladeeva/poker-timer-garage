@@ -555,16 +555,6 @@ export function Admin() {
     updateBlindLevels([...blindLevels, newLevel]);
   };
 
-  const applyGarageTemplate = () => {
-    const template = createGarageBlindTemplate();
-    updateBlindLevels(template);
-    updateGameState({
-      currentLevelIndex: 0,
-      timeLeft: template[0]?.duration ?? 1200,
-      status: 'paused',
-    });
-  };
-
   const addBreak = () => {
     const breakLevel: BlindLevel = {
       id: Date.now().toString(),
@@ -1091,10 +1081,7 @@ export function Admin() {
         {/* ─── BLINDS TAB ──────────────────────────────────────────────── */}
         {activeTab === 'blinds' && (
           <div className="flex flex-col gap-3">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-1">
-              <button onClick={applyGarageTemplate} className="admin-btn-secondary px-4 py-3 text-sm">
-                Шаблон 100-30000
-              </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-1">
               <button onClick={addBlindLevel} className="admin-btn-primary px-4 py-3 text-sm">+ Уровень</button>
               <button onClick={addBreak} className="admin-btn-secondary px-4 py-3 text-sm">+ Перерыв</button>
             </div>

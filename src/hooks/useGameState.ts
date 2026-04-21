@@ -93,14 +93,34 @@ export function useGameState() {
   useEffect(() => {
     if (!isSupabaseConfigured) return;
 
+    let cancelled = false;
+
     // Initial fetch
     Promise.all([
       supabase.from('game_state').select('*').single(),
       supabase.from('blind_levels').select('*').order('id'),
       supabase.from('combinations').select('*').order('created_at'),
-    ]).then(([gs, bl, combs]) => {
+    ]).then(async ([gs, bl, combs]) => {
+      if (cancelled) return;
+
       if (gs.data) setGameState(gs.data);
-      if (bl.data && bl.data.length > 0) setBlindLevels(normalizeBlindLevels(bl.data));
+
+      if (bl.data && bl.data.length > 0) {
+        const normalized = normalizeBlindLevels(bl.data);
+        setBlindLevels(normalized);
+        saveLocal(BLINDS_KEY, normalized);
+      } else if (Array.isArray(bl.data) && bl.data.length === 0) {
+        const defaults = normalizeBlindLevels(DEFAULT_BLIND_LEVELS);
+        setBlindLevels(defaults);
+        saveLocal(BLINDS_KEY, defaults);
+
+        skipBlindRealtime.current = true;
+        if (skipBlindTimer.current) clearTimeout(skipBlindTimer.current);
+        skipBlindTimer.current = setTimeout(() => { skipBlindRealtime.current = false; }, 4000);
+
+        await supabase.from('blind_levels').insert(defaults);
+      }
+
       if (combs.data) setCombinations(combs.data);
     }).catch(() => {});
 
@@ -123,7 +143,10 @@ export function useGameState() {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
   }, [isSupabaseConfigured]);
 
   // ─── Local timer tick ───────────────────────────────────────────────────
