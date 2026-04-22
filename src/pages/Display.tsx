@@ -321,7 +321,7 @@ export function Display() {
               <div
                 className="break-pulse text-center tracking-[0.3em]"
                 style={{
-                  fontFamily: '"Bebas Neue", Impact, Arial Black, sans-serif',
+                  fontFamily: 'Anton, Impact, Arial Black, sans-serif',
                   fontSize: '60px',
                   color: '#FFFFFF',
                   textShadow: '0 0 40px rgba(255,255,255,0.3)',
@@ -336,7 +336,7 @@ export function Display() {
               className={`font-black tabular-nums leading-none${isWarning ? ' break-pulse' : ''}`}
               style={{
                 fontSize: '210px',
-                fontFamily: '"Bebas Neue", Impact, Arial Black, sans-serif',
+                fontFamily: 'Anton, Impact, Arial Black, sans-serif',
                 color: timerColor,
                 textShadow: timerGlow,
               }}
@@ -366,7 +366,7 @@ export function Display() {
                 {nextLevel.isBreak
                   ? <span
                       className="font-black text-2xl tracking-widest"
-                      style={{ fontFamily: '"Bebas Neue", Impact, Arial Black, sans-serif', color: 'white' }}
+                      style={{ fontFamily: 'Anton, Impact, Arial Black, sans-serif', color: 'white' }}
                     >
                       {nextLevel.breakLabel || 'ПЕРЕРЫВ'}
                     </span>
@@ -389,7 +389,7 @@ export function Display() {
                 <div
                   className="tabular-nums"
                   style={{
-                    fontFamily: '"Bebas Neue", Impact, Arial Black, sans-serif',
+                    fontFamily: 'Anton, Impact, Arial Black, sans-serif',
                     fontSize: '44px',
                     color: '#666',
                   }}
@@ -529,7 +529,7 @@ function BlindBox({ label, value, accent }: { label: string; value: string; acce
       <div className="text-[#333] text-xs uppercase tracking-widest mb-1">{label}</div>
       <div
         className={`font-black ${accent ? 'text-[#E31E24]' : 'text-white'}`}
-        style={{ fontSize: '60px', fontFamily: '"Bebas Neue", Impact, Arial Black, sans-serif' }}
+        style={{ fontSize: '60px', fontFamily: 'Anton, Impact, Arial Black, sans-serif' }}
       >
         {value}
       </div>
