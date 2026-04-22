@@ -309,7 +309,7 @@ export function Display() {
             {!isBreak && currentLevel && !currentLevel.isBreak && (
               <div
                 className="uppercase tracking-[0.4em] text-center"
-                style={{ color: '#444', fontSize: 'clamp(12px, 1.4vw, 22px)' }}
+                style={{ color: '#444', fontSize: '18px' }}
               >
                 Уровень {currentLevel.level}
               </div>
@@ -321,7 +321,7 @@ export function Display() {
                 className="break-pulse text-center tracking-[0.3em]"
                 style={{
                   fontFamily: 'Impact, Arial Black, sans-serif',
-                  fontSize: 'clamp(28px, 4vw, 72px)',
+                  fontSize: '60px',
                   color: '#FFFFFF',
                   textShadow: '0 0 40px rgba(255,255,255,0.3)',
                 }}
@@ -334,7 +334,7 @@ export function Display() {
             <div
               className={`font-black tabular-nums leading-none${isWarning ? ' break-pulse' : ''}`}
               style={{
-                fontSize: 'clamp(120px, 17vw, 320px)',
+                fontSize: '210px',
                 fontFamily: 'Impact, Arial Black, sans-serif',
                 color: timerColor,
                 textShadow: timerGlow,
@@ -387,7 +387,7 @@ export function Display() {
                   className="font-black tabular-nums"
                   style={{
                     fontFamily: 'Impact, Arial Black, sans-serif',
-                    fontSize: 'clamp(20px, 2.5vw, 44px)',
+                    fontSize: '36px',
                     color: '#888',
                   }}
                 >
@@ -488,15 +488,15 @@ function ComboCard({ card }: { card: Card }) {
   const isAny = card.suit === 'any';
   const isRed = !isAny && RED_SUITS.includes(card.suit);
   const cardStyle = {
-    height: 'clamp(75px, 11vh, 120px)',
-    width: 'clamp(54px, 7.9vh, 86px)',
+    height: '90px',
+    width: '65px',
   };
   return (
     <div
       className={`flex-shrink-0 flex flex-col items-center justify-center bg-white rounded-xl font-bold shadow-lg ${isRed ? 'text-[#C0392B]' : 'text-[#0A0A0A]'}`}
       style={cardStyle}
     >
-      <span style={{ fontSize: 'clamp(13px, 3.3vh, 38px)', lineHeight: 1.1 }}>{card.rank}</span>
+      <span style={{ fontSize: '26px', lineHeight: 1.1 }}>{card.rank}</span>
 
       {isAny ? (
         /* Сетка 2×2 всех мастей */
@@ -504,7 +504,7 @@ function ComboCard({ card }: { card: Card }) {
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
           gap: '1px',
-          fontSize: 'clamp(8px, 2.1vh, 26px)',
+          fontSize: '18px',
           lineHeight: 1.1,
           marginTop: 2,
         }}>
@@ -514,7 +514,7 @@ function ComboCard({ card }: { card: Card }) {
           <span style={{ color: '#111' }}>♣</span>
         </div>
       ) : (
-        <span style={{ fontSize: 'clamp(16px, 4.2vh, 48px)', lineHeight: 1.1 }}>{SUIT_SYMBOLS[card.suit]}</span>
+        <span style={{ fontSize: '34px', lineHeight: 1.1 }}>{SUIT_SYMBOLS[card.suit]}</span>
       )}
     </div>
   );
@@ -526,7 +526,7 @@ function BlindBox({ label, value, accent }: { label: string; value: string; acce
       <div className="text-[#333] text-xs uppercase tracking-widest mb-1">{label}</div>
       <div
         className={`font-black ${accent ? 'text-[#E31E24]' : 'text-white'}`}
-        style={{ fontSize: 'clamp(32px, 5vw, 68px)', fontFamily: 'Impact, Arial Black, sans-serif' }}
+        style={{ fontSize: '60px', fontFamily: 'Impact, Arial Black, sans-serif' }}
       >
         {value}
       </div>
