@@ -34,29 +34,12 @@ function playTimerEnd() {
   } catch {}
 }
 
-/** Три восходящих ноты — сигнал повышения блайндов */
+/** Гонг — сигнал смены уровня блайндов */
 function playBlindIncrease() {
   try {
-    const ctx = getCtx();
-    const now = ctx.currentTime;
-    // C5 → E5 → G5 (мажорный арпеджио)
-    [523.25, 659.25, 783.99].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      const t = now + i * 0.18;
-      gain.gain.setValueAtTime(0, t);
-      gain.gain.linearRampToValueAtTime(0.35, t + 0.04);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
-      osc.start(t);
-      osc.stop(t + 0.6);
-    });
-  } catch {
-    // браузер заблокировал аудио — молча игнорируем
-  }
+    const audio = new Audio('/poker-timer-garage/gong.mp3');
+    audio.play().catch(() => {});
+  } catch {}
 }
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
