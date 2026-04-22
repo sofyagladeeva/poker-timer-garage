@@ -64,6 +64,36 @@ function fmtTime(iso: string) {
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
+function FullscreenButton() {
+  const [isFs, setIsFs] = useState(false);
+  useEffect(() => {
+    const onChange = () => setIsFs(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+  const toggle = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+  return (
+    <button
+      onClick={toggle}
+      title={isFs ? 'Выйти из полного экрана' : 'На весь экран'}
+      style={{
+        position: 'fixed', top: 8, left: 8, zIndex: 9999,
+        background: 'rgba(255,255,255,0.07)', border: 'none',
+        borderRadius: 6, padding: '4px 6px', cursor: 'pointer',
+        color: '#444', fontSize: 16, lineHeight: 1,
+      }}
+    >
+      {isFs ? '✕' : '⛶'}
+    </button>
+  );
+}
+
 export function Display() {
   const { gameState, blindLevels, combinations } = useGameState();
   const { players: ratingPlayers } = useBotRating();
@@ -175,6 +205,7 @@ export function Display() {
     <div className="h-screen flex flex-col overflow-hidden select-none"
          style={{ background: '#0D0D0D', ...bgStyle }}>
       {gameState.backgroundUrl && <div className="absolute inset-0 bg-black/75 z-0" />}
+      <FullscreenButton />
 
       <div className="relative z-10 flex flex-col h-full">
 
