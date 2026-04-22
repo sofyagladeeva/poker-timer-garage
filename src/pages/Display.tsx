@@ -229,11 +229,11 @@ export function Display() {
            className="flex flex-col">
 
         {/* ── Header ─────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-center gap-5 px-8 py-3 border-b border-[#181818] flex-shrink-0">
+        <div className="flex items-center justify-center gap-5 px-8 py-2 border-b border-[#181818] flex-shrink-0">
           <img
             src={`${import.meta.env.BASE_URL}logo.png`}
             alt="Garage Game Club"
-            style={{ height: 'clamp(48px, 7vh, 90px)', width: 'auto' }}
+            style={{ height: '44px', width: 'auto' }}
             className="opacity-90 select-none pointer-events-none"
           />
           {gameState.tournamentTitle && (
