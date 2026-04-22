@@ -68,6 +68,8 @@ export function Display() {
   const { gameState, blindLevels, combinations } = useGameState();
   const { players: ratingPlayers } = useBotRating();
   const nextGame = useNextGame();
+  const tvMode = new URLSearchParams(window.location.search).get('tv') === '1';
+  const tvStyle = tvMode ? { zoom: 0.88 as number } : {};
 
   // Активируем AudioContext при первом взаимодействии (политика браузера)
   useEffect(() => {
@@ -143,7 +145,7 @@ export function Display() {
   /* ══════════════ RATING MODE ══════════════ */
   if (gameState.showRating) {
     return (
-      <div className="h-screen relative overflow-hidden" style={{ background: '#0D0D0D', ...bgStyle }}>
+      <div className="h-screen relative overflow-hidden" style={{ background: '#0D0D0D', ...bgStyle, ...tvStyle }}>
         {gameState.backgroundUrl && <div className="absolute inset-0 bg-black/75 z-0" />}
 
         <div className="relative z-10 h-full flex flex-col items-center justify-center gap-8 px-12">
@@ -173,7 +175,7 @@ export function Display() {
   /* ══════════════ GAME MODE ══════════════ */
   return (
     <div className="h-screen flex flex-col overflow-hidden select-none"
-         style={{ background: '#0D0D0D', ...bgStyle }}>
+         style={{ background: '#0D0D0D', ...bgStyle, ...tvStyle }}>
       {gameState.backgroundUrl && <div className="absolute inset-0 bg-black/75 z-0" />}
 
       <div className="relative z-10 flex flex-col h-full">
