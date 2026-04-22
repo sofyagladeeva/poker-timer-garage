@@ -1,3 +1,11 @@
+@font-face {
+  font-family: 'Impact';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/poker-timer-garage/fonts/Impact.ttf') format('truetype');
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
