@@ -94,7 +94,7 @@ function FullscreenButton() {
   );
 }
 
-const W = 1600, H = 900;
+const W = 1600, H = 720;
 
 function useScale() {
   const [s, setS] = useState({ k: 1, x: 0, y: 0 });
