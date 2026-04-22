@@ -321,7 +321,7 @@ export function Display() {
               <div
                 className="break-pulse text-center tracking-[0.3em]"
                 style={{
-                  fontFamily: 'Impact, Arial Black, sans-serif',
+                  fontFamily: "'JetBrains Mono', monospace",
                   fontSize: '60px',
                   color: '#FFFFFF',
                   textShadow: '0 0 40px rgba(255,255,255,0.3)',
@@ -336,10 +336,8 @@ export function Display() {
               className={`font-black tabular-nums leading-none${isWarning ? ' break-pulse' : ''}`}
               style={{
                 fontSize: '160px',
-                fontFamily: 'Impact, Arial Black, sans-serif',
                 color: timerColor,
                 textShadow: timerGlow,
-                letterSpacing: '14px',
               }}
             >
               {pad(minutes)}:{pad(seconds)}
@@ -367,7 +365,7 @@ export function Display() {
                 {nextLevel.isBreak
                   ? <span
                       className="font-black text-2xl tracking-widest"
-                      style={{ fontFamily: 'Impact, Arial Black, sans-serif', color: 'white' }}
+                      style={{ fontFamily: "'JetBrains Mono', monospace", color: 'white' }}
                     >
                       {nextLevel.breakLabel || 'ПЕРЕРЫВ'}
                     </span>
@@ -390,7 +388,7 @@ export function Display() {
                 <div
                   className="tabular-nums"
                   style={{
-                    fontFamily: 'Impact, Arial Black, sans-serif',
+                    fontFamily: "'JetBrains Mono', monospace",
                     fontSize: '44px',
                     color: '#666',
                   }}
@@ -530,7 +528,7 @@ function BlindBox({ label, value, accent }: { label: string; value: string; acce
       <div className="text-[#333] text-xs uppercase tracking-widest mb-1">{label}</div>
       <div
         className={`font-black ${accent ? 'text-[#E31E24]' : 'text-white'}`}
-        style={{ fontSize: '52px', fontFamily: 'Impact, Arial Black, sans-serif', letterSpacing: '5px' }}
+        style={{ fontSize: '52px' }}
       >
         {value}
       </div>
