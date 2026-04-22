@@ -228,6 +228,24 @@ export function Display() {
       <div style={{ position: 'absolute', width: W, height: H, transform: `translate(${x}px,${y}px) scale(${k})`, transformOrigin: 'top left' }}
            className="flex flex-col">
 
+        {/* ── Header ─────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-center gap-5 px-8 py-2 border-b border-[#181818] flex-shrink-0">
+          <img
+            src={`${import.meta.env.BASE_URL}logo.png`}
+            alt="Garage Game Club"
+            style={{ height: '44px', width: 'auto' }}
+            className="opacity-90 select-none pointer-events-none"
+          />
+          {gameState.tournamentTitle && (
+            <>
+              <span className="text-[#2A2A2A] text-3xl font-thin">·</span>
+              <span className="text-[#E31E24] font-black text-xl uppercase tracking-widest">
+                {gameState.tournamentTitle}
+              </span>
+            </>
+          )}
+        </div>
+
         {/* ── 3 columns ──────────────────────────────────────────────── */}
         <div className="flex flex-1 min-h-0">
 
