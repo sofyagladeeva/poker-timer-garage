@@ -69,7 +69,7 @@ export function Display() {
   const { players: ratingPlayers } = useBotRating();
   const nextGame = useNextGame();
   const tvMode = new URLSearchParams(window.location.search).get('tv') === '1';
-  const tvStyle = tvMode ? { zoom: 0.88 as number } : {};
+  const tvContentStyle = tvMode ? { transform: 'scale(0.88)', transformOrigin: 'center center' } : {};
 
   // Активируем AudioContext при первом взаимодействии (политика браузера)
   useEffect(() => {
@@ -145,10 +145,11 @@ export function Display() {
   /* ══════════════ RATING MODE ══════════════ */
   if (gameState.showRating) {
     return (
-      <div className="h-screen relative overflow-hidden" style={{ background: '#0D0D0D', ...bgStyle, ...tvStyle }}>
+      <div className="fixed inset-0 overflow-hidden" style={{ background: '#0D0D0D', ...bgStyle }}>
         {gameState.backgroundUrl && <div className="absolute inset-0 bg-black/75 z-0" />}
 
-        <div className="relative z-10 h-full flex flex-col items-center justify-center gap-8 px-12">
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-8 px-12 select-none"
+             style={tvContentStyle}>
           <div className="text-[#444] uppercase tracking-[0.4em] text-sm">
             Рейтинг · {new Date().toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
           </div>
@@ -174,11 +175,11 @@ export function Display() {
 
   /* ══════════════ GAME MODE ══════════════ */
   return (
-    <div className="h-screen flex flex-col overflow-hidden select-none"
-         style={{ background: '#0D0D0D', ...bgStyle, ...tvStyle }}>
+    <div className="fixed inset-0 overflow-hidden select-none"
+         style={{ background: '#0D0D0D', ...bgStyle }}>
       {gameState.backgroundUrl && <div className="absolute inset-0 bg-black/75 z-0" />}
 
-      <div className="relative z-10 flex flex-col h-full">
+      <div className="absolute inset-0 z-10 flex flex-col" style={tvContentStyle}>
 
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className="flex items-center justify-center gap-5 px-8 py-3 border-b border-[#181818] flex-shrink-0">
