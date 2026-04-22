@@ -37,7 +37,7 @@ function playTimerEnd() {
 /** Гонг — сигнал смены уровня блайндов */
 function playBlindIncrease() {
   try {
-    const audio = new Audio('/poker-timer-garage/gong.mp3');
+    const audio = new Audio(import.meta.env.BASE_URL + 'gong.mp3');
     audio.play().catch(() => {});
   } catch {}
 }
@@ -357,8 +357,8 @@ export function Display() {
                 {rankPoints.length > 0
                   ? rankPoints.slice(0, 9).map((pts, i) => (
                       <div key={i} className="bg-[#111] rounded-lg py-2 text-center">
-                        <div className="text-[#444] text-sm">{i + 1} место</div>
-                        <div className="text-[#E31E24] font-black text-3xl leading-tight">{pts.toFixed(1)}</div>
+                        <div className="text-[#444] text-xs">{i + 1} место</div>
+                        <div className="text-[#E31E24] font-black text-xl leading-tight">{pts.toFixed(1)}</div>
                       </div>
                     ))
                   : <span className="text-[#252525] text-sm col-span-3">Укажите кол-во игроков</span>
