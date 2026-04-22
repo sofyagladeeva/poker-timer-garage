@@ -62,7 +62,7 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
-const MEDALS = ['🥇', '🥈', '🥉'];
+const MEDAL_IMGS = [1, 2, 3];
 
 function FullscreenButton() {
   const [isFs, setIsFs] = useState(false);
@@ -199,9 +199,9 @@ export function Display() {
             Рейтинг · {new Date().toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
           </div>
           <div className="flex items-end justify-center gap-6 w-full max-w-4xl">
-            {top3[1] && <RatingCard player={top3[1]} medal="🥈" big={false} />}
-            {top3[0] && <RatingCard player={top3[0]} medal="🥇" big />}
-            {top3[2] && <RatingCard player={top3[2]} medal="🥉" big={false} />}
+            {top3[1] && <RatingCard player={top3[1]} medal={2} big={false} />}
+            {top3[0] && <RatingCard player={top3[0]} medal={1} big />}
+            {top3[2] && <RatingCard player={top3[2]} medal={3} big={false} />}
           </div>
           <div className="flex gap-4 flex-wrap justify-center">
             {ratingPlayers.slice(3, 7).map((p, i) => (
@@ -303,8 +303,9 @@ export function Display() {
           </div>
 
           {/* ═══ CENTER: timer + blinds ═══ */}
-          <div className="flex flex-col items-center justify-center flex-1 gap-6 px-4 overflow-hidden">
+          <div className="flex flex-col items-center flex-1 px-4 overflow-hidden">
 
+          <div className="flex flex-col items-center justify-center flex-1 gap-6">
             {/* Номер уровня — над таймером */}
             {!isBreak && currentLevel && !currentLevel.isBreak && (
               <div
@@ -379,16 +380,18 @@ export function Display() {
               </div>
             )}
 
-            {/* Живой отсчёт до перерыва */}
+          </div>
+
+            {/* Живой отсчёт до перерыва — внизу */}
             {!isBreak && secondsUntilBreak !== null && levelsUntilBreak !== null && levelsUntilBreak > 1 && (
-              <div className="text-center opacity-50">
-                <div className="text-[#666] text-xs uppercase tracking-[0.2em] mb-1">до перерыва</div>
+              <div className="pb-4 text-center">
+                <div className="uppercase tracking-[0.25em] mb-1 font-light" style={{ color: '#E31E24', fontSize: '13px' }}>до перерыва</div>
                 <div
-                  className="font-black tabular-nums"
+                  className="tabular-nums"
                   style={{
                     fontFamily: 'Impact, Arial Black, sans-serif',
-                    fontSize: '36px',
-                    color: '#888',
+                    fontSize: '44px',
+                    color: '#666',
                   }}
                 >
                   {fmtCountdown(secondsUntilBreak)}
@@ -430,7 +433,7 @@ export function Display() {
                              ? 'bg-[#160800] border border-[#E31E24]/25'
                              : 'bg-[#111] border border-[#1A1A1A]'
                          }`}>
-                      <span className="text-2xl">{MEDALS[i]}</span>
+                      <img src={`${import.meta.env.BASE_URL}medal-${MEDAL_IMGS[i]}.png`} style={{ width: 28, height: 28, objectFit: 'contain' }} alt="" />
                       <span className="text-white font-bold text-base flex-1 truncate">{p.name}</span>
                       <span className={`font-black text-2xl ${i === 0 ? 'text-[#E31E24]' : 'text-[#555]'}`}>
                         {p.points.toFixed(1)}
@@ -536,7 +539,7 @@ function BlindBox({ label, value, accent }: { label: string; value: string; acce
 
 function RatingCard({ player, medal, big }: {
   player: { name: string; points: number; games: number };
-  medal: string;
+  medal: number;
   big: boolean;
 }) {
   return (
@@ -544,7 +547,7 @@ function RatingCard({ player, medal, big }: {
       className={`flex-1 bg-[#141414] rounded-2xl p-6 text-center ${big ? 'border-2 border-[#E31E24]' : 'border border-[#222]'}`}
       style={big ? { boxShadow: '0 0 40px rgba(227,30,36,0.2)' } : {}}
     >
-      <div style={{ fontSize: big ? '3.5rem' : '2.5rem' }}>{medal}</div>
+      <img src={`${import.meta.env.BASE_URL}medal-${medal}.png`} style={{ width: big ? 80 : 60, height: big ? 80 : 60, objectFit: 'contain', margin: '0 auto' }} alt="" />
       <div className={`text-white font-black mt-2 ${big ? 'text-3xl' : 'text-xl'}`}>{player.name}</div>
       <div className={`text-[#E31E24] font-black mt-1 ${big ? 'text-5xl' : 'text-3xl'}`}>{player.points.toFixed(1)}</div>
       <div className="text-[#383838] text-sm mt-1">{player.games} игр</div>
