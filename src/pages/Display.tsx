@@ -289,7 +289,7 @@ export function Display() {
                         {/* Карты — фиксированный размер, пропорции покерной карты */}
                         <div className="flex flex-nowrap gap-2 mb-3">
                           {combo.cards.map((card, ci) => (
-                            <ComboCard key={ci} card={card} />
+                            <ComboCard key={ci} card={card} count={combo.cards.length} />
                           ))}
                         </div>
                         {/* Описание — одна строка */}
@@ -485,28 +485,29 @@ function StatRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-/* Карта — фиксированные пропорции покерной карты (2.5:3.5), масштаб от высоты экрана */
-function ComboCard({ card }: { card: Card }) {
+/* Карта — размер адаптируется под количество карт в комбинации */
+function ComboCard({ card, count = 2 }: { card: Card; count?: number }) {
   const isAny = card.suit === 'any';
   const isRed = !isAny && RED_SUITS.includes(card.suit);
-  const cardStyle = {
-    height: '90px',
-    width: '65px',
-  };
+  // Scale card size proportionally: 2-3 cards → 65px, 4 → 58px, 5 → 50px
+  const w = count >= 5 ? 50 : count >= 4 ? 58 : 65;
+  const h = Math.round(w * 90 / 65);
+  const rankSize = Math.round(w * 26 / 65);
+  const suitSize = Math.round(w * 34 / 65);
+  const suitSmallSize = Math.round(w * 18 / 65);
   return (
     <div
       className={`flex-shrink-0 flex flex-col items-center justify-center bg-white rounded-xl font-bold shadow-lg ${isRed ? 'text-[#C0392B]' : 'text-[#0A0A0A]'}`}
-      style={cardStyle}
+      style={{ width: w, height: h }}
     >
-      <span style={{ fontSize: '26px', lineHeight: 1.1 }}>{card.rank}</span>
+      <span style={{ fontSize: rankSize, lineHeight: 1.1 }}>{card.rank}</span>
 
       {isAny ? (
-        /* Сетка 2×2 всех мастей */
         <div style={{
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
           gap: '1px',
-          fontSize: '18px',
+          fontSize: suitSmallSize,
           lineHeight: 1.1,
           marginTop: 2,
         }}>
@@ -516,7 +517,7 @@ function ComboCard({ card }: { card: Card }) {
           <span style={{ color: '#111' }}>♣</span>
         </div>
       ) : (
-        <span style={{ fontSize: '34px', lineHeight: 1.1 }}>{SUIT_SYMBOLS[card.suit]}</span>
+        <span style={{ fontSize: suitSize, lineHeight: 1.1 }}>{SUIT_SYMBOLS[card.suit]}</span>
       )}
     </div>
   );
