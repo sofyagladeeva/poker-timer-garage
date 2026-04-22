@@ -200,7 +200,7 @@ export function Display() {
         <div className="flex flex-1 min-h-0">
 
           {/* ═══ LEFT: stats + combinations ═══ */}
-          <div className="flex flex-col w-[30%] border-r border-[#181818] px-5 py-5 gap-4">
+          <div className="flex flex-col w-[30%] border-r border-[#181818] px-5 py-5 gap-4 overflow-hidden">
 
             {/* Stats */}
             <div className="flex flex-col gap-3">
@@ -348,14 +348,14 @@ export function Display() {
           </div>
 
           {/* ═══ RIGHT: prize points + top3 + next game ═══ */}
-          <div className="flex flex-col w-[24%] border-l border-[#181818] px-5 py-5 gap-4">
+          <div className="flex flex-col w-[24%] border-l border-[#181818] px-5 py-5 gap-3 overflow-hidden">
 
             {/* Prize rank points */}
             <div>
               <ColLabel>Очки турнира{gameState.players > 0 ? ` · ${gameState.players} игроков` : ''}</ColLabel>
               <div className="grid grid-cols-3 gap-2 mt-3">
                 {rankPoints.length > 0
-                  ? rankPoints.slice(0, 9).map((pts, i) => (
+                  ? rankPoints.slice(0, 6).map((pts, i) => (
                       <div key={i} className="bg-[#111] rounded-lg py-2 text-center">
                         <div className="text-[#444] text-xs">{i + 1} место</div>
                         <div className="text-[#E31E24] font-black text-xl leading-tight">{pts.toFixed(1)}</div>
