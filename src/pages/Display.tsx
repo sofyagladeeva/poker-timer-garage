@@ -176,7 +176,8 @@ export function Display() {
          style={{ background: '#0D0D0D', ...bgStyle }}>
       {gameState.backgroundUrl && <div className="absolute inset-0 bg-black/75 z-0" />}
 
-      <div className="relative z-10 flex flex-col h-full" style={{ padding: '4vh 4vw' }}>
+      <div className="relative z-10 flex flex-col h-full"
+           style={{ transform: 'scale(0.9)', transformOrigin: 'top left', width: '111.1%', height: '111.1%' }}>
 
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className="flex items-center justify-center gap-5 px-8 py-3 border-b border-[#181818] flex-shrink-0">
