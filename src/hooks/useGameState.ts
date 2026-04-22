@@ -224,7 +224,7 @@ export function useGameState() {
           applySync(data as Record<string, unknown>);
         }
       });
-    }, 10000);
+    }, 2000);
 
     return () => {
       document.removeEventListener('visibilitychange', syncNow);
