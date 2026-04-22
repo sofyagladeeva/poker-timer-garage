@@ -335,11 +335,11 @@ export function Display() {
             <div
               className={`font-black tabular-nums leading-none${isWarning ? ' break-pulse' : ''}`}
               style={{
-                fontSize: '190px',
+                fontSize: '160px',
                 fontFamily: 'Impact, Arial Black, sans-serif',
                 color: timerColor,
                 textShadow: timerGlow,
-                letterSpacing: '6px',
+                letterSpacing: '14px',
               }}
             >
               {pad(minutes)}:{pad(seconds)}
@@ -530,7 +530,7 @@ function BlindBox({ label, value, accent }: { label: string; value: string; acce
       <div className="text-[#333] text-xs uppercase tracking-widest mb-1">{label}</div>
       <div
         className={`font-black ${accent ? 'text-[#E31E24]' : 'text-white'}`}
-        style={{ fontSize: '56px', fontFamily: 'Impact, Arial Black, sans-serif', letterSpacing: '2px' }}
+        style={{ fontSize: '52px', fontFamily: 'Impact, Arial Black, sans-serif', letterSpacing: '5px' }}
       >
         {value}
       </div>
