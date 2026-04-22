@@ -146,7 +146,7 @@ export function Display() {
       <div className="h-screen relative overflow-hidden" style={{ background: '#0D0D0D', ...bgStyle }}>
         {gameState.backgroundUrl && <div className="absolute inset-0 bg-black/75 z-0" />}
 
-        <div className="relative z-10 h-full flex flex-col items-center justify-center gap-8" style={{ padding: '4vh 4vw' }}>
+        <div className="relative z-10 h-full flex flex-col items-center justify-center gap-8">
           <div className="text-[#444] uppercase tracking-[0.4em] text-sm">
             Рейтинг · {new Date().toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
           </div>
@@ -172,12 +172,11 @@ export function Display() {
 
   /* ══════════════ GAME MODE ══════════════ */
   return (
-    <div className="h-screen overflow-hidden select-none flex items-center justify-center"
-         style={{ background: '#0D0D0D', ...bgStyle }}>
+    <div className="h-screen flex flex-col overflow-hidden select-none"
+         style={{ background: '#0D0D0D', padding: '3vh 3vw', ...bgStyle }}>
       {gameState.backgroundUrl && <div className="absolute inset-0 bg-black/75 z-0" />}
 
-      <div className="relative z-10 flex flex-col"
-           style={{ width: '92vw', height: '92vh' }}>
+      <div className="relative z-10 flex flex-col h-full">
 
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className="flex items-center justify-center gap-5 px-8 py-3 border-b border-[#181818] flex-shrink-0">
