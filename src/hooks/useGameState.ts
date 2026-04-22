@@ -104,6 +104,24 @@ export function useGameState() {
   // Unique client ID to filter out own broadcasts
   const clientId = useRef(Math.random().toString(36).slice(2));
 
+  // Time-based timer: all devices compute timeLeft from the same anchor point,
+  // so they stay in sync as long as device clocks are NTP-synced (within ~100ms).
+  // baseTimeLeft = canonical seconds remaining at the moment of last sync
+  // baseTimestamp = wall-clock time when that sync happened
+  const baseTimeLeft  = useRef(gameState.timeLeft);
+  const baseTimestamp = useRef(gameState.lastTickAt ?? Date.now());
+
+  // ─── Shared sync helper (stable ref, usable in any effect) ─────────────
+  const applySync = useCallback((raw: Record<string, unknown>) => {
+    const normalized = normalizeGameState(raw as unknown as GameState, gameStateRef.current);
+    if (raw.lastTickAt) {
+      baseTimeLeft.current  = normalized.timeLeft;
+      baseTimestamp.current = raw.lastTickAt as number;
+    }
+    setGameState(normalized);
+    saveLocal(STATE_KEY, normalized);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── Supabase real-time subscriptions ───────────────────────────────────
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -147,9 +165,7 @@ export function useGameState() {
     const bc = supabase.channel('poker-broadcast')
       .on('broadcast', { event: 'game_state' }, (msg) => {
         if (!msg.payload || msg.payload._cid === clientId.current) return;
-        const normalized = normalizeGameState(msg.payload as GameState, gameStateRef.current);
-        setGameState(normalized);
-        saveLocal(STATE_KEY, normalized);
+        applySync(msg.payload as Record<string, unknown>);
       })
       .subscribe();
     broadcastChannelRef.current = bc;
@@ -159,19 +175,7 @@ export function useGameState() {
       .channel('poker-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, (payload) => {
         if (skipGameStateRealtime.current) return;
-        if (payload.new) {
-          let normalizedState = normalizeGameState(payload.new, gameStateRef.current);
-          // Drift correction: compensate for Supabase propagation delay
-          const raw = payload.new as { lastTickAt?: number };
-          if (normalizedState.status === 'running' && raw.lastTickAt) {
-            const elapsed = Math.floor((Date.now() - raw.lastTickAt) / 1000);
-            if (elapsed < 10) {
-              normalizedState = { ...normalizedState, timeLeft: Math.max(0, normalizedState.timeLeft - elapsed) };
-            }
-          }
-          setGameState(normalizedState);
-          saveLocal(STATE_KEY, normalizedState);
-        }
+        if (payload.new) applySync(payload.new as Record<string, unknown>);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_levels' }, () => {
         if (skipBlindRealtime.current) return;
@@ -202,17 +206,7 @@ export function useGameState() {
       if (document.visibilityState !== 'visible') return;
       supabase.from('game_state').select('*').single().then(({ data }) => {
         if (!data || skipGameStateRealtime.current) return;
-        let normalized = normalizeGameState(data as GameState, gameStateRef.current);
-        // Drift correction: if running and lastTickAt is fresh (< 10s ago), adjust timeLeft
-        const raw = data as { lastTickAt?: number };
-        if (normalized.status === 'running' && raw.lastTickAt) {
-          const elapsed = Math.floor((Date.now() - raw.lastTickAt) / 1000);
-          if (elapsed < 10) {
-            normalized = { ...normalized, timeLeft: Math.max(0, normalized.timeLeft - elapsed) };
-          }
-        }
-        setGameState(normalized);
-        saveLocal(STATE_KEY, normalized);
+        applySync(data as Record<string, unknown>);
       });
     };
 
@@ -225,11 +219,9 @@ export function useGameState() {
         if (!data || skipGameStateRealtime.current) return;
         const normalized = normalizeGameState(data as GameState, gameStateRef.current);
         const curr = gameStateRef.current;
-        // Only apply if status or level changed (don't override local running timer)
         if (normalized.status !== curr.status ||
             normalized.currentLevelIndex !== curr.currentLevelIndex) {
-          setGameState(normalized);
-          saveLocal(STATE_KEY, normalized);
+          applySync(data as Record<string, unknown>);
         }
       });
     }, 10000);
@@ -240,19 +232,21 @@ export function useGameState() {
     };
   }, [isSupabaseConfigured]);
 
-  // ─── Local timer tick ───────────────────────────────────────────────────
+  // ─── Local timer tick (time-based: all devices compute from same anchor) ─
   useEffect(() => {
     if (gameState.status !== 'running' && gameState.status !== 'break') return;
 
     const interval = setInterval(() => {
       setGameState(prev => {
         if (prev.status !== 'running' && prev.status !== 'break') return prev;
-        const newTimeLeft = Math.max(0, prev.timeLeft - 1);
+        const elapsed = Math.floor((Date.now() - baseTimestamp.current) / 1000);
+        const newTimeLeft = Math.max(0, baseTimeLeft.current - elapsed);
+        if (prev.timeLeft === newTimeLeft) return prev;
         const updated = { ...prev, timeLeft: newTimeLeft };
         if (!isSupabaseConfigured) saveLocal(STATE_KEY, updated);
         return updated;
       });
-    }, 1000);
+    }, 500);
 
     return () => clearInterval(interval);
   }, [gameState.status, isSupabaseConfigured]);
@@ -266,6 +260,12 @@ export function useGameState() {
     if (!isSupabaseConfigured) return;
 
     // Debounce Supabase writes to avoid a DB call on every counter click
+    // Update local time anchor so this device also uses the new base
+    if (updated.lastTickAt) {
+      baseTimeLeft.current  = updated.timeLeft;
+      baseTimestamp.current = updated.lastTickAt;
+    }
+
     // For immediate actions: broadcast via fast channel first, then persist to DB
     if (immediate && broadcastChannelRef.current) {
       broadcastChannelRef.current.send({
@@ -295,7 +295,10 @@ export function useGameState() {
   }, [updateGameState]);
 
   const pauseTimer = useCallback(() => {
-    updateGameState({ status: 'paused' }, true);
+    // Capture the actual live time before pausing
+    const elapsed = Math.floor((Date.now() - baseTimestamp.current) / 1000);
+    const liveTimeLeft = Math.max(0, baseTimeLeft.current - elapsed);
+    updateGameState({ status: 'paused', timeLeft: liveTimeLeft }, true);
   }, [updateGameState]);
 
   const nextLevel = useCallback(() => {
