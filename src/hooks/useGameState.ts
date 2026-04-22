@@ -144,7 +144,15 @@ export function useGameState() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, (payload) => {
         if (skipGameStateRealtime.current) return;
         if (payload.new) {
-          const normalizedState = normalizeGameState(payload.new, gameStateRef.current);
+          let normalizedState = normalizeGameState(payload.new, gameStateRef.current);
+          // Drift correction: compensate for Supabase propagation delay
+          const raw = payload.new as { lastTickAt?: number };
+          if (normalizedState.status === 'running' && raw.lastTickAt) {
+            const elapsed = Math.floor((Date.now() - raw.lastTickAt) / 1000);
+            if (elapsed < 10) {
+              normalizedState = { ...normalizedState, timeLeft: Math.max(0, normalizedState.timeLeft - elapsed) };
+            }
+          }
           setGameState(normalizedState);
           saveLocal(STATE_KEY, normalizedState);
         }
@@ -168,6 +176,52 @@ export function useGameState() {
     };
   }, [isSupabaseConfigured]);
 
+  // ─── Re-sync when page becomes visible (fixes fullscreen WebSocket drop) ─
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    const syncNow = () => {
+      if (document.visibilityState !== 'visible') return;
+      supabase.from('game_state').select('*').single().then(({ data }) => {
+        if (!data || skipGameStateRealtime.current) return;
+        let normalized = normalizeGameState(data as GameState, gameStateRef.current);
+        // Drift correction: if running and lastTickAt is fresh (< 10s ago), adjust timeLeft
+        const raw = data as { lastTickAt?: number };
+        if (normalized.status === 'running' && raw.lastTickAt) {
+          const elapsed = Math.floor((Date.now() - raw.lastTickAt) / 1000);
+          if (elapsed < 10) {
+            normalized = { ...normalized, timeLeft: Math.max(0, normalized.timeLeft - elapsed) };
+          }
+        }
+        setGameState(normalized);
+        saveLocal(STATE_KEY, normalized);
+      });
+    };
+
+    document.addEventListener('visibilitychange', syncNow);
+
+    // Polling every 10s as backup for realtime disconnects
+    const pollInterval = setInterval(() => {
+      if (skipGameStateRealtime.current) return;
+      supabase.from('game_state').select('*').single().then(({ data }) => {
+        if (!data || skipGameStateRealtime.current) return;
+        const normalized = normalizeGameState(data as GameState, gameStateRef.current);
+        const curr = gameStateRef.current;
+        // Only apply if status or level changed (don't override local running timer)
+        if (normalized.status !== curr.status ||
+            normalized.currentLevelIndex !== curr.currentLevelIndex) {
+          setGameState(normalized);
+          saveLocal(STATE_KEY, normalized);
+        }
+      });
+    }, 10000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', syncNow);
+      clearInterval(pollInterval);
+    };
+  }, [isSupabaseConfigured]);
+
   // ─── Local timer tick ───────────────────────────────────────────────────
   useEffect(() => {
     if (gameState.status !== 'running' && gameState.status !== 'break') return;
@@ -186,7 +240,8 @@ export function useGameState() {
   }, [gameState.status, isSupabaseConfigured]);
 
   // ─── Admin actions (stable — don't depend on gameState/blindLevels) ─────
-  const updateGameState = useCallback((patch: Partial<GameState>) => {
+  // immediate=true skips debounce — used for pause/start/level changes
+  const updateGameState = useCallback((patch: Partial<GameState>, immediate = false) => {
     const updated = normalizeGameState({ ...gameStateRef.current, ...patch }, gameStateRef.current);
     setGameState(updated);
     saveLocal(STATE_KEY, updated);
@@ -205,15 +260,15 @@ export function useGameState() {
       if (error && hasMissingBonusColumns(error)) {
         await supabase.from('game_state').upsert({ id: 1, ...toLegacyGameState(stateToSave) });
       }
-    }, 300);
+    }, immediate ? 0 : 300);
   }, [isSupabaseConfigured]);
 
   const startTimer = useCallback(() => {
-    updateGameState({ status: 'running', lastTickAt: Date.now() });
+    updateGameState({ status: 'running', lastTickAt: Date.now() }, true);
   }, [updateGameState]);
 
   const pauseTimer = useCallback(() => {
-    updateGameState({ status: 'paused' });
+    updateGameState({ status: 'paused' }, true);
   }, [updateGameState]);
 
   const nextLevel = useCallback(() => {
@@ -221,7 +276,7 @@ export function useGameState() {
     const bl = blindLevelsRef.current;
     const nextIndex = gs.currentLevelIndex + 1;
     if (nextIndex >= bl.length) {
-      updateGameState({ status: 'ended' });
+      updateGameState({ status: 'ended' }, true);
       return;
     }
     const nextLvl = bl[nextIndex];
@@ -229,7 +284,8 @@ export function useGameState() {
       currentLevelIndex: nextIndex,
       timeLeft: nextLvl.duration,
       status: nextLvl.isBreak ? 'break' : 'running',
-    });
+      lastTickAt: Date.now(),
+    }, true);
   }, [updateGameState]);
 
   // ─── Авто-переход: таймер дошёл до 0 → следующий уровень ──────────────
@@ -250,7 +306,7 @@ export function useGameState() {
       currentLevelIndex: prevIndex,
       timeLeft: level.duration,
       status: 'paused',
-    });
+    }, true);
   }, [updateGameState]);
 
   const resetTournament = useCallback(() => {
