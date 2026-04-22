@@ -94,10 +94,27 @@ function FullscreenButton() {
   );
 }
 
+const W = 1920, H = 1080;
+
+function useScale() {
+  const [s, setS] = useState({ k: 1, x: 0, y: 0 });
+  useEffect(() => {
+    const upd = () => {
+      const k = Math.min(window.innerWidth / W, window.innerHeight / H);
+      setS({ k, x: (window.innerWidth - W * k) / 2, y: (window.innerHeight - H * k) / 2 });
+    };
+    upd();
+    window.addEventListener('resize', upd);
+    return () => window.removeEventListener('resize', upd);
+  }, []);
+  return s;
+}
+
 export function Display() {
   const { gameState, blindLevels, combinations } = useGameState();
   const { players: ratingPlayers } = useBotRating();
   const nextGame = useNextGame();
+  const { k, x, y } = useScale();
 
   // Активируем AudioContext при первом взаимодействии (политика браузера)
   useEffect(() => {
@@ -173,10 +190,11 @@ export function Display() {
   /* ══════════════ RATING MODE ══════════════ */
   if (gameState.showRating) {
     return (
-      <div className="h-screen relative overflow-hidden" style={{ background: '#0D0D0D', ...bgStyle }}>
+      <div style={{ position: 'fixed', inset: 0, background: '#0D0D0D', overflow: 'hidden', ...bgStyle }}>
         {gameState.backgroundUrl && <div className="absolute inset-0 bg-black/75 z-0" />}
-
-        <div className="relative z-10 h-full flex flex-col items-center justify-center gap-8 px-12">
+        <FullscreenButton />
+        <div style={{ position: 'absolute', width: W, height: H, transform: `translate(${x}px,${y}px) scale(${k})`, transformOrigin: 'top left' }}
+             className="flex flex-col items-center justify-center gap-8 px-12">
           <div className="text-[#444] uppercase tracking-[0.4em] text-sm">
             Рейтинг · {new Date().toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
           </div>
@@ -202,12 +220,13 @@ export function Display() {
 
   /* ══════════════ GAME MODE ══════════════ */
   return (
-    <div className="h-screen flex flex-col overflow-hidden select-none"
-         style={{ background: '#0D0D0D', ...bgStyle }}>
+    <div style={{ position: 'fixed', inset: 0, background: '#0D0D0D', overflow: 'hidden', ...bgStyle }}
+         className="select-none">
       {gameState.backgroundUrl && <div className="absolute inset-0 bg-black/75 z-0" />}
       <FullscreenButton />
 
-      <div className="relative z-10 flex flex-col h-full">
+      <div style={{ position: 'absolute', width: W, height: H, transform: `translate(${x}px,${y}px) scale(${k})`, transformOrigin: 'top left' }}
+           className="flex flex-col">
 
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className="flex items-center justify-center gap-5 px-8 py-3 border-b border-[#181818] flex-shrink-0">
