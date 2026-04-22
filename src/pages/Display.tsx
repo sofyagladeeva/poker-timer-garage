@@ -146,7 +146,7 @@ export function Display() {
       <div className="h-screen relative overflow-hidden" style={{ background: '#0D0D0D', ...bgStyle }}>
         {gameState.backgroundUrl && <div className="absolute inset-0 bg-black/75 z-0" />}
 
-        <div className="relative z-10 h-full flex flex-col items-center justify-center gap-8 px-12">
+        <div className="relative z-10 h-full flex flex-col items-center justify-center gap-8" style={{ padding: '1.5vh 2vw' }}>
           <div className="text-[#444] uppercase tracking-[0.4em] text-sm">
             Рейтинг · {new Date().toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
           </div>
@@ -176,7 +176,7 @@ export function Display() {
          style={{ background: '#0D0D0D', ...bgStyle }}>
       {gameState.backgroundUrl && <div className="absolute inset-0 bg-black/75 z-0" />}
 
-      <div className="relative z-10 flex flex-col h-full">
+      <div className="relative z-10 flex flex-col h-full" style={{ padding: '1.5vh 2vw' }}>
 
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className="flex items-center justify-center gap-5 px-8 py-3 border-b border-[#181818] flex-shrink-0">
