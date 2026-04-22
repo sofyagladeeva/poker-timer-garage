@@ -146,7 +146,7 @@ export function Display() {
       <div className="h-screen relative overflow-hidden" style={{ background: '#0D0D0D', ...bgStyle }}>
         {gameState.backgroundUrl && <div className="absolute inset-0 bg-black/75 z-0" />}
 
-        <div className="relative z-10 h-full flex flex-col items-center justify-center gap-8">
+        <div className="relative z-10 h-full flex flex-col items-center justify-center gap-8 px-12">
           <div className="text-[#444] uppercase tracking-[0.4em] text-sm">
             Рейтинг · {new Date().toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
           </div>
@@ -173,7 +173,7 @@ export function Display() {
   /* ══════════════ GAME MODE ══════════════ */
   return (
     <div className="h-screen flex flex-col overflow-hidden select-none"
-         style={{ background: '#0D0D0D', padding: '3vh 3vw', ...bgStyle }}>
+         style={{ background: '#0D0D0D', ...bgStyle }}>
       {gameState.backgroundUrl && <div className="absolute inset-0 bg-black/75 z-0" />}
 
       <div className="relative z-10 flex flex-col h-full">
@@ -200,7 +200,7 @@ export function Display() {
         <div className="flex flex-1 min-h-0">
 
           {/* ═══ LEFT: stats + combinations ═══ */}
-          <div className="flex flex-col w-[30%] border-r border-[#181818] px-5 py-5 gap-4 overflow-hidden">
+          <div className="flex flex-col w-[30%] border-r border-[#181818] px-5 py-5 gap-4">
 
             {/* Stats */}
             <div className="flex flex-col gap-3">
@@ -348,14 +348,14 @@ export function Display() {
           </div>
 
           {/* ═══ RIGHT: prize points + top3 + next game ═══ */}
-          <div className="flex flex-col w-[24%] border-l border-[#181818] px-5 py-5 gap-3 overflow-hidden">
+          <div className="flex flex-col w-[24%] border-l border-[#181818] px-5 py-5 gap-4">
 
             {/* Prize rank points */}
             <div>
               <ColLabel>Очки турнира{gameState.players > 0 ? ` · ${gameState.players} игроков` : ''}</ColLabel>
               <div className="grid grid-cols-3 gap-2 mt-3">
                 {rankPoints.length > 0
-                  ? rankPoints.slice(0, 6).map((pts, i) => (
+                  ? rankPoints.slice(0, 9).map((pts, i) => (
                       <div key={i} className="bg-[#111] rounded-lg py-2 text-center">
                         <div className="text-[#444] text-xs">{i + 1} место</div>
                         <div className="text-[#E31E24] font-black text-xl leading-tight">{pts.toFixed(1)}</div>
