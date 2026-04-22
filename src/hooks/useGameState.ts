@@ -99,6 +99,11 @@ export function useGameState() {
   const supabaseUpsertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingUpsertState = useRef<GameState | null>(null);
 
+  // Broadcast channel ref — for low-latency state push (<100ms)
+  const broadcastChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  // Unique client ID to filter out own broadcasts
+  const clientId = useRef(Math.random().toString(36).slice(2));
+
   // ─── Supabase real-time subscriptions ───────────────────────────────────
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -138,7 +143,18 @@ export function useGameState() {
       if (combs.data) setCombinations(combs.data);
     }).catch(() => {});
 
-    // Real-time
+    // Broadcast channel — low-latency (<100ms) for pause/start/level commands
+    const bc = supabase.channel('poker-broadcast')
+      .on('broadcast', { event: 'game_state' }, (msg) => {
+        if (!msg.payload || msg.payload._cid === clientId.current) return;
+        const normalized = normalizeGameState(msg.payload as GameState, gameStateRef.current);
+        setGameState(normalized);
+        saveLocal(STATE_KEY, normalized);
+      })
+      .subscribe();
+    broadcastChannelRef.current = bc;
+
+    // Real-time (postgres_changes) — for persistence sync on connect/reconnect
     const channel = supabase
       .channel('poker-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, (payload) => {
@@ -172,7 +188,9 @@ export function useGameState() {
 
     return () => {
       cancelled = true;
+      supabase.removeChannel(bc);
       supabase.removeChannel(channel);
+      broadcastChannelRef.current = null;
     };
   }, [isSupabaseConfigured]);
 
@@ -248,6 +266,15 @@ export function useGameState() {
     if (!isSupabaseConfigured) return;
 
     // Debounce Supabase writes to avoid a DB call on every counter click
+    // For immediate actions: broadcast via fast channel first, then persist to DB
+    if (immediate && broadcastChannelRef.current) {
+      broadcastChannelRef.current.send({
+        type: 'broadcast',
+        event: 'game_state',
+        payload: { ...updated, _cid: clientId.current },
+      });
+    }
+
     pendingUpsertState.current = updated;
     if (supabaseUpsertTimer.current) clearTimeout(supabaseUpsertTimer.current);
     supabaseUpsertTimer.current = setTimeout(async () => {
