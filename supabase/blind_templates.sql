@@ -31,3 +31,6 @@ create policy "blind_templates_delete_all"
 on public.blind_templates
 for delete
 using (true);
+
+-- Включить realtime для таблицы (нужно для синхронизации между устройствами)
+alter publication supabase_realtime add table public.blind_templates;

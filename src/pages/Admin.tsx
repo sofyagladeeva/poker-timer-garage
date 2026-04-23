@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, Component } from 'react';
 import type { ChangeEvent, ReactNode } from 'react';
 import { useGameState } from '../hooks/useGameState';
+import { supabase } from '../supabase';
 import { createGarageBlindTemplate, getNextGarageBlindPair } from '../blindStructure';
 import { calcTotalStack } from '../gameStateMath';
 import type { BlindLevel, BlindTemplate, Combination, Card, Suit, Rank, TournamentRecord, GameState } from '../types';
@@ -250,6 +251,8 @@ export function Admin() {
   const [pwError, setPwError] = useState(false);
   const [activeTab, setActiveTab] = useState<'control' | 'blinds' | 'combos' | 'archive' | 'settings'>('control');
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
+  const [customGameOpen, setCustomGameOpen] = useState(false);
+  const [customGameTitle, setCustomGameTitle] = useState('');
   const [blindTemplates, setBlindTemplates] = useState<BlindTemplate[]>(() => loadBlindTemplates());
   const [templateName, setTemplateName] = useState('');
   const [templateBusy, setTemplateBusy] = useState(false);
@@ -396,6 +399,28 @@ export function Admin() {
       cancelled = true;
     };
   }, [activeTab, sharedBlindTemplateLibraryEnabled]);
+
+  // ── Realtime sync: шаблоны обновляются на всех устройствах сразу ──────────
+  useEffect(() => {
+    if (!sharedBlindTemplateLibraryEnabled) return;
+
+    const channel = supabase
+      .channel('blind-templates-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_templates' }, async () => {
+        try {
+          const remote = await fetchSharedBlindTemplates();
+          const local = loadBlindTemplates();
+          const merged = mergeBlindTemplates(remote, local).filter(t => !t.id.startsWith('preset_'));
+          saveBlindTemplates(merged);
+          setBlindTemplates(merged);
+        } catch {
+          // не блокируем UI при ошибке realtime
+        }
+      })
+      .subscribe();
+
+    return () => { void supabase.removeChannel(channel); };
+  }, [sharedBlindTemplateLibraryEnabled]);
 
   const persistBlindTemplates = async (next: BlindTemplate[], templateToSave?: BlindTemplate) => {
     const customTemplates = next.filter(template => !template.id.startsWith('preset_'));
@@ -885,12 +910,6 @@ export function Admin() {
           )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <button
-            onClick={loadDemo}
-            className="text-[#F39C12] text-xs border border-[#F39C12]/30 rounded-lg px-2 py-1.5 hover:bg-[#F39C12]/10 transition-colors"
-          >
-            ★ Демо
-          </button>
           <a
             href="#/"
             target="_blank"
@@ -925,60 +944,117 @@ export function Admin() {
         {activeTab === 'control' && (
           <div className="flex flex-col gap-4">
 
-            {/* ── Выбор игры из бота ─────────────────────────────────── */}
+            {/* ── Выбор / создание игры ──────────────────────────────── */}
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
+              {/* Заголовок с текущим выбором */}
               <button
-                onClick={() => setGamePickerOpen(o => !o)}
+                onClick={() => { setGamePickerOpen(o => !o); setCustomGameOpen(false); }}
                 className="flex items-center justify-between w-full"
               >
                 <div className="text-sm">
                   {gameState.tournamentTitle
                     ? <span className="text-white font-bold">✓ {gameState.tournamentTitle}</span>
-                    : <span className="text-[#888]">Выбрать игру из бота</span>}
+                    : <span className="text-[#888]">Выбрать или создать игру</span>}
                 </div>
                 <span className="text-[#555] text-xs ml-2">{gamePickerOpen ? '▲' : '▼'}</span>
               </button>
-              {gamePickerOpen && <div className="mt-3">
-              {botGames.length === 0 ? (
-                <div className="text-[#444] text-sm">Загрузка игр из бота...</div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {botGames.map(g => {
-                    const isSelected = gameState.tournamentBotId === g.id;
-                    const d = new Date(g.date);
-                    const dateStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ' · ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-                    return (
+
+              {gamePickerOpen && (
+                <div className="mt-3 flex flex-col gap-3">
+                  {/* Переключатель режима */}
+                  <div className="flex gap-1 bg-[#0A0A0A] rounded-xl p-1">
+                    <button
+                      onClick={() => setCustomGameOpen(false)}
+                      className={`flex-1 py-1.5 text-xs rounded-lg transition-colors ${!customGameOpen ? 'bg-[#1E1E1E] text-white' : 'text-[#555] hover:text-[#888]'}`}
+                    >
+                      Из бота
+                    </button>
+                    <button
+                      onClick={() => setCustomGameOpen(true)}
+                      className={`flex-1 py-1.5 text-xs rounded-lg transition-colors ${customGameOpen ? 'bg-[#1E1E1E] text-white' : 'text-[#555] hover:text-[#888]'}`}
+                    >
+                      + Создать свою
+                    </button>
+                  </div>
+
+                  {/* Список игр из бота */}
+                  {!customGameOpen && (
+                    botGames.length === 0 ? (
+                      <div className="text-[#444] text-sm">Загрузка игр из бота...</div>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {botGames.map(g => {
+                          const isSelected = gameState.tournamentBotId === g.id;
+                          const d = new Date(g.date);
+                          const dateStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ' · ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                          return (
+                            <button
+                              key={g.id}
+                              onClick={() => updateGameState({ tournamentTitle: g.title, tournamentBotId: g.id })}
+                              className={`flex items-center justify-between px-4 py-3 rounded-xl border text-left transition-all ${
+                                isSelected
+                                  ? 'border-[#C0392B] bg-[#1a0a00] text-white'
+                                  : 'border-[#2D2D2D] bg-[#0A0A0A] text-[#888] hover:border-[#444]'
+                              }`}
+                            >
+                              <div>
+                                <div className={`font-bold uppercase text-sm ${isSelected ? 'text-white' : 'text-[#666]'}`}>{g.title}</div>
+                                <div className="text-xs text-[#444] mt-0.5">{dateStr}</div>
+                              </div>
+                              <div className="text-right ml-3">
+                                <div className={`text-sm font-bold ${isSelected ? 'text-[#C0392B]' : 'text-[#444]'}`}>{g.confirmed} / {g.max_players}</div>
+                                {isSelected && <div className="text-[#C0392B] text-xs">✓</div>}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )
+                  )}
+
+                  {/* Создать свою игру */}
+                  {customGameOpen && (
+                    <div className="flex flex-col gap-2">
+                      <input
+                        type="text"
+                        value={customGameTitle}
+                        onChange={e => setCustomGameTitle(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && customGameTitle.trim()) {
+                            updateGameState({ tournamentTitle: customGameTitle.trim(), tournamentBotId: null });
+                            setCustomGameTitle('');
+                            setGamePickerOpen(false);
+                          }
+                        }}
+                        placeholder="Название игры..."
+                        className="bg-[#0A0A0A] border border-[#2D2D2D] rounded-xl px-4 py-3 text-white text-sm placeholder-[#444] focus:outline-none focus:border-[#C0392B]"
+                      />
                       <button
-                        key={g.id}
-                        onClick={() => updateGameState({ tournamentTitle: g.title, tournamentBotId: g.id })}
-                        className={`flex items-center justify-between px-4 py-3 rounded-xl border text-left transition-all ${
-                          isSelected
-                            ? 'border-[#C0392B] bg-[#1a0a00] text-white'
-                            : 'border-[#2D2D2D] bg-[#0A0A0A] text-[#888] hover:border-[#444]'
-                        }`}
+                        onClick={() => {
+                          if (!customGameTitle.trim()) return;
+                          updateGameState({ tournamentTitle: customGameTitle.trim(), tournamentBotId: null });
+                          setCustomGameTitle('');
+                          setGamePickerOpen(false);
+                        }}
+                        disabled={!customGameTitle.trim()}
+                        className="admin-btn-primary py-3 text-sm disabled:opacity-30"
                       >
-                        <div>
-                          <div className={`font-bold uppercase text-sm ${isSelected ? 'text-white' : 'text-[#666]'}`}>{g.title}</div>
-                          <div className="text-xs text-[#444] mt-0.5">{dateStr}</div>
-                        </div>
-                        <div className="text-right ml-3">
-                          <div className={`text-sm font-bold ${isSelected ? 'text-[#C0392B]' : 'text-[#444]'}`}>{g.confirmed} / {g.max_players}</div>
-                          {isSelected && <div className="text-[#C0392B] text-xs">✓</div>}
-                        </div>
+                        Создать игру
                       </button>
-                    );
-                  })}
+                    </div>
+                  )}
+
+                  {/* Сбросить выбор */}
                   {gameState.tournamentTitle && (
                     <button
                       onClick={() => updateGameState({ tournamentTitle: '', tournamentBotId: null })}
-                      className="text-[#444] text-xs text-center hover:text-[#888] mt-1 py-2"
+                      className="text-[#444] text-xs text-center hover:text-[#888] py-1"
                     >
                       Сбросить выбор
                     </button>
                   )}
                 </div>
               )}
-              </div>}
             </div>
 
             {/* ── Статус турнира ───────────────────────────────────── */}
