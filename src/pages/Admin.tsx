@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, Component } from 'react';
 import type { ChangeEvent, ReactNode } from 'react';
 import { useGameState } from '../hooks/useGameState';
 import { supabase } from '../supabase';
-import { createGarageBlindTemplate, getNextGarageBlindPair } from '../blindStructure';
+import { getNextGarageBlindPair } from '../blindStructure';
 import { calcTotalStack } from '../gameStateMath';
 import type { BlindLevel, BlindTemplate, Combination, Card, Suit, Rank, TournamentRecord, GameState } from '../types';
 import { SUIT_SYMBOLS } from '../types';
