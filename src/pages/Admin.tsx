@@ -733,53 +733,6 @@ export function Admin() {
   };
 
   // ── Demo data ──────────────────────────────────────────────────────────
-  const loadDemo = () => {
-    const demoLevels = createGarageBlindTemplate(900);
-    updateBlindLevels(demoLevels);
-    updateGameState({
-      status: 'running',
-      currentLevelIndex: 1,
-      timeLeft: 900,
-      players: 18,
-      outs: 2,
-      rebuys: 5,
-      addonCount: 3,
-      bonusCount: 0,
-      startStack: 12000,
-      addonStack: 20000,
-      bonusStack: 0,
-      totalStack: (18 + 5) * 12000 + 3 * 20000,
-      tournamentTitle: 'CRAZY FRIDAY',
-      tournamentBotId: null,
-      prizeAmount: 18000,
-      prizePlaces: 5,
-      nextGameInfo: '',
-    });
-    updateCombinations([
-      {
-        id: 'demo1',
-        cards: [
-          { rank: 'A', suit: 'any' },
-          { rank: 'K', suit: 'any' },
-          { rank: 'Q', suit: 'any' },
-          { rank: 'J', suit: 'any' },
-          { rank: 'T', suit: 'any' },
-        ],
-        description: 'Кальян от клуба',
-        enabled: true,
-      },
-      {
-        id: 'demo2',
-        cards: [
-          { rank: '7', suit: 'spades' },
-          { rank: '2', suit: 'hearts' },
-        ],
-        description: '+5 очков к рейтингу',
-        enabled: true,
-      },
-    ]);
-  };
-
   // ── Blind levels editor ────────────────────────────────────────────────
   const addBlindLevel = () => {
     const nextPair = getNextGarageBlindPair(blindLevels);
