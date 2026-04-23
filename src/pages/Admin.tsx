@@ -450,7 +450,8 @@ export function Admin() {
 
   const syncBackgroundLibraryState = (next: StoredBackground[]) => {
     const result = saveBackgroundLibrary(next);
-    if (!result.ok) {
+    // Если Supabase настроен — localStorage лишь кеш, его переполнение не критично
+    if (!result.ok && !sharedBackgroundLibraryEnabled) {
       return result;
     }
 
