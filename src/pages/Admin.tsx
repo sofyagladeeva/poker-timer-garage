@@ -860,7 +860,7 @@ export function Admin() {
       description: '',
       enabled: true,
     };
-    updateCombinations([...combinations, newCombo]);
+    updateCombinations([newCombo, ...combinations]);
   };
 
   const updateCombo = (idx: number, combo: Combination) => {

@@ -95,6 +95,10 @@ export function useGameState() {
   const skipGameStateRealtime = useRef(false);
   const skipGameStateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Skip realtime combinations updates for a short window after we write
+  const skipCombinationsRealtime = useRef(false);
+  const skipCombinationsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Debounce Supabase upsert for rapid counter updates
   const supabaseUpsertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingUpsertState = useRef<GameState | null>(null);
@@ -184,6 +188,7 @@ export function useGameState() {
         });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'combinations' }, () => {
+        if (skipCombinationsRealtime.current) return;
         supabase.from('combinations').select('*').order('created_at').then(({ data }) => {
           if (data) setCombinations(data);
         });
@@ -406,6 +411,9 @@ export function useGameState() {
       saveLocal(COMBINATIONS_KEY, combs);
       return;
     }
+    skipCombinationsRealtime.current = true;
+    if (skipCombinationsTimer.current) clearTimeout(skipCombinationsTimer.current);
+    skipCombinationsTimer.current = setTimeout(() => { skipCombinationsRealtime.current = false; }, 4000);
     await supabase.from('combinations').delete().neq('id', '');
     if (combs.length > 0) await supabase.from('combinations').insert(combs);
   }, [isSupabaseConfigured]);
