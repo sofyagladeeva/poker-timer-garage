@@ -276,7 +276,8 @@ export function useGameState(readOnly = false) {
         const normalized = normalizeGameState(data as GameState, gameStateRef.current);
         const curr = gameStateRef.current;
         if (normalized.status !== curr.status ||
-            normalized.currentLevelIndex !== curr.currentLevelIndex) {
+            normalized.currentLevelIndex !== curr.currentLevelIndex ||
+            normalized.resetAt !== curr.resetAt) {
           applyIfNewer(data as Record<string, unknown>);
         }
       });
