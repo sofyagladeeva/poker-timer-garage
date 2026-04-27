@@ -850,6 +850,7 @@ export function Admin() {
     { id: 'archive', label: '📋 Архив' },
     { id: 'settings',label: '⚙️ Настройки' },
   ] as const;
+  const displayHref = `${import.meta.env.BASE_URL}#/`;
 
   return (
     <ErrorBoundary>
@@ -867,7 +868,7 @@ export function Admin() {
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <a
-            href="#/"
+            href={displayHref}
             target="_blank"
             rel="noopener noreferrer"
             className="bg-[#C0392B] text-white text-xs font-bold rounded-lg px-2 py-1.5 hover:bg-[#E31E24] transition-colors whitespace-nowrap"
