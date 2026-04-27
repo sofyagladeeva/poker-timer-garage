@@ -39,4 +39,5 @@ export const DEFAULT_GAME_STATE = {
   tournamentTitle: '',
   tournamentBotId: null,
   nextGameBotId: null,
+  resetAt: 0,
 };

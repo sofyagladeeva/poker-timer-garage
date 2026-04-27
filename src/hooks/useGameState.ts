@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, DEFAULT_BLIND_LEVELS, DEFAULT_GAME_STATE } from '../supabase';
-import { hasMissingBonusColumns, normalizeGameState, toLegacyGameState } from '../gameStateMath';
+import { hasMissingBonusColumns, hasMissingResetAt, normalizeGameState, toLegacyGameState } from '../gameStateMath';
 import type { GameState, BlindLevel, Combination, TournamentRecord } from '../types';
 
 const STATE_KEY = 'poker_game_state';
@@ -182,7 +182,23 @@ export function useGameState(readOnly = false) {
     const bc = supabase.channel('poker-broadcast')
       .on('broadcast', { event: 'game_state' }, (msg) => {
         if (!msg.payload || msg.payload._cid === clientId.current) return;
-        applySync(msg.payload as Record<string, unknown>);
+        const incoming = msg.payload as Record<string, unknown>;
+        // Tournament generation check: if resetAt differs, a stale admin may be
+        // broadcasting old tournament data. Handle based on which is newer.
+        const incomingResetAt = typeof incoming.resetAt === 'number' ? incoming.resetAt : null;
+        const localResetAt = gameStateRef.current.resetAt;
+        if (incomingResetAt !== null && localResetAt > 0 && incomingResetAt !== localResetAt) {
+          if (incomingResetAt > localResetAt) {
+            // Newer reset from another device — this is a legitimate new tournament
+            applySync(incoming);
+          } else {
+            // Incoming is older tournament — stale device, fetch authoritative state
+            Promise.resolve(supabase.from('game_state').select('*').single())
+              .then(({ data }) => { if (data) applySync(data as Record<string, unknown>); });
+          }
+          return;
+        }
+        applySync(incoming);
       })
       .subscribe();
     broadcastChannelRef.current = bc;
@@ -194,8 +210,11 @@ export function useGameState(readOnly = false) {
         if (skipGameStateRealtime.current) return;
         if (!payload.new) return;
         const incoming = payload.new as Record<string, unknown>;
+        // Reject if from an older tournament generation (stale admin write to DB)
+        const incomingResetAt = typeof incoming.resetAt === 'number' ? incoming.resetAt : null;
+        const localResetAt = gameStateRef.current.resetAt;
+        if (incomingResetAt !== null && localResetAt > 0 && incomingResetAt < localResetAt) return;
         // Only apply if the incoming state is at least as recent as local.
-        // Prevents a stale device from restoring old state via postgres_changes.
         const incomingTick = typeof incoming.lastTickAt === 'number' ? incoming.lastTickAt : 0;
         const localTick = gameStateRef.current.lastTickAt ?? 0;
         if (incomingTick < localTick) return;
@@ -227,9 +246,12 @@ export function useGameState(readOnly = false) {
   useEffect(() => {
     if (!isSupabaseConfigured) return;
 
-    // Helper: only apply Supabase state if it's at least as recent as local.
-    // Broadcasts (fast channel) bypass this — they are intentional admin actions.
+    // Helper: only apply Supabase state if it's at least as recent as local,
+    // and from the same tournament generation (resetAt check).
     const applyIfNewer = (data: Record<string, unknown>) => {
+      const incomingResetAt = typeof data.resetAt === 'number' ? data.resetAt : null;
+      const localResetAt = gameStateRef.current.resetAt;
+      if (incomingResetAt !== null && localResetAt > 0 && incomingResetAt < localResetAt) return;
       const incomingTick = typeof data.lastTickAt === 'number' ? data.lastTickAt : 0;
       const localTick = gameStateRef.current.lastTickAt ?? 0;
       if (incomingTick < localTick) return;
@@ -314,6 +336,25 @@ export function useGameState(readOnly = false) {
     supabaseUpsertTimer.current = setTimeout(async () => {
       const stateToSave = pendingUpsertState.current;
       if (!stateToSave) return;
+
+      // For immediate actions: verify tournament generation before writing.
+      // If the server has a NEWER resetAt, another admin reset the tournament —
+      // we're stale. Sync and abort to avoid polluting DB with old game data.
+      if (immediate && stateToSave.resetAt > 0) {
+        const serverCheckResult = await Promise.resolve(
+          supabase.from('game_state').select('resetAt').single()
+        );
+        if (serverCheckResult.data) {
+          const serverResetAt = (serverCheckResult.data as Record<string, unknown>).resetAt;
+          if (typeof serverResetAt === 'number' && serverResetAt > stateToSave.resetAt) {
+            // Server has newer tournament — sync and do not write
+            Promise.resolve(supabase.from('game_state').select('*').single())
+              .then(({ data }) => { if (data) applySync(data as Record<string, unknown>); });
+            return;
+          }
+        }
+      }
+
       skipGameStateRealtime.current = true;
       if (skipGameStateTimer.current) clearTimeout(skipGameStateTimer.current);
       // Immediate actions (reset/start/pause) get a longer quiet window so
@@ -322,10 +363,18 @@ export function useGameState(readOnly = false) {
       lastLocalWriteAt.current = Date.now();
       let { error } = await supabase.from('game_state').upsert({ id: 1, ...stateToSave });
       if (error && hasMissingBonusColumns(error)) {
-        await supabase.from('game_state').upsert({ id: 1, ...toLegacyGameState(stateToSave) });
+        const legacy = toLegacyGameState(stateToSave);
+        ({ error } = await supabase.from('game_state').upsert({ id: 1, ...legacy }));
+        if (error && hasMissingResetAt(error)) {
+          const { resetAt: _resetAt, ...noReset } = legacy;
+          await supabase.from('game_state').upsert({ id: 1, ...noReset });
+        }
+      } else if (error && hasMissingResetAt(error)) {
+        const { resetAt: _resetAt, ...noReset } = stateToSave;
+        await supabase.from('game_state').upsert({ id: 1, ...noReset });
       }
     }, immediate ? 0 : 300);
-  }, [isSupabaseConfigured]);
+  }, [isSupabaseConfigured, applySync]);
 
   const startTimer = useCallback(() => {
     updateGameState({ status: 'running', lastTickAt: Date.now() }, true);
@@ -403,13 +452,15 @@ export function useGameState(readOnly = false) {
   const resetTournament = useCallback(() => {
     const bl = blindLevelsRef.current;
     const first = bl[0];
+    const now = Date.now();
     // immediate=true: broadcast instantly to all devices so their timers stop.
-    // lastTickAt: Date.now() gives this reset a fresh timestamp so that
-    // applyIfNewer correctly rejects any older state from other devices.
+    // resetAt = now: tournament generation marker — stale devices that missed
+    // this broadcast will be rejected when they try to write old game data.
     updateGameState({
       ...DEFAULT_GAME_STATE,
       timeLeft: first?.duration ?? 1200,
-      lastTickAt: Date.now(),
+      lastTickAt: now,
+      resetAt: now,
     }, true);
   }, [updateGameState]);
 

@@ -69,12 +69,20 @@ export function normalizeGameState(raw: unknown, fallback: GameState): GameState
     tournamentTitle: toStringValue(source.tournamentTitle, fallback.tournamentTitle),
     tournamentBotId: toNullableNumber(source.tournamentBotId, fallback.tournamentBotId),
     nextGameBotId: toNullableNumber(source.nextGameBotId, fallback.nextGameBotId),
+    resetAt: toWholeNumber(source.resetAt, fallback.resetAt ?? 0),
   };
 
   const explicitTotal = source.totalStack ?? source.total_stack;
   normalized.totalStack = toWholeNumber(explicitTotal, calcTotalStack(normalized));
 
   return normalized;
+}
+
+export function hasMissingResetAt(error: unknown) {
+  const message = typeof error === 'object' && error && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : '';
+  return message.includes('resetAt');
 }
 
 export function hasMissingBonusColumns(error: unknown) {
