@@ -366,8 +366,26 @@ export function useGameState(readOnly = false) {
     if (gameState.timeLeft !== 0) return;
     if (gameState.status !== 'running' && gameState.status !== 'break') return;
 
-    nextLevel();
-  }, [readOnly, gameState.timeLeft, gameState.status, nextLevel]);
+    // Before advancing, check server state to ensure this device isn't stale.
+    // If another admin already reset/advanced (server tick > local tick), sync
+    // instead of writing a stale nextLevel() to Supabase.
+    if (!isSupabaseConfigured) {
+      nextLevel();
+      return;
+    }
+
+    Promise.resolve(supabase.from('game_state').select('*').single()).then(({ data }) => {
+      if (!data) { nextLevel(); return; }
+      const serverTick = typeof data.lastTickAt === 'number' ? data.lastTickAt : 0;
+      const localTick = gameStateRef.current.lastTickAt ?? 0;
+      if (serverTick > localTick) {
+        // Server is ahead — someone else already acted, just sync
+        applySync(data as Record<string, unknown>);
+      } else {
+        nextLevel();
+      }
+    }).catch(() => nextLevel());
+  }, [readOnly, gameState.timeLeft, gameState.status, nextLevel, isSupabaseConfigured, applySync]);
 
   const prevLevel = useCallback(() => {
     const gs = gameStateRef.current;
