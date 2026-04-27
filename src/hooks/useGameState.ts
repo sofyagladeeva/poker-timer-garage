@@ -115,6 +115,10 @@ export function useGameState(readOnly = false) {
   const baseTimeLeft  = useRef(gameState.timeLeft);
   const baseTimestamp = useRef(gameState.lastTickAt ?? Date.now());
 
+  // Track when WE last wrote to Supabase — polling won't override local state
+  // for 20 seconds after any local write, breaking the multi-device fight cycle
+  const lastLocalWriteAt = useRef(0);
+
   // Guard: don't allow auto-advance until authoritative state is loaded from
   // Supabase. Prevents stale localStorage from writing wrong level to the DB
   // when a second device opens the admin panel mid-tournament.
@@ -226,11 +230,15 @@ export function useGameState(readOnly = false) {
 
     document.addEventListener('visibilitychange', syncNow);
 
-    // Polling every 10s as backup for realtime disconnects
+    // Polling every 2s as backup for realtime disconnects.
+    // Skipped for 20s after any local write to prevent a competing device
+    // from restoring stale state via Supabase after we reset/end a tournament.
     const pollInterval = setInterval(() => {
       if (skipGameStateRealtime.current) return;
+      if (Date.now() - lastLocalWriteAt.current < 20000) return;
       supabase.from('game_state').select('*').single().then(({ data }) => {
         if (!data || skipGameStateRealtime.current) return;
+        if (Date.now() - lastLocalWriteAt.current < 20000) return;
         const normalized = normalizeGameState(data as GameState, gameStateRef.current);
         const curr = gameStateRef.current;
         if (normalized.status !== curr.status ||
@@ -299,6 +307,7 @@ export function useGameState(readOnly = false) {
       // Immediate actions (reset/start/pause) get a longer quiet window so
       // polling doesn't restore stale DB state before the write propagates
       skipGameStateTimer.current = setTimeout(() => { skipGameStateRealtime.current = false; }, immediate ? 8000 : 4000);
+      lastLocalWriteAt.current = Date.now();
       let { error } = await supabase.from('game_state').upsert({ id: 1, ...stateToSave });
       if (error && hasMissingBonusColumns(error)) {
         await supabase.from('game_state').upsert({ id: 1, ...toLegacyGameState(stateToSave) });
