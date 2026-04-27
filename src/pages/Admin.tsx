@@ -850,7 +850,12 @@ export function Admin() {
     { id: 'archive', label: '📋 Архив' },
     { id: 'settings',label: '⚙️ Настройки' },
   ] as const;
-  const displayHref = `${import.meta.env.BASE_URL}#/`;
+  // GitHub Pages may serve the custom domain over HTTP before the TLS
+  // certificate is issued, so force the display link to stay on HTTP there.
+  const displayOrigin = window.location.hostname === 'gg1409.ru' && window.location.protocol === 'https:'
+    ? 'http://gg1409.ru'
+    : window.location.origin;
+  const displayHref = `${displayOrigin}${import.meta.env.BASE_URL}#/`;
 
   return (
     <ErrorBoundary>
