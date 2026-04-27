@@ -136,6 +136,47 @@ export function useGameState(readOnly = false) {
     saveLocal(STATE_KEY, normalized);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const persistGameState = useCallback(async (stateToSave: GameState, immediate = false) => {
+    if (immediate && stateToSave.resetAt > 0) {
+      const serverCheckResult = await Promise.resolve(
+        supabase.from('game_state').select('resetAt').single()
+      );
+      if (serverCheckResult.data) {
+        const serverResetAt = (serverCheckResult.data as Record<string, unknown>).resetAt;
+        if (typeof serverResetAt === 'number' && serverResetAt > stateToSave.resetAt) {
+          Promise.resolve(supabase.from('game_state').select('*').single())
+            .then(({ data }) => { if (data) applySync(data as Record<string, unknown>); });
+          return false;
+        }
+      }
+    }
+
+    skipGameStateRealtime.current = true;
+    if (skipGameStateTimer.current) clearTimeout(skipGameStateTimer.current);
+    skipGameStateTimer.current = setTimeout(() => { skipGameStateRealtime.current = false; }, immediate ? 8000 : 4000);
+    lastLocalWriteAt.current = Date.now();
+
+    let { error } = await supabase.from('game_state').upsert({ id: 1, ...stateToSave });
+    if (error && hasMissingBonusColumns(error)) {
+      const legacy = toLegacyGameState(stateToSave);
+      ({ error } = await supabase.from('game_state').upsert({ id: 1, ...legacy }));
+      if (error && hasMissingResetAt(error)) {
+        const { resetAt: _resetAt, ...noReset } = legacy;
+        ({ error } = await supabase.from('game_state').upsert({ id: 1, ...noReset }));
+      }
+    } else if (error && hasMissingResetAt(error)) {
+      const { resetAt: _resetAt, ...noReset } = stateToSave;
+      ({ error } = await supabase.from('game_state').upsert({ id: 1, ...noReset }));
+    }
+
+    if (error) {
+      console.error('Failed to persist game_state', error);
+      return false;
+    }
+
+    return true;
+  }, [applySync]);
+
   // ─── Supabase real-time subscriptions ───────────────────────────────────
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -308,12 +349,12 @@ export function useGameState(readOnly = false) {
   // ─── Admin actions (stable — don't depend on gameState/blindLevels) ─────
   // immediate=true skips debounce — used for pause/start/level changes
   const updateGameState = useCallback((patch: Partial<GameState>, immediate = false) => {
-    if (isSupabaseConfigured && !serverLoaded.current) return;
+    if (isSupabaseConfigured && !serverLoaded.current) return Promise.resolve(false);
 
     const updated = normalizeGameState({ ...gameStateRef.current, ...patch }, gameStateRef.current);
     setGameState(updated);
     saveLocal(STATE_KEY, updated);
-    if (!isSupabaseConfigured) return;
+    if (!isSupabaseConfigured) return Promise.resolve(true);
 
     // Debounce Supabase writes to avoid a DB call on every counter click
     // Update local time anchor so this device also uses the new base
@@ -333,48 +374,18 @@ export function useGameState(readOnly = false) {
 
     pendingUpsertState.current = updated;
     if (supabaseUpsertTimer.current) clearTimeout(supabaseUpsertTimer.current);
-    supabaseUpsertTimer.current = setTimeout(async () => {
+    if (immediate) {
+      return persistGameState(updated, true);
+    }
+
+    supabaseUpsertTimer.current = setTimeout(() => {
       const stateToSave = pendingUpsertState.current;
       if (!stateToSave) return;
+      void persistGameState(stateToSave, false);
+    }, 300);
 
-      // For immediate actions: verify tournament generation before writing.
-      // If the server has a NEWER resetAt, another admin reset the tournament —
-      // we're stale. Sync and abort to avoid polluting DB with old game data.
-      if (immediate && stateToSave.resetAt > 0) {
-        const serverCheckResult = await Promise.resolve(
-          supabase.from('game_state').select('resetAt').single()
-        );
-        if (serverCheckResult.data) {
-          const serverResetAt = (serverCheckResult.data as Record<string, unknown>).resetAt;
-          if (typeof serverResetAt === 'number' && serverResetAt > stateToSave.resetAt) {
-            // Server has newer tournament — sync and do not write
-            Promise.resolve(supabase.from('game_state').select('*').single())
-              .then(({ data }) => { if (data) applySync(data as Record<string, unknown>); });
-            return;
-          }
-        }
-      }
-
-      skipGameStateRealtime.current = true;
-      if (skipGameStateTimer.current) clearTimeout(skipGameStateTimer.current);
-      // Immediate actions (reset/start/pause) get a longer quiet window so
-      // polling doesn't restore stale DB state before the write propagates
-      skipGameStateTimer.current = setTimeout(() => { skipGameStateRealtime.current = false; }, immediate ? 8000 : 4000);
-      lastLocalWriteAt.current = Date.now();
-      let { error } = await supabase.from('game_state').upsert({ id: 1, ...stateToSave });
-      if (error && hasMissingBonusColumns(error)) {
-        const legacy = toLegacyGameState(stateToSave);
-        ({ error } = await supabase.from('game_state').upsert({ id: 1, ...legacy }));
-        if (error && hasMissingResetAt(error)) {
-          const { resetAt: _resetAt, ...noReset } = legacy;
-          await supabase.from('game_state').upsert({ id: 1, ...noReset });
-        }
-      } else if (error && hasMissingResetAt(error)) {
-        const { resetAt: _resetAt, ...noReset } = stateToSave;
-        await supabase.from('game_state').upsert({ id: 1, ...noReset });
-      }
-    }, immediate ? 0 : 300);
-  }, [isSupabaseConfigured, applySync]);
+    return Promise.resolve(true);
+  }, [isSupabaseConfigured, persistGameState]);
 
   const startTimer = useCallback(() => {
     updateGameState({ status: 'running', lastTickAt: Date.now() }, true);
@@ -456,7 +467,7 @@ export function useGameState(readOnly = false) {
     // immediate=true: broadcast instantly to all devices so their timers stop.
     // resetAt = now: tournament generation marker — stale devices that missed
     // this broadcast will be rejected when they try to write old game data.
-    updateGameState({
+    return updateGameState({
       ...DEFAULT_GAME_STATE,
       timeLeft: first?.duration ?? 1200,
       lastTickAt: now,

@@ -1123,7 +1123,10 @@ export function Admin() {
                   onClick={async () => {
                     if (confirm('Завершить и начать новый турнир? Данные сохранятся в архив.')) {
                       await saveTournament(gameState, gameState.currentLevelIndex + 1);
-                      resetTournament();
+                      const resetOk = await resetTournament();
+                      if (!resetOk) {
+                        alert('Не удалось сохранить новый турнир в Supabase. Не закрывайте страницу и попробуйте еще раз.');
+                      }
                     }
                   }}
                   className="admin-btn-primary py-4 text-base font-bold"
@@ -1213,7 +1216,10 @@ export function Admin() {
                     onClick={async () => {
                       if (confirm('Завершить турнир? Данные будут сохранены в архив.')) {
                         await saveTournament(gameState, gameState.currentLevelIndex + 1);
-                        resetTournament();
+                        const resetOk = await resetTournament();
+                        if (!resetOk) {
+                          alert('Не удалось сохранить завершение турнира в Supabase. Не закрывайте страницу и попробуйте еще раз.');
+                        }
                       }
                     }}
                     className="admin-btn-danger py-4 text-sm"
