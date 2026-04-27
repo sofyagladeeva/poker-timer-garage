@@ -110,7 +110,7 @@ function useScale() {
 }
 
 export function Display() {
-  const { gameState, blindLevels, combinations } = useGameState();
+  const { gameState, blindLevels, combinations } = useGameState(true);
   const { players: ratingPlayers } = useBotRating();
   const nextGame = useNextGame(gameState.nextGameBotId ?? null);
   const { k, x, y } = useScale();
