@@ -38,4 +38,5 @@ export const DEFAULT_GAME_STATE = {
   prizePlaces: 3,
   tournamentTitle: '',
   tournamentBotId: null,
+  nextGameBotId: null,
 };

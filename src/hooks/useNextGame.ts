@@ -14,24 +14,25 @@ export interface NextGame {
   status: string;
 }
 
-export function useNextGame() {
-  const [game, setGame] = useState<NextGame | null>(null);
+export function useNextGame(nextGameBotId: number | null) {
+  const [games, setGames] = useState<NextGame[]>([]);
 
   useEffect(() => {
-    const fetchGame = () => {
+    const fetchGames = () => {
       fetch(`${BOT_API}/api/games`)
         .then(r => r.json())
-        .then((games: NextGame[]) => {
-          const upcoming = games.find(g => g.status === 'upcoming');
-          setGame(upcoming ?? null);
-        })
-        .catch(() => setGame(null));
+        .then((data: NextGame[]) => setGames(data))
+        .catch(() => setGames([]));
     };
 
-    fetchGame();
-    const interval = setInterval(fetchGame, 5 * 60 * 1000); // refresh every 5 min
+    fetchGames();
+    const interval = setInterval(fetchGames, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
-  return game;
+  if (nextGameBotId != null) {
+    return games.find(g => g.id === nextGameBotId) ?? null;
+  }
+  // fallback: первая upcoming игра
+  return games.find(g => g.status === 'upcoming') ?? null;
 }

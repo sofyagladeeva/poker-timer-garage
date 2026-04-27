@@ -52,7 +52,6 @@ function fmtCountdown(secs: number): string {
 }
 function fmt(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1000) return `${(n / 1000).toFixed(0)}K`;
   return String(n);
 }
 function fmtDate(iso: string) {
@@ -113,7 +112,7 @@ function useScale() {
 export function Display() {
   const { gameState, blindLevels, combinations } = useGameState();
   const { players: ratingPlayers } = useBotRating();
-  const nextGame = useNextGame();
+  const nextGame = useNextGame(gameState.nextGameBotId ?? null);
   const { k, x, y } = useScale();
 
   // Активируем AudioContext при первом взаимодействии (политика браузера)
@@ -233,7 +232,7 @@ export function Display() {
           <img
             src={`${import.meta.env.BASE_URL}logo.png`}
             alt="Garage Game Club"
-            style={{ height: '44px', width: 'auto' }}
+            style={{ height: '44px', width: 'auto', backgroundColor: '#0A0A0A' }}
             className="opacity-90 select-none pointer-events-none"
           />
           {gameState.tournamentTitle && (

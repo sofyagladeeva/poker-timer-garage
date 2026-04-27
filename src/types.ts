@@ -54,6 +54,7 @@ export interface GameState {
   prizePlaces: number;
   tournamentTitle: string; // название текущей игры
   tournamentBotId: number | null; // id игры в боте
+  nextGameBotId: number | null; // id следующей игры (выбирается вручную в админке)
 }
 
 export interface RatingPlayer {

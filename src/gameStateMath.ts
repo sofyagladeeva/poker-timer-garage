@@ -68,6 +68,7 @@ export function normalizeGameState(raw: unknown, fallback: GameState): GameState
     prizePlaces: toWholeNumber(source.prizePlaces, fallback.prizePlaces),
     tournamentTitle: toStringValue(source.tournamentTitle, fallback.tournamentTitle),
     tournamentBotId: toNullableNumber(source.tournamentBotId, fallback.tournamentBotId),
+    nextGameBotId: toNullableNumber(source.nextGameBotId, fallback.nextGameBotId),
   };
 
   const explicitTotal = source.totalStack ?? source.total_stack;

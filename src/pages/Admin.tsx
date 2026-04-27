@@ -253,6 +253,7 @@ export function Admin() {
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
   const [customGameOpen, setCustomGameOpen] = useState(false);
   const [customGameTitle, setCustomGameTitle] = useState('');
+  const [nextGamePickerOpen, setNextGamePickerOpen] = useState(false);
   const [blindTemplates, setBlindTemplates] = useState<BlindTemplate[]>(() => loadBlindTemplates());
   const [templateName, setTemplateName] = useState('');
   const [templateBusy, setTemplateBusy] = useState(false);
@@ -1002,6 +1003,71 @@ export function Admin() {
                   {gameState.tournamentTitle && (
                     <button
                       onClick={() => updateGameState({ tournamentTitle: '', tournamentBotId: null })}
+                      className="text-[#444] text-xs text-center hover:text-[#888] py-1"
+                    >
+                      Сбросить выбор
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── Следующая игра ──────────────────────────────────── */}
+            <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
+              <button
+                onClick={() => setNextGamePickerOpen(o => !o)}
+                className="flex items-center justify-between w-full"
+              >
+                <div className="text-sm">
+                  {gameState.nextGameBotId != null
+                    ? (() => {
+                        const found = botGames.find(g => g.id === gameState.nextGameBotId);
+                        return found
+                          ? <span className="text-white font-bold">Далее: {found.title}</span>
+                          : <span className="text-[#888]">Следующая игра (ID: {gameState.nextGameBotId})</span>;
+                      })()
+                    : <span className="text-[#888]">Выбрать следующую игру</span>}
+                </div>
+                <span className="text-[#555] text-xs ml-2">{nextGamePickerOpen ? '▲' : '▼'}</span>
+              </button>
+
+              {nextGamePickerOpen && (
+                <div className="mt-3 flex flex-col gap-2">
+                  {botGames.length === 0 ? (
+                    <div className="text-[#444] text-sm">Загрузка игр из бота...</div>
+                  ) : (
+                    botGames.map(g => {
+                      const isSelected = gameState.nextGameBotId === g.id;
+                      const d = new Date(g.date);
+                      const dateStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ' · ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                      return (
+                        <button
+                          key={g.id}
+                          onClick={() => {
+                            updateGameState({ nextGameBotId: isSelected ? null : g.id });
+                            setNextGamePickerOpen(false);
+                          }}
+                          className={`flex items-center justify-between px-4 py-3 rounded-xl border text-left transition-all ${
+                            isSelected
+                              ? 'border-[#C0392B] bg-[#1a0a00] text-white'
+                              : 'border-[#2D2D2D] bg-[#0A0A0A] text-[#888] hover:border-[#444]'
+                          }`}
+                        >
+                          <div>
+                            <div className={`font-bold uppercase text-sm ${isSelected ? 'text-white' : 'text-[#666]'}`}>{g.title}</div>
+                            <div className="text-xs text-[#444] mt-0.5">{dateStr}</div>
+                          </div>
+                          <div className="text-right ml-3">
+                            <div className={`text-sm font-bold ${isSelected ? 'text-[#C0392B]' : 'text-[#444]'}`}>{g.confirmed} / {g.max_players}</div>
+                            {isSelected && <div className="text-[#C0392B] text-xs">✓</div>}
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                  {gameState.nextGameBotId != null && (
+                    <button
+                      onClick={() => updateGameState({ nextGameBotId: null })}
                       className="text-[#444] text-xs text-center hover:text-[#888] py-1"
                     >
                       Сбросить выбор

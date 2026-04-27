@@ -115,6 +115,11 @@ export function useGameState() {
   const baseTimeLeft  = useRef(gameState.timeLeft);
   const baseTimestamp = useRef(gameState.lastTickAt ?? Date.now());
 
+  // Guard: don't allow auto-advance until authoritative state is loaded from
+  // Supabase. Prevents stale localStorage from writing wrong level to the DB
+  // when a second device opens the admin panel mid-tournament.
+  const serverLoaded = useRef(!isSupabaseConfigured);
+
   // ─── Shared sync helper (stable ref, usable in any effect) ─────────────
   const applySync = useCallback((raw: Record<string, unknown>) => {
     const normalized = normalizeGameState(raw as unknown as GameState, gameStateRef.current);
@@ -139,6 +144,8 @@ export function useGameState() {
       supabase.from('combinations').select('*').order('created_at'),
     ]).then(async ([gs, bl, combs]) => {
       if (cancelled) return;
+      // Mark state as authoritative — allow auto-advance from this point
+      serverLoaded.current = true;
 
       if (gs.data) {
         const normalizedState = normalizeGameState(gs.data, gameStateRef.current);
@@ -163,7 +170,9 @@ export function useGameState() {
       }
 
       if (combs.data) setCombinations(combs.data);
-    }).catch(() => {});
+    }).catch(() => {
+      if (!cancelled) serverLoaded.current = true;
+    });
 
     // Broadcast channel — low-latency (<100ms) for pause/start/level commands
     const bc = supabase.channel('poker-broadcast')
@@ -324,7 +333,10 @@ export function useGameState() {
   }, [updateGameState]);
 
   // ─── Авто-переход: таймер дошёл до 0 → следующий уровень ──────────────
+  // serverLoaded guard prevents stale localStorage from triggering nextLevel()
+  // on a second device before authoritative server state is received.
   useEffect(() => {
+    if (!serverLoaded.current) return;
     if (gameState.timeLeft !== 0) return;
     if (gameState.status !== 'running' && gameState.status !== 'break') return;
 
