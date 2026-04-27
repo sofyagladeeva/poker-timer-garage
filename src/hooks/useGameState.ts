@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, DEFAULT_BLIND_LEVELS, DEFAULT_GAME_STATE } from '../supabase';
-import { hasMissingBonusColumns, hasMissingResetAt, normalizeGameState, toLegacyGameState } from '../gameStateMath';
+import { hasMissingBonusColumns, hasMissingNextGameBotId, hasMissingResetAt, normalizeGameState, toLegacyGameState } from '../gameStateMath';
 import type { GameState, BlindLevel, Combination, TournamentRecord } from '../types';
 
 const STATE_KEY = 'poker_game_state';
@@ -156,25 +156,38 @@ export function useGameState(readOnly = false) {
     skipGameStateTimer.current = setTimeout(() => { skipGameStateRealtime.current = false; }, immediate ? 8000 : 4000);
     lastLocalWriteAt.current = Date.now();
 
-    let { error } = await supabase.from('game_state').upsert({ id: 1, ...stateToSave });
-    if (error && hasMissingBonusColumns(error)) {
-      const legacy = toLegacyGameState(stateToSave);
-      ({ error } = await supabase.from('game_state').upsert({ id: 1, ...legacy }));
-      if (error && hasMissingResetAt(error)) {
-        const { resetAt: _resetAt, ...noReset } = legacy;
-        ({ error } = await supabase.from('game_state').upsert({ id: 1, ...noReset }));
+    let payload: Record<string, unknown> = { id: 1, ...stateToSave };
+    let error: unknown = null;
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const result = await supabase.from('game_state').upsert(payload);
+      error = result.error;
+      if (!error) return true;
+
+      if (hasMissingBonusColumns(error)) {
+        payload = { id: 1, ...toLegacyGameState(stateToSave) };
+        continue;
       }
-    } else if (error && hasMissingResetAt(error)) {
-      const { resetAt: _resetAt, ...noReset } = stateToSave;
-      ({ error } = await supabase.from('game_state').upsert({ id: 1, ...noReset }));
+
+      if (hasMissingNextGameBotId(error)) {
+        const { nextGameBotId: _nextGameBotId, ...noNextGameBotId } = payload;
+        payload = noNextGameBotId;
+        continue;
+      }
+
+      if (hasMissingResetAt(error)) {
+        const { resetAt: _resetAt, ...noReset } = payload;
+        payload = noReset;
+        continue;
+      }
+
+      break;
     }
 
     if (error) {
-      console.error('Failed to persist game_state', error);
+      console.error('Failed to persist game_state', error, payload);
       return false;
     }
-
-    return true;
   }, [applySync]);
 
   // ─── Supabase real-time subscriptions ───────────────────────────────────
