@@ -385,7 +385,24 @@ export function useGameState(readOnly = false) {
   const updateGameState = useCallback((patch: Partial<GameState>, immediate = false) => {
     if (isSupabaseConfigured && !serverLoaded.current) return Promise.resolve(false);
 
-    const updated = normalizeGameState({ ...gameStateRef.current, ...patch }, gameStateRef.current);
+    const nextPatch: Partial<GameState> = { ...patch };
+    const nextStatus = nextPatch.status ?? gameStateRef.current.status;
+
+    if (nextStatus === 'running' || nextStatus === 'break') {
+      const now = Date.now();
+      const elapsed = Math.floor((now - baseTimestamp.current) / 1000);
+      const liveTimeLeft = Math.max(0, baseTimeLeft.current - elapsed);
+
+      if (nextPatch.timeLeft === undefined) {
+        nextPatch.timeLeft = liveTimeLeft;
+      }
+
+      if (nextPatch.lastTickAt === undefined) {
+        nextPatch.lastTickAt = now;
+      }
+    }
+
+    const updated = normalizeGameState({ ...gameStateRef.current, ...nextPatch }, gameStateRef.current);
     setGameState(updated);
     saveLocal(STATE_KEY, updated);
     if (!isSupabaseConfigured) return Promise.resolve(true);
