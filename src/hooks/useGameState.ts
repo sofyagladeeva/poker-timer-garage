@@ -126,15 +126,38 @@ export function useGameState(readOnly = false) {
   const serverLoaded = useRef(!isSupabaseConfigured);
 
   // ─── Shared sync helper (stable ref, usable in any effect) ─────────────
-  const applySync = useCallback((raw: Record<string, unknown>) => {
+  const hydrateSyncedState = useCallback((raw: Record<string, unknown>) => {
     const normalized = normalizeGameState(raw as unknown as GameState, gameStateRef.current);
-    if (raw.lastTickAt) {
-      baseTimeLeft.current  = normalized.timeLeft;
-      baseTimestamp.current = raw.lastTickAt as number;
+    const persistedTimeLeft = normalized.timeLeft;
+    const persistedLastTickAt = typeof raw.lastTickAt === 'number'
+      ? raw.lastTickAt
+      : normalized.lastTickAt;
+
+    if (
+      persistedLastTickAt &&
+      (normalized.status === 'running' || normalized.status === 'break')
+    ) {
+      const elapsed = Math.floor((Date.now() - persistedLastTickAt) / 1000);
+      normalized.timeLeft = Math.max(0, persistedTimeLeft - elapsed);
     }
-    setGameState(normalized);
-    saveLocal(STATE_KEY, normalized);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    return {
+      persistedLastTickAt,
+      persistedTimeLeft,
+      persistedState: { ...normalized, timeLeft: persistedTimeLeft },
+      liveState: normalized,
+    };
+  }, []);
+
+  const applySync = useCallback((raw: Record<string, unknown>) => {
+    const { persistedLastTickAt, persistedTimeLeft, persistedState, liveState } = hydrateSyncedState(raw);
+    if (persistedLastTickAt) {
+      baseTimeLeft.current = persistedTimeLeft;
+      baseTimestamp.current = persistedLastTickAt;
+    }
+    setGameState(liveState);
+    saveLocal(STATE_KEY, persistedState);
+  }, [hydrateSyncedState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const persistGameState = useCallback(async (stateToSave: GameState, immediate = false) => {
     if (immediate && stateToSave.resetAt > 0) {
@@ -207,9 +230,7 @@ export function useGameState(readOnly = false) {
       serverLoaded.current = true;
 
       if (gs.data) {
-        const normalizedState = normalizeGameState(gs.data, gameStateRef.current);
-        setGameState(normalizedState);
-        saveLocal(STATE_KEY, normalizedState);
+        applySync(gs.data as Record<string, unknown>);
       }
 
       if (bl.data && bl.data.length > 0) {
