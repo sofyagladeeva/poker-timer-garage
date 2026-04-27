@@ -296,7 +296,9 @@ export function useGameState(readOnly = false) {
       if (!stateToSave) return;
       skipGameStateRealtime.current = true;
       if (skipGameStateTimer.current) clearTimeout(skipGameStateTimer.current);
-      skipGameStateTimer.current = setTimeout(() => { skipGameStateRealtime.current = false; }, 4000);
+      // Immediate actions (reset/start/pause) get a longer quiet window so
+      // polling doesn't restore stale DB state before the write propagates
+      skipGameStateTimer.current = setTimeout(() => { skipGameStateRealtime.current = false; }, immediate ? 8000 : 4000);
       let { error } = await supabase.from('game_state').upsert({ id: 1, ...stateToSave });
       if (error && hasMissingBonusColumns(error)) {
         await supabase.from('game_state').upsert({ id: 1, ...toLegacyGameState(stateToSave) });
@@ -362,10 +364,12 @@ export function useGameState(readOnly = false) {
   const resetTournament = useCallback(() => {
     const bl = blindLevelsRef.current;
     const first = bl[0];
+    // immediate=true: broadcast instantly to all devices so their timers stop
+    // before they can fire nextLevel() and override this reset
     updateGameState({
       ...DEFAULT_GAME_STATE,
       timeLeft: first?.duration ?? 1200,
-    });
+    }, true);
   }, [updateGameState]);
 
   const updateBlindLevels = useCallback(async (levels: BlindLevel[]) => {
