@@ -515,11 +515,14 @@ export function useGameState(readOnly = false) {
     const bl = blindLevelsRef.current;
     const first = bl[0];
     const now = Date.now();
+    const { nextGameBotId, nextGameInfo } = gameStateRef.current;
     // immediate=true: broadcast instantly to all devices so their timers stop.
     // resetAt = now: tournament generation marker — stale devices that missed
     // this broadcast will be rejected when they try to write old game data.
     return updateGameState({
       ...DEFAULT_GAME_STATE,
+      nextGameBotId,
+      nextGameInfo,
       timeLeft: first?.duration ?? 1200,
       lastTickAt: now,
       resetAt: now,
