@@ -273,13 +273,7 @@ export function useGameState(readOnly = false) {
       if (skipGameStateRealtime.current) return;
       supabase.from('game_state').select('*').single().then(({ data }) => {
         if (!data || skipGameStateRealtime.current) return;
-        const normalized = normalizeGameState(data as GameState, gameStateRef.current);
-        const curr = gameStateRef.current;
-        if (normalized.status !== curr.status ||
-            normalized.currentLevelIndex !== curr.currentLevelIndex ||
-            normalized.resetAt !== curr.resetAt) {
-          applyIfNewer(data as Record<string, unknown>);
-        }
+        applyIfNewer(data as Record<string, unknown>);
       });
     }, 2000);
 
