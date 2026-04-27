@@ -274,12 +274,13 @@ export function Admin() {
   const {
     gameState, blindLevels, combinations,
     updateGameState, startTimer, pauseTimer, nextLevel, prevLevel, resetTournament,
-    updateBlindLevels, updateCombinations, saveTournament, fetchTournaments,
+    updateBlindLevels, updateCombinations, saveTournament, fetchTournaments, deleteTournament,
   } = useGameState();
   const gameStateSnapshotRef = useRef(gameState);
 
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([]);
   const [archiveLoading, setArchiveLoading] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   // ── Bot games list ─────────────────────────────────────────────────────
   const [botGames, setBotGames] = useState<{ id: number; title: string; date: string; confirmed: number; max_players: number }[]>([]);
@@ -1661,12 +1662,42 @@ export function Admin() {
                     </div>
                   </div>
 
-                  {/* Buy-ins */}
-                  {activePlayers > 0 && (
-                    <div className="text-[#444] text-xs">
-                      Всего buy-in: {t.players + t.rebuys + t.addon_count}
-                    </div>
-                  )}
+                  {/* Buy-ins + delete */}
+                  <div className="flex items-center justify-between">
+                    {activePlayers > 0 && (
+                      <div className="text-[#444] text-xs">
+                        Всего buy-in: {t.players + t.rebuys + t.addon_count}
+                      </div>
+                    )}
+                    {confirmDeleteId === t.id ? (
+                      <div className="flex items-center gap-2 ml-auto">
+                        <span className="text-[#888] text-xs">Удалить?</span>
+                        <button
+                          onClick={async () => {
+                            await deleteTournament(t.id);
+                            setTournaments(prev => prev.filter(x => x.id !== t.id));
+                            setConfirmDeleteId(null);
+                          }}
+                          className="text-[#C0392B] text-xs font-bold px-3 py-1 border border-[#C0392B] rounded-lg hover:bg-[#1a0a00] transition-colors"
+                        >
+                          Да, удалить
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="text-[#555] text-xs px-3 py-1 border border-[#2D2D2D] rounded-lg hover:text-[#888] transition-colors"
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeleteId(t.id)}
+                        className="text-[#333] text-xs hover:text-[#C0392B] transition-colors ml-auto py-1"
+                      >
+                        Удалить
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}

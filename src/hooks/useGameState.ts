@@ -420,6 +420,15 @@ export function useGameState(readOnly = false) {
     return data ?? [];
   }, [isSupabaseConfigured]);
 
+  const deleteTournament = useCallback(async (id: number): Promise<void> => {
+    if (!isSupabaseConfigured) {
+      const existing = loadLocal<TournamentRecord[]>(TOURNAMENTS_KEY, []);
+      saveLocal(TOURNAMENTS_KEY, existing.filter(t => t.id !== id));
+      return;
+    }
+    await supabase.from('tournaments').delete().eq('id', id);
+  }, [isSupabaseConfigured]);
+
   const updateCombinations = useCallback(async (combs: Combination[]) => {
     setCombinations(combs);
     if (!isSupabaseConfigured) {
@@ -447,5 +456,6 @@ export function useGameState(readOnly = false) {
     updateCombinations,
     saveTournament,
     fetchTournaments,
+    deleteTournament,
   };
 }
