@@ -192,7 +192,14 @@ export function useGameState(readOnly = false) {
       .channel('poker-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, (payload) => {
         if (skipGameStateRealtime.current) return;
-        if (payload.new) applySync(payload.new as Record<string, unknown>);
+        if (!payload.new) return;
+        const incoming = payload.new as Record<string, unknown>;
+        // Only apply if the incoming state is at least as recent as local.
+        // Prevents a stale device from restoring old state via postgres_changes.
+        const incomingTick = typeof incoming.lastTickAt === 'number' ? incoming.lastTickAt : 0;
+        const localTick = gameStateRef.current.lastTickAt ?? 0;
+        if (incomingTick < localTick) return;
+        applySync(incoming);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_levels' }, () => {
         if (skipBlindRealtime.current) return;
@@ -220,30 +227,35 @@ export function useGameState(readOnly = false) {
   useEffect(() => {
     if (!isSupabaseConfigured) return;
 
+    // Helper: only apply Supabase state if it's at least as recent as local.
+    // Broadcasts (fast channel) bypass this — they are intentional admin actions.
+    const applyIfNewer = (data: Record<string, unknown>) => {
+      const incomingTick = typeof data.lastTickAt === 'number' ? data.lastTickAt : 0;
+      const localTick = gameStateRef.current.lastTickAt ?? 0;
+      if (incomingTick < localTick) return;
+      applySync(data);
+    };
+
     const syncNow = () => {
       if (document.visibilityState !== 'visible') return;
       supabase.from('game_state').select('*').single().then(({ data }) => {
         if (!data || skipGameStateRealtime.current) return;
-        applySync(data as Record<string, unknown>);
+        applyIfNewer(data as Record<string, unknown>);
       });
     };
 
     document.addEventListener('visibilitychange', syncNow);
 
     // Polling every 2s as backup for realtime disconnects.
-    // Skipped for 20s after any local write to prevent a competing device
-    // from restoring stale state via Supabase after we reset/end a tournament.
     const pollInterval = setInterval(() => {
       if (skipGameStateRealtime.current) return;
-      if (Date.now() - lastLocalWriteAt.current < 20000) return;
       supabase.from('game_state').select('*').single().then(({ data }) => {
         if (!data || skipGameStateRealtime.current) return;
-        if (Date.now() - lastLocalWriteAt.current < 20000) return;
         const normalized = normalizeGameState(data as GameState, gameStateRef.current);
         const curr = gameStateRef.current;
         if (normalized.status !== curr.status ||
             normalized.currentLevelIndex !== curr.currentLevelIndex) {
-          applySync(data as Record<string, unknown>);
+          applyIfNewer(data as Record<string, unknown>);
         }
       });
     }, 2000);
@@ -373,11 +385,13 @@ export function useGameState(readOnly = false) {
   const resetTournament = useCallback(() => {
     const bl = blindLevelsRef.current;
     const first = bl[0];
-    // immediate=true: broadcast instantly to all devices so their timers stop
-    // before they can fire nextLevel() and override this reset
+    // immediate=true: broadcast instantly to all devices so their timers stop.
+    // lastTickAt: Date.now() gives this reset a fresh timestamp so that
+    // applyIfNewer correctly rejects any older state from other devices.
     updateGameState({
       ...DEFAULT_GAME_STATE,
       timeLeft: first?.duration ?? 1200,
+      lastTickAt: Date.now(),
     }, true);
   }, [updateGameState]);
 
