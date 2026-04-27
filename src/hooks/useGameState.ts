@@ -78,6 +78,7 @@ export function useGameState(readOnly = false) {
   const isSupabaseConfigured =
     import.meta.env.VITE_SUPABASE_URL &&
     import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const [syncReady, setSyncReady] = useState(!isSupabaseConfigured);
 
   // ─── Refs to avoid stale closures in stable callbacks ───────────────────
   // Updated synchronously on every render so callbacks always see fresh state
@@ -176,6 +177,8 @@ export function useGameState(readOnly = false) {
       if (combs.data) setCombinations(combs.data);
     }).catch(() => {
       if (!cancelled) serverLoaded.current = true;
+    }).finally(() => {
+      if (!cancelled) setSyncReady(true);
     });
 
     // Broadcast channel — low-latency (<100ms) for pause/start/level commands
@@ -305,14 +308,12 @@ export function useGameState(readOnly = false) {
   // ─── Admin actions (stable — don't depend on gameState/blindLevels) ─────
   // immediate=true skips debounce — used for pause/start/level changes
   const updateGameState = useCallback((patch: Partial<GameState>, immediate = false) => {
+    if (isSupabaseConfigured && !serverLoaded.current) return;
+
     const updated = normalizeGameState({ ...gameStateRef.current, ...patch }, gameStateRef.current);
     setGameState(updated);
     saveLocal(STATE_KEY, updated);
     if (!isSupabaseConfigured) return;
-    // Block all Supabase writes and broadcasts until this device has received
-    // authoritative server state. Prevents stale localStorage from overwriting
-    // the current game when a new device opens the admin panel mid-game.
-    if (!serverLoaded.current) return;
 
     // Debounce Supabase writes to avoid a DB call on every counter click
     // Update local time anchor so this device also uses the new base
@@ -541,6 +542,7 @@ export function useGameState(readOnly = false) {
     gameState,
     blindLevels,
     combinations,
+    syncReady,
     updateGameState,
     startTimer,
     pauseTimer,

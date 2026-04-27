@@ -272,7 +272,7 @@ export function Admin() {
   const backgroundLibraryRef = useRef(backgroundLibrary);
 
   const {
-    gameState, blindLevels, combinations,
+    gameState, blindLevels, combinations, syncReady,
     updateGameState, startTimer, pauseTimer, nextLevel, prevLevel, resetTournament,
     updateBlindLevels, updateCombinations, saveTournament, fetchTournaments, deleteTournament,
   } = useGameState();
@@ -305,7 +305,7 @@ export function Admin() {
 
   // ── Пробел = play/pause ────────────────────────────────────────────────
   useEffect(() => {
-    if (!authed) return;
+    if (!authed || !syncReady) return;
     const handler = (e: KeyboardEvent) => {
       if (e.code === 'Space' && (e.target as HTMLElement).tagName !== 'INPUT') {
         e.preventDefault();
@@ -315,7 +315,7 @@ export function Admin() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [authed, gameState.status, startTimer, pauseTimer]);
+  }, [authed, syncReady, gameState.status, startTimer, pauseTimer]);
 
   // ── Auth ──────────────────────────────────────────────────────────────
   const handleLogin = () => {
@@ -699,6 +699,19 @@ export function Admin() {
           />
           {pwError && <div className="text-red-500 text-sm text-center mb-2">Неверный пароль</div>}
           <button onClick={handleLogin} className="admin-btn-primary w-full py-3">Войти</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!syncReady) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center px-4">
+        <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-8 w-full max-w-md text-center">
+          <div className="text-[#C0392B] text-2xl font-bold mb-4">Синхронизация...</div>
+          <div className="text-[#888] text-sm">
+            Загружаю текущее состояние турнира из Supabase. Управление откроется, как только админка получит актуальную игру.
+          </div>
         </div>
       </div>
     );
