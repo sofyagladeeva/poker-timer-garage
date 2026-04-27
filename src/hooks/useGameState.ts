@@ -314,6 +314,10 @@ export function useGameState(readOnly = false) {
     setGameState(updated);
     saveLocal(STATE_KEY, updated);
     if (!isSupabaseConfigured) return;
+    // Block all Supabase writes and broadcasts until this device has received
+    // authoritative server state. Prevents stale localStorage from overwriting
+    // the current game when a new device opens the admin panel mid-game.
+    if (!serverLoaded.current) return;
 
     // Debounce Supabase writes to avoid a DB call on every counter click
     // Update local time anchor so this device also uses the new base
