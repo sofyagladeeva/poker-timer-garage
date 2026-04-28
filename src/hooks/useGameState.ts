@@ -8,18 +8,6 @@ const BLINDS_KEY = 'poker_blind_levels';
 const COMBINATIONS_KEY = 'poker_combinations';
 const TOURNAMENTS_KEY = 'poker_tournaments';
 const LOCAL_WRITE_SYNC_GRACE_MS = 20_000;
-const TIMER_DEBUG_LIMIT = 30;
-
-type TimerDebugEntry = {
-  at: number;
-  source: string;
-  status: GameState['status'];
-  timeLeft: number;
-  lastTickAt: number | null;
-  baseTimeLeft: number;
-  baseTimestamp: number;
-  note: string;
-};
 
 // ─── Local storage fallback (when Supabase not configured) ─────────────────
 function loadLocal<T>(key: string, defaultValue: T): T {
@@ -87,7 +75,6 @@ export function useGameState(readOnly = false) {
   const [combinations, setCombinations] = useState<Combination[]>(() =>
     loadLocal(COMBINATIONS_KEY, [])
   );
-  const [timerDebug, setTimerDebug] = useState<TimerDebugEntry[]>([]);
 
   const isSupabaseConfigured =
     import.meta.env.VITE_SUPABASE_URL &&
@@ -141,23 +128,6 @@ export function useGameState(readOnly = false) {
   // when a second device opens the admin panel mid-tournament.
   const serverLoaded = useRef(!isSupabaseConfigured);
 
-  const pushTimerDebug = useCallback((source: string, snapshot: Partial<GameState>, note = '') => {
-    setTimerDebug(prev => {
-      const entry: TimerDebugEntry = {
-        at: Date.now(),
-        source,
-        status: snapshot.status ?? gameStateRef.current.status,
-        timeLeft: snapshot.timeLeft ?? gameStateRef.current.timeLeft,
-        lastTickAt: snapshot.lastTickAt ?? gameStateRef.current.lastTickAt,
-        baseTimeLeft: baseTimeLeft.current,
-        baseTimestamp: baseTimestamp.current,
-        note,
-      };
-
-      return [...prev.slice(-(TIMER_DEBUG_LIMIT - 1)), entry];
-    });
-  }, []);
-
   // ─── Shared sync helper (stable ref, usable in any effect) ─────────────
   const hydrateSyncedState = useCallback((raw: Record<string, unknown>) => {
     const normalized = normalizeGameState(raw as unknown as GameState, gameStateRef.current);
@@ -182,7 +152,7 @@ export function useGameState(readOnly = false) {
     };
   }, []);
 
-  const applySync = useCallback((raw: Record<string, unknown>, source = 'sync') => {
+  const applySync = useCallback((raw: Record<string, unknown>, _source = 'sync') => {
     const { persistedLastTickAt, persistedTimeLeft, persistedState, liveState } = hydrateSyncedState(raw);
     if (persistedLastTickAt) {
       baseTimeLeft.current = persistedTimeLeft;
@@ -190,12 +160,7 @@ export function useGameState(readOnly = false) {
     }
     setGameState(liveState);
     saveLocal(STATE_KEY, persistedState);
-    pushTimerDebug(
-      `applySync:${source}`,
-      liveState,
-      `persisted=${persistedTimeLeft} tick=${persistedLastTickAt ?? 'null'}`
-    );
-  }, [hydrateSyncedState, pushTimerDebug]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hydrateSyncedState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const persistGameState = useCallback(async (stateToSave: GameState, immediate = false) => {
     skipGameStateRealtime.current = true;
@@ -413,13 +378,6 @@ export function useGameState(readOnly = false) {
         const newTimeLeft = Math.max(0, baseTimeLeft.current - elapsed);
         if (prev.timeLeft === newTimeLeft) return prev;
         const updated = { ...prev, timeLeft: newTimeLeft };
-        if (prev.timeLeft - newTimeLeft > 1) {
-          pushTimerDebug(
-            'tick-jump',
-            updated,
-            `delta=${prev.timeLeft - newTimeLeft} base=${baseTimeLeft.current} anchor=${baseTimestamp.current}`
-          );
-        }
         if (!isSupabaseConfigured) saveLocal(STATE_KEY, updated);
         return updated;
       });
@@ -456,14 +414,7 @@ export function useGameState(readOnly = false) {
     const updated = normalizeGameState({ ...gameStateRef.current, ...nextPatch }, gameStateRef.current);
     setGameState(updated);
     saveLocal(STATE_KEY, updated);
-    if (!isSupabaseConfigured) {
-      pushTimerDebug(
-        immediate ? 'update:immediate' : 'update:debounced',
-        updated,
-        `patchStatus=${patch.status ?? 'none'} patchTime=${patch.timeLeft ?? 'none'}`
-      );
-      return Promise.resolve(true);
-    }
+    if (!isSupabaseConfigured) return Promise.resolve(true);
 
     // Debounce Supabase writes to avoid a DB call on every counter click
     // Update local time anchor so this device also uses the new base
@@ -471,11 +422,6 @@ export function useGameState(readOnly = false) {
       baseTimeLeft.current  = updated.timeLeft;
       baseTimestamp.current = updated.lastTickAt;
     }
-    pushTimerDebug(
-      immediate ? 'update:immediate' : 'update:debounced',
-      updated,
-      `patchStatus=${patch.status ?? 'none'} patchTime=${patch.timeLeft ?? 'none'}`
-    );
 
     // For immediate actions: broadcast via fast channel first, then persist to DB
     if (immediate && broadcastChannelRef.current) {
@@ -502,15 +448,6 @@ export function useGameState(readOnly = false) {
   }, [isSupabaseConfigured, persistGameState]);
 
   const startTimer = useCallback(() => {
-    pushTimerDebug(
-      'start-click',
-      {
-        status: 'running',
-        timeLeft: gameStateRef.current.timeLeft,
-        lastTickAt: Date.now(),
-      },
-      `current=${gameStateRef.current.timeLeft}`
-    );
     updateGameState({ status: 'running', lastTickAt: Date.now() }, true);
   }, [updateGameState]);
 
@@ -518,15 +455,6 @@ export function useGameState(readOnly = false) {
     // Capture the actual live time before pausing
     const elapsed = Math.floor((Date.now() - baseTimestamp.current) / 1000);
     const liveTimeLeft = Math.max(0, baseTimeLeft.current - elapsed);
-    pushTimerDebug(
-      'pause-click',
-      {
-        status: 'paused',
-        timeLeft: liveTimeLeft,
-        lastTickAt: Date.now(),
-      },
-      `elapsed=${elapsed} base=${baseTimeLeft.current} anchor=${baseTimestamp.current}`
-    );
     updateGameState({ status: 'paused', timeLeft: liveTimeLeft }, true);
   }, [updateGameState]);
 
@@ -700,6 +628,5 @@ export function useGameState(readOnly = false) {
     saveTournament,
     fetchTournaments,
     deleteTournament,
-    timerDebug,
   };
 }
