@@ -8,6 +8,7 @@ const BLINDS_KEY = 'poker_blind_levels';
 const COMBINATIONS_KEY = 'poker_combinations';
 const TOURNAMENTS_KEY = 'poker_tournaments';
 const LOCAL_WRITE_SYNC_GRACE_MS = 20_000;
+const INITIAL_SYNC_TIMEOUT_MS = 8_000;
 
 // ─── Local storage fallback (when Supabase not configured) ─────────────────
 function loadLocal<T>(key: string, defaultValue: T): T {
@@ -21,6 +22,25 @@ function loadLocal<T>(key: string, defaultValue: T): T {
 
 function saveLocal<T>(key: string, value: T) {
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    promise.then(
+      value => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      error => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
 }
 
 function normalizeBlindNumber(value: number) {
@@ -222,42 +242,73 @@ export function useGameState(readOnly = false) {
 
     let cancelled = false;
 
-    // Initial fetch
-    Promise.all([
-      supabase.from('game_state').select('*').single(),
-      supabase.from('blind_levels').select('*').order('id'),
-      supabase.from('combinations').select('*').order('created_at'),
-    ]).then(async ([gs, bl, combs]) => {
+    const loadInitialState = async () => {
+      const [gs, bl, combs] = await Promise.allSettled([
+        withTimeout(
+          Promise.resolve(supabase.from('game_state').select('*').single()),
+          INITIAL_SYNC_TIMEOUT_MS,
+          'Initial game_state sync'
+        ),
+        withTimeout(
+          Promise.resolve(supabase.from('blind_levels').select('*').order('id')),
+          INITIAL_SYNC_TIMEOUT_MS,
+          'Initial blind_levels sync'
+        ),
+        withTimeout(
+          Promise.resolve(supabase.from('combinations').select('*').order('created_at')),
+          INITIAL_SYNC_TIMEOUT_MS,
+          'Initial combinations sync'
+        ),
+      ]);
+
       if (cancelled) return;
-      // Mark state as authoritative — allow auto-advance from this point
       serverLoaded.current = true;
 
-      if (gs.data) {
-        applySync(gs.data as Record<string, unknown>, 'init');
+      if (gs.status === 'fulfilled' && gs.value.data) {
+        applySync(gs.value.data as Record<string, unknown>, 'init');
+      } else if (gs.status === 'rejected') {
+        console.error('Initial game_state sync failed', gs.reason);
       }
 
-      if (bl.data && bl.data.length > 0) {
-        const normalized = normalizeBlindLevels(bl.data);
-        setBlindLevels(normalized);
-        saveLocal(BLINDS_KEY, normalized);
-      } else if (Array.isArray(bl.data) && bl.data.length === 0) {
-        const defaults = normalizeBlindLevels(DEFAULT_BLIND_LEVELS);
-        setBlindLevels(defaults);
-        saveLocal(BLINDS_KEY, defaults);
+      if (bl.status === 'fulfilled') {
+        if (bl.value.data && bl.value.data.length > 0) {
+          const normalized = normalizeBlindLevels(bl.value.data);
+          setBlindLevels(normalized);
+          saveLocal(BLINDS_KEY, normalized);
+        } else if (Array.isArray(bl.value.data) && bl.value.data.length === 0) {
+          const defaults = normalizeBlindLevels(DEFAULT_BLIND_LEVELS);
+          setBlindLevels(defaults);
+          saveLocal(BLINDS_KEY, defaults);
 
-        skipBlindRealtime.current = true;
-        if (skipBlindTimer.current) clearTimeout(skipBlindTimer.current);
-        skipBlindTimer.current = setTimeout(() => { skipBlindRealtime.current = false; }, 4000);
+          skipBlindRealtime.current = true;
+          if (skipBlindTimer.current) clearTimeout(skipBlindTimer.current);
+          skipBlindTimer.current = setTimeout(() => { skipBlindRealtime.current = false; }, 4000);
 
-        await supabase.from('blind_levels').insert(defaults);
+          void Promise.resolve(supabase.from('blind_levels').insert(defaults)).catch(error => {
+            console.error('Failed to seed blind_levels during initial sync', error);
+          });
+        }
+      } else {
+        console.error('Initial blind_levels sync failed', bl.reason);
       }
 
-      if (combs.data) setCombinations(combs.data);
-    }).catch(() => {
-      if (!cancelled) serverLoaded.current = true;
-    }).finally(() => {
-      if (!cancelled) setSyncReady(true);
-    });
+      if (combs.status === 'fulfilled' && combs.value.data) {
+        setCombinations(combs.value.data);
+      } else if (combs.status === 'rejected') {
+        console.error('Initial combinations sync failed', combs.reason);
+      }
+    };
+
+    void loadInitialState()
+      .catch(error => {
+        if (!cancelled) {
+          serverLoaded.current = true;
+          console.error('Initial Supabase sync crashed', error);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSyncReady(true);
+      });
 
     // Broadcast channel — low-latency (<100ms) for pause/start/level commands
     const bc = supabase.channel('poker-broadcast')

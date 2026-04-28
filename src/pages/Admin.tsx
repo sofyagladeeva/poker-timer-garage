@@ -63,6 +63,26 @@ const BOT_API = import.meta.env.VITE_BOT_API_URL || 'https://web-production-6035
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'poker2024';
 const MAX_BACKGROUND_ITEMS = 24;
+const SHARED_LIBRARY_TIMEOUT_MS = 8_000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label}. Нет ответа от Supabase дольше ${Math.round(timeoutMs / 1000)} сек.`));
+    }, timeoutMs);
+
+    promise.then(
+      value => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      error => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
 
 // ─── Card picker ──────────────────────────────────────────────────────────
 const RANKS: Rank[] = ['A','K','Q','J','T','9','8','7','6','5','4','3','2'];
@@ -370,7 +390,11 @@ export function Admin() {
           return;
         }
 
-        const remote = await fetchSharedBlindTemplates();
+        const remote = await withTimeout(
+          fetchSharedBlindTemplates(),
+          SHARED_LIBRARY_TIMEOUT_MS,
+          'Не удалось загрузить общие шаблоны блайндов'
+        );
         const local = loadBlindTemplates();
         const mergedCustom = mergeBlindTemplates(remote, local).filter(template => !template.id.startsWith('preset_'));
 
@@ -470,7 +494,11 @@ export function Admin() {
       setBackgroundUploadError(null);
 
       try {
-        const remote = await fetchSharedBackgroundLibrary();
+        const remote = await withTimeout(
+          fetchSharedBackgroundLibrary(),
+          SHARED_LIBRARY_TIMEOUT_MS,
+          'Не удалось загрузить общую библиотеку фонов'
+        );
         const local = loadBackgroundLibrary();
         const missingLocal = local.filter(item =>
           !remote.some(remoteItem => remoteItem.url === item.url)
