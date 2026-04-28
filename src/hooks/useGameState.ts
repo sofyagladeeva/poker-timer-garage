@@ -7,6 +7,7 @@ const STATE_KEY = 'poker_game_state';
 const BLINDS_KEY = 'poker_blind_levels';
 const COMBINATIONS_KEY = 'poker_combinations';
 const TOURNAMENTS_KEY = 'poker_tournaments';
+const LOCAL_WRITE_SYNC_GRACE_MS = 20_000;
 const TIMER_DEBUG_LIMIT = 30;
 
 type TimerDebugEntry = {
@@ -131,6 +132,9 @@ export function useGameState(readOnly = false) {
   // Track when WE last wrote to Supabase — polling won't override local state
   // for 20 seconds after any local write, breaking the multi-device fight cycle
   const lastLocalWriteAt = useRef(0);
+  const hasFreshLocalWrite = useCallback(() => {
+    return Date.now() - lastLocalWriteAt.current < LOCAL_WRITE_SYNC_GRACE_MS;
+  }, []);
 
   // Guard: don't allow auto-advance until authoritative state is loaded from
   // Supabase. Prevents stale localStorage from writing wrong level to the DB
@@ -194,6 +198,11 @@ export function useGameState(readOnly = false) {
   }, [hydrateSyncedState, pushTimerDebug]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const persistGameState = useCallback(async (stateToSave: GameState, immediate = false) => {
+    skipGameStateRealtime.current = true;
+    if (skipGameStateTimer.current) clearTimeout(skipGameStateTimer.current);
+    skipGameStateTimer.current = setTimeout(() => { skipGameStateRealtime.current = false; }, immediate ? 8000 : 4000);
+    lastLocalWriteAt.current = Date.now();
+
     if (immediate && stateToSave.resetAt > 0) {
       const serverCheckResult = await Promise.resolve(
         supabase.from('game_state').select('resetAt').single()
@@ -207,11 +216,6 @@ export function useGameState(readOnly = false) {
         }
       }
     }
-
-    skipGameStateRealtime.current = true;
-    if (skipGameStateTimer.current) clearTimeout(skipGameStateTimer.current);
-    skipGameStateTimer.current = setTimeout(() => { skipGameStateRealtime.current = false; }, immediate ? 8000 : 4000);
-    lastLocalWriteAt.current = Date.now();
 
     let payload: Record<string, unknown> = { id: 1, ...stateToSave };
     let error: unknown = null;
@@ -310,6 +314,7 @@ export function useGameState(readOnly = false) {
           }
           return;
         }
+        if (hasFreshLocalWrite()) return;
         applySync(incoming, 'broadcast');
       })
       .subscribe();
@@ -326,6 +331,7 @@ export function useGameState(readOnly = false) {
         const incomingResetAt = typeof incoming.resetAt === 'number' ? incoming.resetAt : null;
         const localResetAt = gameStateRef.current.resetAt;
         if (incomingResetAt !== null && localResetAt > 0 && incomingResetAt < localResetAt) return;
+        if (hasFreshLocalWrite()) return;
         // Only apply if the incoming state is at least as recent as local.
         const incomingTick = typeof incoming.lastTickAt === 'number' ? incoming.lastTickAt : 0;
         const localTick = gameStateRef.current.lastTickAt ?? 0;
@@ -352,7 +358,7 @@ export function useGameState(readOnly = false) {
       supabase.removeChannel(channel);
       broadcastChannelRef.current = null;
     };
-  }, [isSupabaseConfigured, applySync]);
+  }, [isSupabaseConfigured, applySync, hasFreshLocalWrite]);
 
   // ─── Re-sync when page becomes visible (fixes fullscreen WebSocket drop) ─
   useEffect(() => {
@@ -364,6 +370,7 @@ export function useGameState(readOnly = false) {
       const incomingResetAt = typeof data.resetAt === 'number' ? data.resetAt : null;
       const localResetAt = gameStateRef.current.resetAt;
       if (incomingResetAt !== null && localResetAt > 0 && incomingResetAt < localResetAt) return;
+      if (hasFreshLocalWrite()) return;
       const incomingTick = typeof data.lastTickAt === 'number' ? data.lastTickAt : 0;
       const localTick = gameStateRef.current.lastTickAt ?? 0;
       if (incomingTick < localTick) return;
@@ -393,7 +400,7 @@ export function useGameState(readOnly = false) {
       document.removeEventListener('visibilitychange', syncNow);
       clearInterval(pollInterval);
     };
-  }, [isSupabaseConfigured, applySync]);
+  }, [isSupabaseConfigured, applySync, hasFreshLocalWrite]);
 
   // ─── Local timer tick (time-based: all devices compute from same anchor) ─
   useEffect(() => {
