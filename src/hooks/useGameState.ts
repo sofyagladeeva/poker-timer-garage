@@ -7,6 +7,18 @@ const STATE_KEY = 'poker_game_state';
 const BLINDS_KEY = 'poker_blind_levels';
 const COMBINATIONS_KEY = 'poker_combinations';
 const TOURNAMENTS_KEY = 'poker_tournaments';
+const TIMER_DEBUG_LIMIT = 30;
+
+type TimerDebugEntry = {
+  at: number;
+  source: string;
+  status: GameState['status'];
+  timeLeft: number;
+  lastTickAt: number | null;
+  baseTimeLeft: number;
+  baseTimestamp: number;
+  note: string;
+};
 
 // ─── Local storage fallback (when Supabase not configured) ─────────────────
 function loadLocal<T>(key: string, defaultValue: T): T {
@@ -74,6 +86,7 @@ export function useGameState(readOnly = false) {
   const [combinations, setCombinations] = useState<Combination[]>(() =>
     loadLocal(COMBINATIONS_KEY, [])
   );
+  const [timerDebug, setTimerDebug] = useState<TimerDebugEntry[]>([]);
 
   const isSupabaseConfigured =
     import.meta.env.VITE_SUPABASE_URL &&
@@ -81,7 +94,6 @@ export function useGameState(readOnly = false) {
   const [syncReady, setSyncReady] = useState(!isSupabaseConfigured);
 
   // ─── Refs to avoid stale closures in stable callbacks ───────────────────
-  // Updated synchronously on every render so callbacks always see fresh state
   const gameStateRef = useRef(gameState);
   gameStateRef.current = gameState;
 
@@ -125,6 +137,23 @@ export function useGameState(readOnly = false) {
   // when a second device opens the admin panel mid-tournament.
   const serverLoaded = useRef(!isSupabaseConfigured);
 
+  const pushTimerDebug = useCallback((source: string, snapshot: Partial<GameState>, note = '') => {
+    setTimerDebug(prev => {
+      const entry: TimerDebugEntry = {
+        at: Date.now(),
+        source,
+        status: snapshot.status ?? gameStateRef.current.status,
+        timeLeft: snapshot.timeLeft ?? gameStateRef.current.timeLeft,
+        lastTickAt: snapshot.lastTickAt ?? gameStateRef.current.lastTickAt,
+        baseTimeLeft: baseTimeLeft.current,
+        baseTimestamp: baseTimestamp.current,
+        note,
+      };
+
+      return [...prev.slice(-(TIMER_DEBUG_LIMIT - 1)), entry];
+    });
+  }, []);
+
   // ─── Shared sync helper (stable ref, usable in any effect) ─────────────
   const hydrateSyncedState = useCallback((raw: Record<string, unknown>) => {
     const normalized = normalizeGameState(raw as unknown as GameState, gameStateRef.current);
@@ -149,7 +178,7 @@ export function useGameState(readOnly = false) {
     };
   }, []);
 
-  const applySync = useCallback((raw: Record<string, unknown>) => {
+  const applySync = useCallback((raw: Record<string, unknown>, source = 'sync') => {
     const { persistedLastTickAt, persistedTimeLeft, persistedState, liveState } = hydrateSyncedState(raw);
     if (persistedLastTickAt) {
       baseTimeLeft.current = persistedTimeLeft;
@@ -157,7 +186,12 @@ export function useGameState(readOnly = false) {
     }
     setGameState(liveState);
     saveLocal(STATE_KEY, persistedState);
-  }, [hydrateSyncedState]); // eslint-disable-line react-hooks/exhaustive-deps
+    pushTimerDebug(
+      `applySync:${source}`,
+      liveState,
+      `persisted=${persistedTimeLeft} tick=${persistedLastTickAt ?? 'null'}`
+    );
+  }, [hydrateSyncedState, pushTimerDebug]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const persistGameState = useCallback(async (stateToSave: GameState, immediate = false) => {
     if (immediate && stateToSave.resetAt > 0) {
@@ -168,7 +202,7 @@ export function useGameState(readOnly = false) {
         const serverResetAt = (serverCheckResult.data as Record<string, unknown>).resetAt;
         if (typeof serverResetAt === 'number' && serverResetAt > stateToSave.resetAt) {
           Promise.resolve(supabase.from('game_state').select('*').single())
-            .then(({ data }) => { if (data) applySync(data as Record<string, unknown>); });
+            .then(({ data }) => { if (data) applySync(data as Record<string, unknown>, 'persist-stale-reset'); });
           return false;
         }
       }
@@ -230,7 +264,7 @@ export function useGameState(readOnly = false) {
       serverLoaded.current = true;
 
       if (gs.data) {
-        applySync(gs.data as Record<string, unknown>);
+        applySync(gs.data as Record<string, unknown>, 'init');
       }
 
       if (bl.data && bl.data.length > 0) {
@@ -268,15 +302,15 @@ export function useGameState(readOnly = false) {
         if (incomingResetAt !== null && localResetAt > 0 && incomingResetAt !== localResetAt) {
           if (incomingResetAt > localResetAt) {
             // Newer reset from another device — this is a legitimate new tournament
-            applySync(incoming);
+            applySync(incoming, 'broadcast-newer-reset');
           } else {
             // Incoming is older tournament — stale device, fetch authoritative state
             Promise.resolve(supabase.from('game_state').select('*').single())
-              .then(({ data }) => { if (data) applySync(data as Record<string, unknown>); });
+              .then(({ data }) => { if (data) applySync(data as Record<string, unknown>, 'broadcast-stale-fetch'); });
           }
           return;
         }
-        applySync(incoming);
+        applySync(incoming, 'broadcast');
       })
       .subscribe();
     broadcastChannelRef.current = bc;
@@ -296,7 +330,7 @@ export function useGameState(readOnly = false) {
         const incomingTick = typeof incoming.lastTickAt === 'number' ? incoming.lastTickAt : 0;
         const localTick = gameStateRef.current.lastTickAt ?? 0;
         if (incomingTick < localTick) return;
-        applySync(incoming);
+        applySync(incoming, 'realtime');
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_levels' }, () => {
         if (skipBlindRealtime.current) return;
@@ -318,7 +352,7 @@ export function useGameState(readOnly = false) {
       supabase.removeChannel(channel);
       broadcastChannelRef.current = null;
     };
-  }, [isSupabaseConfigured]);
+  }, [isSupabaseConfigured, applySync]);
 
   // ─── Re-sync when page becomes visible (fixes fullscreen WebSocket drop) ─
   useEffect(() => {
@@ -333,7 +367,7 @@ export function useGameState(readOnly = false) {
       const incomingTick = typeof data.lastTickAt === 'number' ? data.lastTickAt : 0;
       const localTick = gameStateRef.current.lastTickAt ?? 0;
       if (incomingTick < localTick) return;
-      applySync(data);
+      applySync(data, 'poll');
     };
 
     const syncNow = () => {
@@ -359,7 +393,7 @@ export function useGameState(readOnly = false) {
       document.removeEventListener('visibilitychange', syncNow);
       clearInterval(pollInterval);
     };
-  }, [isSupabaseConfigured]);
+  }, [isSupabaseConfigured, applySync]);
 
   // ─── Local timer tick (time-based: all devices compute from same anchor) ─
   useEffect(() => {
@@ -372,6 +406,13 @@ export function useGameState(readOnly = false) {
         const newTimeLeft = Math.max(0, baseTimeLeft.current - elapsed);
         if (prev.timeLeft === newTimeLeft) return prev;
         const updated = { ...prev, timeLeft: newTimeLeft };
+        if (prev.timeLeft - newTimeLeft > 1) {
+          pushTimerDebug(
+            'tick-jump',
+            updated,
+            `delta=${prev.timeLeft - newTimeLeft} base=${baseTimeLeft.current} anchor=${baseTimestamp.current}`
+          );
+        }
         if (!isSupabaseConfigured) saveLocal(STATE_KEY, updated);
         return updated;
       });
@@ -405,7 +446,14 @@ export function useGameState(readOnly = false) {
     const updated = normalizeGameState({ ...gameStateRef.current, ...nextPatch }, gameStateRef.current);
     setGameState(updated);
     saveLocal(STATE_KEY, updated);
-    if (!isSupabaseConfigured) return Promise.resolve(true);
+    if (!isSupabaseConfigured) {
+      pushTimerDebug(
+        immediate ? 'update:immediate' : 'update:debounced',
+        updated,
+        `patchStatus=${patch.status ?? 'none'} patchTime=${patch.timeLeft ?? 'none'}`
+      );
+      return Promise.resolve(true);
+    }
 
     // Debounce Supabase writes to avoid a DB call on every counter click
     // Update local time anchor so this device also uses the new base
@@ -413,6 +461,11 @@ export function useGameState(readOnly = false) {
       baseTimeLeft.current  = updated.timeLeft;
       baseTimestamp.current = updated.lastTickAt;
     }
+    pushTimerDebug(
+      immediate ? 'update:immediate' : 'update:debounced',
+      updated,
+      `patchStatus=${patch.status ?? 'none'} patchTime=${patch.timeLeft ?? 'none'}`
+    );
 
     // For immediate actions: broadcast via fast channel first, then persist to DB
     if (immediate && broadcastChannelRef.current) {
@@ -439,6 +492,15 @@ export function useGameState(readOnly = false) {
   }, [isSupabaseConfigured, persistGameState]);
 
   const startTimer = useCallback(() => {
+    pushTimerDebug(
+      'start-click',
+      {
+        status: 'running',
+        timeLeft: gameStateRef.current.timeLeft,
+        lastTickAt: Date.now(),
+      },
+      `current=${gameStateRef.current.timeLeft}`
+    );
     updateGameState({ status: 'running', lastTickAt: Date.now() }, true);
   }, [updateGameState]);
 
@@ -446,6 +508,15 @@ export function useGameState(readOnly = false) {
     // Capture the actual live time before pausing
     const elapsed = Math.floor((Date.now() - baseTimestamp.current) / 1000);
     const liveTimeLeft = Math.max(0, baseTimeLeft.current - elapsed);
+    pushTimerDebug(
+      'pause-click',
+      {
+        status: 'paused',
+        timeLeft: liveTimeLeft,
+        lastTickAt: Date.now(),
+      },
+      `elapsed=${elapsed} base=${baseTimeLeft.current} anchor=${baseTimestamp.current}`
+    );
     updateGameState({ status: 'paused', timeLeft: liveTimeLeft }, true);
   }, [updateGameState]);
 
@@ -491,7 +562,7 @@ export function useGameState(readOnly = false) {
       const localTick = gameStateRef.current.lastTickAt ?? 0;
       if (serverTick > localTick) {
         // Server is ahead — someone else already acted, just sync
-        applySync(data as Record<string, unknown>);
+        applySync(data as Record<string, unknown>, 'auto-advance-server-ahead');
       } else {
         nextLevel();
       }
@@ -619,5 +690,6 @@ export function useGameState(readOnly = false) {
     saveTournament,
     fetchTournaments,
     deleteTournament,
+    timerDebug,
   };
 }

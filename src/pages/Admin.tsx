@@ -274,7 +274,7 @@ export function Admin() {
   const {
     gameState, blindLevels, combinations, syncReady,
     updateGameState, startTimer, pauseTimer, nextLevel, prevLevel, resetTournament,
-    updateBlindLevels, updateCombinations, saveTournament, fetchTournaments, deleteTournament,
+    updateBlindLevels, updateCombinations, saveTournament, fetchTournaments, deleteTournament, timerDebug,
   } = useGameState();
   const gameStateSnapshotRef = useRef(gameState);
 
@@ -721,6 +721,7 @@ export function Admin() {
   const isRunning = gameState.status === 'running' || gameState.status === 'break';
   const minutes = Math.floor(gameState.timeLeft / 60);
   const seconds = gameState.timeLeft % 60;
+  const formatTimerDebug = (secs: number) => `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
 
   const currentLevel = blindLevels[gameState.currentLevelIndex];
   const regularBlindLevels = blindLevels.filter(level => !level.isBreak);
@@ -1386,6 +1387,30 @@ export function Admin() {
                 </button>
               </div>
             </div>
+
+            <details className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
+              <summary className="cursor-pointer text-[#888] text-xs uppercase tracking-widest">
+                Timer Debug
+              </summary>
+              <div className="mt-3 max-h-64 overflow-auto space-y-2 font-mono text-[11px] leading-4 text-[#BBB]">
+                {timerDebug.length === 0 ? (
+                  <div className="text-[#666]">Нет событий.</div>
+                ) : timerDebug.slice().reverse().map((entry, idx) => (
+                  <div key={`${entry.at}-${idx}`} className="border-b border-[#1E1E1E] pb-2">
+                    <div className="text-white">
+                      {new Date(entry.at).toLocaleTimeString('ru-RU', { hour12: false })} · {entry.source}
+                    </div>
+                    <div>
+                      status={entry.status} time={formatTimerDebug(entry.timeLeft)} lastTickAt={entry.lastTickAt ?? 'null'}
+                    </div>
+                    <div>
+                      base={formatTimerDebug(entry.baseTimeLeft)} anchor={entry.baseTimestamp}
+                    </div>
+                    <div className="text-[#777] break-all">{entry.note}</div>
+                  </div>
+                ))}
+              </div>
+            </details>
           </div>
         )}
 
