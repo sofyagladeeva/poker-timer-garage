@@ -434,12 +434,15 @@ export function useGameState(readOnly = false) {
     if (isSupabaseConfigured && !serverLoaded.current) return Promise.resolve(false);
 
     const nextPatch: Partial<GameState> = { ...patch };
+    const currentStatus = gameStateRef.current.status;
     const nextStatus = nextPatch.status ?? gameStateRef.current.status;
 
     if (nextStatus === 'running' || nextStatus === 'break') {
       const now = Date.now();
-      const elapsed = Math.floor((now - baseTimestamp.current) / 1000);
-      const liveTimeLeft = Math.max(0, baseTimeLeft.current - elapsed);
+      const timerWasAdvancing = currentStatus === 'running' || currentStatus === 'break';
+      const liveTimeLeft = timerWasAdvancing
+        ? Math.max(0, baseTimeLeft.current - Math.floor((now - baseTimestamp.current) / 1000))
+        : gameStateRef.current.timeLeft;
 
       if (nextPatch.timeLeft === undefined) {
         nextPatch.timeLeft = liveTimeLeft;
