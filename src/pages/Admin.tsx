@@ -344,7 +344,7 @@ export function Admin() {
 
   const syncBlindTemplateState = (next: BlindTemplate[]) => {
     const result = saveBlindTemplates(next);
-    if (!result.ok) {
+    if (!result.ok && !sharedBlindTemplateLibraryEnabled) {
       return result;
     }
 
@@ -353,7 +353,7 @@ export function Admin() {
   };
 
   useEffect(() => {
-    if (activeTab !== 'blinds') return;
+    if (!authed) return;
 
     let cancelled = false;
 
@@ -400,7 +400,7 @@ export function Admin() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, sharedBlindTemplateLibraryEnabled]);
+  }, [authed, sharedBlindTemplateLibraryEnabled]);
 
   // ── Realtime sync: шаблоны обновляются на всех устройствах сразу ──────────
   useEffect(() => {
@@ -462,7 +462,7 @@ export function Admin() {
   };
 
   useEffect(() => {
-    if (activeTab !== 'settings' || !sharedBackgroundLibraryEnabled) return;
+    if (!authed || !sharedBackgroundLibraryEnabled) return;
 
     let cancelled = false;
 
@@ -512,7 +512,7 @@ export function Admin() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, sharedBackgroundLibraryEnabled]);
+  }, [authed, sharedBackgroundLibraryEnabled]);
 
   const persistBackgroundLibrary = async (next: StoredBackground[], removedIds: string[] = []) => {
     if (!sharedBackgroundLibraryEnabled) {
