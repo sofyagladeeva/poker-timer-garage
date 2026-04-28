@@ -63,7 +63,8 @@ const BOT_API = import.meta.env.VITE_BOT_API_URL || 'https://web-production-6035
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'poker2024';
 const MAX_BACKGROUND_ITEMS = 24;
-const SHARED_LIBRARY_TIMEOUT_MS = 8_000;
+const SHARED_LIBRARY_TIMEOUT_MS = 20_000;
+const SHARED_LIBRARY_RETRY_COUNT = 2;
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -82,6 +83,32 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
       }
     );
   });
+}
+
+function wait(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function withRetries<T>(
+  run: () => Promise<T>,
+  timeoutMs: number,
+  label: string,
+  attempts: number
+): Promise<T> {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await withTimeout(run(), timeoutMs, label);
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) {
+        await wait(750);
+      }
+    }
+  }
+
+  throw lastError ?? new Error(label);
 }
 
 // ─── Card picker ──────────────────────────────────────────────────────────
@@ -390,10 +417,11 @@ export function Admin() {
           return;
         }
 
-        const remote = await withTimeout(
-          fetchSharedBlindTemplates(),
+        const remote = await withRetries(
+          () => fetchSharedBlindTemplates(),
           SHARED_LIBRARY_TIMEOUT_MS,
-          'Не удалось загрузить общие шаблоны блайндов'
+          'Не удалось загрузить общие шаблоны блайндов',
+          SHARED_LIBRARY_RETRY_COUNT
         );
         const local = loadBlindTemplates();
         const mergedCustom = mergeBlindTemplates(remote, local).filter(template => !template.id.startsWith('preset_'));
@@ -494,10 +522,11 @@ export function Admin() {
       setBackgroundUploadError(null);
 
       try {
-        const remote = await withTimeout(
-          fetchSharedBackgroundLibrary(),
+        const remote = await withRetries(
+          () => fetchSharedBackgroundLibrary(),
           SHARED_LIBRARY_TIMEOUT_MS,
-          'Не удалось загрузить общую библиотеку фонов'
+          'Не удалось загрузить общую библиотеку фонов',
+          SHARED_LIBRARY_RETRY_COUNT
         );
         const local = loadBackgroundLibrary();
         const missingLocal = local.filter(item =>
