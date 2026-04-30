@@ -14,6 +14,7 @@ const GAME_STATE_POLL_MS = 2_000;
 const AUX_SYNC_POLL_MS = 5_000;
 const DISPLAY_STALE_RELOAD_MS = 45_000;
 const DISPLAY_WATCHDOG_MS = 5_000;
+const AUTO_ADVANCE_SERVER_CHECK_MS = 350;
 
 // ─── Local storage fallback (when Supabase not configured) ─────────────────
 function loadLocal<T>(key: string, defaultValue: T): T {
@@ -154,6 +155,7 @@ export function useGameState(readOnly = false) {
   // Debounce Supabase upsert for rapid counter updates
   const supabaseUpsertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingUpsertState = useRef<GameState | null>(null);
+  const autoAdvancePending = useRef(false);
 
   // Broadcast channel ref — for low-latency state push (<100ms)
   const broadcastChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -656,26 +658,50 @@ export function useGameState(readOnly = false) {
     if (!serverLoaded.current) return;
     if (gameState.timeLeft !== 0) return;
     if (gameState.status !== 'running' && gameState.status !== 'break') return;
+    if (autoAdvancePending.current) return;
+
+    autoAdvancePending.current = true;
+
+    const advanceImmediately = () => {
+      nextLevel();
+    };
 
     // Before advancing, check server state to ensure this device isn't stale.
     // If another admin already reset/advanced (server tick > local tick), sync
     // instead of writing a stale nextLevel() to Supabase.
+    // But never wait on this check for seconds — moving off 00:00 is more
+    // important than a perfect preflight on a live game screen.
     if (!isSupabaseConfigured) {
-      nextLevel();
+      advanceImmediately();
+      autoAdvancePending.current = false;
       return;
     }
 
-    Promise.resolve(supabase.from('game_state').select('*').single()).then(({ data }) => {
-      if (!data) { nextLevel(); return; }
-      const serverTick = typeof data.lastTickAt === 'number' ? data.lastTickAt : 0;
-      const localTick = gameStateRef.current.lastTickAt ?? 0;
-      if (serverTick > localTick) {
-        // Server is ahead — someone else already acted, just sync
-        applyAuthoritativeGameState(data as Record<string, unknown>, 'auto-advance-server-ahead');
-      } else {
-        nextLevel();
-      }
-    }).catch(() => nextLevel());
+    void withTimeout(
+      Promise.resolve(supabase.from('game_state').select('*').single()),
+      AUTO_ADVANCE_SERVER_CHECK_MS,
+      'Auto-advance server check'
+    )
+      .then(({ data }) => {
+        if (!data) {
+          advanceImmediately();
+          return;
+        }
+        const serverTick = typeof data.lastTickAt === 'number' ? data.lastTickAt : 0;
+        const localTick = gameStateRef.current.lastTickAt ?? 0;
+        if (serverTick > localTick) {
+          // Server is ahead — someone else already acted, just sync
+          applyAuthoritativeGameState(data as Record<string, unknown>, 'auto-advance-server-ahead');
+        } else {
+          advanceImmediately();
+        }
+      })
+      .catch(() => {
+        advanceImmediately();
+      })
+      .finally(() => {
+        autoAdvancePending.current = false;
+      });
   }, [readOnly, gameState.timeLeft, gameState.status, nextLevel, isSupabaseConfigured, applyAuthoritativeGameState]);
 
   const prevLevel = useCallback(() => {
