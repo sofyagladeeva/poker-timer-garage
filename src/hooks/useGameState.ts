@@ -649,12 +649,11 @@ export function useGameState(readOnly = false) {
   }, [updateGameState]);
 
   // ─── Авто-переход: таймер дошёл до 0 → следующий уровень ──────────────
-  // Only the admin (readOnly=false) writes level transitions to Supabase.
-  // Display screen is readOnly — it never writes, just follows admin state.
+  // Any live client may advance the level if the timer reaches 0.
+  // This avoids a hard dependency on the admin tab staying open and awake.
   // serverLoaded guard prevents stale localStorage from triggering nextLevel()
   // on a second device before authoritative server state is received.
   useEffect(() => {
-    if (readOnly) return;
     if (!serverLoaded.current) return;
     if (gameState.timeLeft !== 0) return;
     if (gameState.status !== 'running' && gameState.status !== 'break') return;
