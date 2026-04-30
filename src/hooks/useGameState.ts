@@ -10,6 +10,10 @@ const TOURNAMENTS_KEY = 'poker_tournaments';
 const LOCAL_WRITE_SYNC_GRACE_MS = 20_000;
 const INITIAL_SYNC_TIMEOUT_MS = 20_000;
 const INITIAL_SYNC_RETRY_COUNT = 2;
+const GAME_STATE_POLL_MS = 2_000;
+const AUX_SYNC_POLL_MS = 5_000;
+const DISPLAY_STALE_RELOAD_MS = 45_000;
+const DISPLAY_WATCHDOG_MS = 5_000;
 
 // ─── Local storage fallback (when Supabase not configured) ─────────────────
 function loadLocal<T>(key: string, defaultValue: T): T {
@@ -156,12 +160,18 @@ export function useGameState(readOnly = false) {
   // Unique client ID to filter out own broadcasts
   const clientId = useRef(Math.random().toString(36).slice(2));
 
-  // Time-based timer: all devices compute timeLeft from the same anchor point,
-  // so they stay in sync as long as device clocks are NTP-synced (within ~100ms).
+  // Time-based timer: all devices compute timeLeft from the same anchor point.
+  // On remote displays we compensate for local clock drift when a fresh anchor
+  // arrives, so TVs do not lose minutes if their system time is wrong.
   // baseTimeLeft = canonical seconds remaining at the moment of last sync
   // baseTimestamp = wall-clock time when that sync happened
   const baseTimeLeft  = useRef(gameState.timeLeft);
   const baseTimestamp = useRef(gameState.lastTickAt ?? Date.now());
+  // Remote clients can have clocks that drift by minutes (smart TVs do this).
+  // Calibrate once per incoming anchor so displays tick from their local receipt
+  // time instead of trusting another device's wall clock.
+  const clockOffsetMs = useRef(0);
+  const clockOffsetTick = useRef<number | null>(null);
 
   // Track when WE last wrote to Supabase — polling won't override local state
   // for 20 seconds after any local write, breaking the multi-device fight cycle
@@ -169,6 +179,7 @@ export function useGameState(readOnly = false) {
   const hasFreshLocalWrite = useCallback(() => {
     return Date.now() - lastLocalWriteAt.current < LOCAL_WRITE_SYNC_GRACE_MS;
   }, []);
+  const lastServerSyncAt = useRef(isSupabaseConfigured ? 0 : Date.now());
 
   // Guard: don't allow auto-advance until authoritative state is loaded from
   // Supabase. Prevents stale localStorage from writing wrong level to the DB
@@ -183,11 +194,17 @@ export function useGameState(readOnly = false) {
       ? raw.lastTickAt
       : normalized.lastTickAt;
 
+    if (persistedLastTickAt && clockOffsetTick.current !== persistedLastTickAt) {
+      clockOffsetMs.current = Date.now() - persistedLastTickAt;
+      clockOffsetTick.current = persistedLastTickAt;
+    }
+
     if (
       persistedLastTickAt &&
       (normalized.status === 'running' || normalized.status === 'break')
     ) {
-      const elapsed = Math.floor((Date.now() - persistedLastTickAt) / 1000);
+      const adjustedAnchor = persistedLastTickAt + clockOffsetMs.current;
+      const elapsed = Math.floor((Date.now() - adjustedAnchor) / 1000);
       normalized.timeLeft = Math.max(0, persistedTimeLeft - elapsed);
     }
 
@@ -199,15 +216,78 @@ export function useGameState(readOnly = false) {
     };
   }, []);
 
-  const applySync = useCallback((raw: Record<string, unknown>, _source = 'sync') => {
+  const applySync = useCallback((raw: Record<string, unknown>, source?: string) => {
+    void source;
     const { persistedLastTickAt, persistedTimeLeft, persistedState, liveState } = hydrateSyncedState(raw);
     if (persistedLastTickAt) {
       baseTimeLeft.current = persistedTimeLeft;
-      baseTimestamp.current = persistedLastTickAt;
+      baseTimestamp.current = persistedLastTickAt + clockOffsetMs.current;
     }
     setGameState(liveState);
     saveLocal(STATE_KEY, persistedState);
-  }, [hydrateSyncedState]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hydrateSyncedState]);
+
+  const markServerSync = useCallback(() => {
+    lastServerSyncAt.current = Date.now();
+  }, []);
+
+  const shouldApplyRemoteGameState = useCallback((data: Record<string, unknown>) => {
+    const incomingResetAt = typeof data.resetAt === 'number' ? data.resetAt : null;
+    const localResetAt = gameStateRef.current.resetAt;
+    if (incomingResetAt !== null && localResetAt > 0 && incomingResetAt < localResetAt) return false;
+    if (hasFreshLocalWrite()) return false;
+    const incomingTick = typeof data.lastTickAt === 'number' ? data.lastTickAt : 0;
+    const localTick = gameStateRef.current.lastTickAt ?? 0;
+    return incomingTick >= localTick;
+  }, [hasFreshLocalWrite]);
+
+  const applyAuthoritativeGameState = useCallback((data: Record<string, unknown>, source?: string) => {
+    markServerSync();
+    applySync(data, source);
+  }, [applySync, markServerSync]);
+
+  const applyIfNewerGameState = useCallback((data: Record<string, unknown>, source?: string) => {
+    markServerSync();
+    if (!shouldApplyRemoteGameState(data)) return false;
+    applySync(data, source);
+    return true;
+  }, [applySync, markServerSync, shouldApplyRemoteGameState]);
+
+  const applyBlindLevelsSync = useCallback((levels: BlindLevel[]) => {
+    const normalized = normalizeBlindLevels(levels);
+    setBlindLevels(normalized);
+    saveLocal(BLINDS_KEY, normalized);
+    markServerSync();
+  }, [markServerSync]);
+
+  const applyCombinationsSync = useCallback((nextCombinations: Combination[]) => {
+    setCombinations(nextCombinations);
+    saveLocal(COMBINATIONS_KEY, nextCombinations);
+    markServerSync();
+  }, [markServerSync]);
+
+  const syncGameStateFromServer = useCallback(async (source = 'sync') => {
+    if (!isSupabaseConfigured || skipGameStateRealtime.current) return false;
+    const { data } = await supabase.from('game_state').select('*').single();
+    if (!data || skipGameStateRealtime.current) return false;
+    return applyIfNewerGameState(data as Record<string, unknown>, source);
+  }, [applyIfNewerGameState, isSupabaseConfigured]);
+
+  const syncBlindLevelsFromServer = useCallback(async () => {
+    if (!isSupabaseConfigured || skipBlindRealtime.current) return false;
+    const { data } = await supabase.from('blind_levels').select('*').order('id');
+    if (!data || skipBlindRealtime.current) return false;
+    applyBlindLevelsSync(data);
+    return true;
+  }, [applyBlindLevelsSync, isSupabaseConfigured]);
+
+  const syncCombinationsFromServer = useCallback(async () => {
+    if (!isSupabaseConfigured || skipCombinationsRealtime.current) return false;
+    const { data } = await supabase.from('combinations').select('*').order('created_at');
+    if (!data || skipCombinationsRealtime.current) return false;
+    applyCombinationsSync(data);
+    return true;
+  }, [applyCombinationsSync, isSupabaseConfigured]);
 
   const persistGameState = useCallback(async (stateToSave: GameState, immediate = false) => {
     skipGameStateRealtime.current = true;
@@ -223,7 +303,7 @@ export function useGameState(readOnly = false) {
         const serverResetAt = (serverCheckResult.data as Record<string, unknown>).resetAt;
         if (typeof serverResetAt === 'number' && serverResetAt > stateToSave.resetAt) {
           Promise.resolve(supabase.from('game_state').select('*').single())
-            .then(({ data }) => { if (data) applySync(data as Record<string, unknown>, 'persist-stale-reset'); });
+            .then(({ data }) => { if (data) applyAuthoritativeGameState(data as Record<string, unknown>, 'persist-stale-reset'); });
           return false;
         }
       }
@@ -295,16 +375,14 @@ export function useGameState(readOnly = false) {
       serverLoaded.current = true;
 
       if (gs.status === 'fulfilled' && gs.value.data) {
-        applySync(gs.value.data as Record<string, unknown>, 'init');
+        applyAuthoritativeGameState(gs.value.data as Record<string, unknown>, 'init');
       } else if (gs.status === 'rejected') {
         console.error('Initial game_state sync failed', gs.reason);
       }
 
       if (bl.status === 'fulfilled') {
         if (bl.value.data && bl.value.data.length > 0) {
-          const normalized = normalizeBlindLevels(bl.value.data);
-          setBlindLevels(normalized);
-          saveLocal(BLINDS_KEY, normalized);
+          applyBlindLevelsSync(bl.value.data);
         } else if (Array.isArray(bl.value.data) && bl.value.data.length === 0) {
           const defaults = normalizeBlindLevels(DEFAULT_BLIND_LEVELS);
           setBlindLevels(defaults);
@@ -323,7 +401,7 @@ export function useGameState(readOnly = false) {
       }
 
       if (combs.status === 'fulfilled' && combs.value.data) {
-        setCombinations(combs.value.data);
+        applyCombinationsSync(combs.value.data);
       } else if (combs.status === 'rejected') {
         console.error('Initial combinations sync failed', combs.reason);
       }
@@ -352,16 +430,15 @@ export function useGameState(readOnly = false) {
         if (incomingResetAt !== null && localResetAt > 0 && incomingResetAt !== localResetAt) {
           if (incomingResetAt > localResetAt) {
             // Newer reset from another device — this is a legitimate new tournament
-            applySync(incoming, 'broadcast-newer-reset');
+            applyAuthoritativeGameState(incoming, 'broadcast-newer-reset');
           } else {
             // Incoming is older tournament — stale device, fetch authoritative state
             Promise.resolve(supabase.from('game_state').select('*').single())
-              .then(({ data }) => { if (data) applySync(data as Record<string, unknown>, 'broadcast-stale-fetch'); });
+              .then(({ data }) => { if (data) applyAuthoritativeGameState(data as Record<string, unknown>, 'broadcast-stale-fetch'); });
           }
           return;
         }
-        if (hasFreshLocalWrite()) return;
-        applySync(incoming, 'broadcast');
+        applyIfNewerGameState(incoming, 'broadcast');
       })
       .subscribe();
     broadcastChannelRef.current = bc;
@@ -372,29 +449,15 @@ export function useGameState(readOnly = false) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, (payload) => {
         if (skipGameStateRealtime.current) return;
         if (!payload.new) return;
-        const incoming = payload.new as Record<string, unknown>;
-        // Reject if from an older tournament generation (stale admin write to DB)
-        const incomingResetAt = typeof incoming.resetAt === 'number' ? incoming.resetAt : null;
-        const localResetAt = gameStateRef.current.resetAt;
-        if (incomingResetAt !== null && localResetAt > 0 && incomingResetAt < localResetAt) return;
-        if (hasFreshLocalWrite()) return;
-        // Only apply if the incoming state is at least as recent as local.
-        const incomingTick = typeof incoming.lastTickAt === 'number' ? incoming.lastTickAt : 0;
-        const localTick = gameStateRef.current.lastTickAt ?? 0;
-        if (incomingTick < localTick) return;
-        applySync(incoming, 'realtime');
+        applyIfNewerGameState(payload.new as Record<string, unknown>, 'realtime');
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_levels' }, () => {
         if (skipBlindRealtime.current) return;
-        supabase.from('blind_levels').select('*').order('id').then(({ data }) => {
-          if (data) setBlindLevels(normalizeBlindLevels(data));
-        });
+        void syncBlindLevelsFromServer();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'combinations' }, () => {
         if (skipCombinationsRealtime.current) return;
-        supabase.from('combinations').select('*').order('created_at').then(({ data }) => {
-          if (data) setCombinations(data);
-        });
+        void syncCombinationsFromServer();
       })
       .subscribe();
 
@@ -404,49 +467,62 @@ export function useGameState(readOnly = false) {
       supabase.removeChannel(channel);
       broadcastChannelRef.current = null;
     };
-  }, [isSupabaseConfigured, applySync, hasFreshLocalWrite]);
+  }, [
+    isSupabaseConfigured,
+    applyAuthoritativeGameState,
+    applyBlindLevelsSync,
+    applyCombinationsSync,
+    applyIfNewerGameState,
+    syncBlindLevelsFromServer,
+    syncCombinationsFromServer,
+  ]);
 
   // ─── Re-sync when page becomes visible (fixes fullscreen WebSocket drop) ─
   useEffect(() => {
     if (!isSupabaseConfigured) return;
 
-    // Helper: only apply Supabase state if it's at least as recent as local,
-    // and from the same tournament generation (resetAt check).
-    const applyIfNewer = (data: Record<string, unknown>) => {
-      const incomingResetAt = typeof data.resetAt === 'number' ? data.resetAt : null;
-      const localResetAt = gameStateRef.current.resetAt;
-      if (incomingResetAt !== null && localResetAt > 0 && incomingResetAt < localResetAt) return;
-      if (hasFreshLocalWrite()) return;
-      const incomingTick = typeof data.lastTickAt === 'number' ? data.lastTickAt : 0;
-      const localTick = gameStateRef.current.lastTickAt ?? 0;
-      if (incomingTick < localTick) return;
-      applySync(data, 'poll');
-    };
-
     const syncNow = () => {
       if (document.visibilityState !== 'visible') return;
-      supabase.from('game_state').select('*').single().then(({ data }) => {
-        if (!data || skipGameStateRealtime.current) return;
-        applyIfNewer(data as Record<string, unknown>);
-      });
+      void syncGameStateFromServer('visibility');
+      void syncBlindLevelsFromServer();
+      void syncCombinationsFromServer();
     };
 
     document.addEventListener('visibilitychange', syncNow);
 
     // Polling every 2s as backup for realtime disconnects.
-    const pollInterval = setInterval(() => {
-      if (skipGameStateRealtime.current) return;
-      supabase.from('game_state').select('*').single().then(({ data }) => {
-        if (!data || skipGameStateRealtime.current) return;
-        applyIfNewer(data as Record<string, unknown>);
-      });
-    }, 2000);
+    const gameStatePollInterval = setInterval(() => {
+      void syncGameStateFromServer('poll');
+    }, GAME_STATE_POLL_MS);
+
+    const auxiliaryPollInterval = setInterval(() => {
+      void syncBlindLevelsFromServer();
+      void syncCombinationsFromServer();
+    }, AUX_SYNC_POLL_MS);
 
     return () => {
       document.removeEventListener('visibilitychange', syncNow);
-      clearInterval(pollInterval);
+      clearInterval(gameStatePollInterval);
+      clearInterval(auxiliaryPollInterval);
     };
-  }, [isSupabaseConfigured, applySync, hasFreshLocalWrite]);
+  }, [isSupabaseConfigured, syncBlindLevelsFromServer, syncCombinationsFromServer, syncGameStateFromServer]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !readOnly || !syncReady) return;
+
+    const watchdogInterval = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      if (lastServerSyncAt.current === 0) return;
+
+      const staleFor = Date.now() - lastServerSyncAt.current;
+      if (staleFor < DISPLAY_STALE_RELOAD_MS) return;
+
+      console.warn(`Display sync stalled for ${staleFor}ms, reloading page`);
+      window.location.reload();
+    }, DISPLAY_WATCHDOG_MS);
+
+    return () => clearInterval(watchdogInterval);
+  }, [isSupabaseConfigured, readOnly, syncReady]);
 
   // ─── Local timer tick (time-based: all devices compute from same anchor) ─
   useEffect(() => {
@@ -499,6 +575,11 @@ export function useGameState(readOnly = false) {
 
     // Debounce Supabase writes to avoid a DB call on every counter click
     // Update local time anchor so this device also uses the new base
+    if (updated.lastTickAt && updated.lastTickAt !== gameStateRef.current.lastTickAt) {
+      clockOffsetMs.current = 0;
+      clockOffsetTick.current = updated.lastTickAt;
+    }
+
     if (updated.lastTickAt) {
       baseTimeLeft.current  = updated.timeLeft;
       baseTimestamp.current = updated.lastTickAt;
@@ -581,12 +662,12 @@ export function useGameState(readOnly = false) {
       const localTick = gameStateRef.current.lastTickAt ?? 0;
       if (serverTick > localTick) {
         // Server is ahead — someone else already acted, just sync
-        applySync(data as Record<string, unknown>, 'auto-advance-server-ahead');
+        applyAuthoritativeGameState(data as Record<string, unknown>, 'auto-advance-server-ahead');
       } else {
         nextLevel();
       }
     }).catch(() => nextLevel());
-  }, [readOnly, gameState.timeLeft, gameState.status, nextLevel, isSupabaseConfigured, applySync]);
+  }, [readOnly, gameState.timeLeft, gameState.status, nextLevel, isSupabaseConfigured, applyAuthoritativeGameState]);
 
   const prevLevel = useCallback(() => {
     const gs = gameStateRef.current;
