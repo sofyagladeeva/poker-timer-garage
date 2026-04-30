@@ -517,12 +517,21 @@ export function useGameState(readOnly = false) {
       const staleFor = Date.now() - lastServerSyncAt.current;
       if (staleFor < DISPLAY_STALE_RELOAD_MS) return;
 
-      console.warn(`Display sync stalled for ${staleFor}ms, reloading page`);
-      window.location.reload();
+      console.warn(`Display sync stalled for ${staleFor}ms, forcing soft resync`);
+      void syncGameStateFromServer('watchdog');
+      void syncBlindLevelsFromServer();
+      void syncCombinationsFromServer();
     }, DISPLAY_WATCHDOG_MS);
 
     return () => clearInterval(watchdogInterval);
-  }, [isSupabaseConfigured, readOnly, syncReady]);
+  }, [
+    isSupabaseConfigured,
+    readOnly,
+    syncReady,
+    syncBlindLevelsFromServer,
+    syncCombinationsFromServer,
+    syncGameStateFromServer,
+  ]);
 
   // ─── Local timer tick (time-based: all devices compute from same anchor) ─
   useEffect(() => {
