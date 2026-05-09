@@ -56,6 +56,7 @@ export interface GameState {
   tournamentTitle: string; // название текущей игры
   tournamentBotId: number | null; // id игры в боте
   tournamentMode: TournamentMode; // профиль рейтинга / типа турнира
+  lateRegistrationCloseLevel: number | null; // level at which late reg closes / freezeout starts
   lateRegistrationClosedAt: number | null; // unix ms timestamp when late reg was closed/fixed
   lateRegistrationPlayers: number | null; // players still in game at late reg close
   nextGameBotId: number | null; // id следующей игры (выбирается вручную в админке)

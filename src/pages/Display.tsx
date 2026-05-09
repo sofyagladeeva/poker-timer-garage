@@ -1,7 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import { useGameState } from '../hooks/useGameState';
 import { useBotRating } from '../hooks/useBotRating';
-import { useBotBounty } from '../hooks/useBotBounty';
 import { useNextGame } from '../hooks/useNextGame';
 import { getRankPoints, RED_SUITS, SUIT_SYMBOLS } from '../types';
 import type { Card } from '../types';
@@ -64,7 +63,6 @@ function fmtTime(iso: string) {
 }
 
 const MEDAL_IMGS = [1, 2, 3];
-const SIDEBAR_LEADERBOARD_ROTATION_MS = 20_000;
 
 function FullscreenButton() {
   const [isFs, setIsFs] = useState(false);
@@ -115,10 +113,8 @@ function useScale() {
 export function Display() {
   const { gameState, blindLevels, combinations } = useGameState(true);
   const { players: ratingPlayers } = useBotRating();
-  const { players: bountyPlayers } = useBotBounty();
   const nextGame = useNextGame(gameState.nextGameBotId ?? null);
   const { k, x, y } = useScale();
-  const [sidebarLeaderboardMode, setSidebarLeaderboardMode] = useState<'rating' | 'bounty'>('rating');
 
   // Активируем AudioContext при первом взаимодействии (политика браузера)
   useEffect(() => {
@@ -149,14 +145,6 @@ export function Display() {
     prevLevelRef.current = gameState.currentLevelIndex;
   }, [gameState.currentLevelIndex]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setSidebarLeaderboardMode(prev => (prev === 'rating' ? 'bounty' : 'rating'));
-    }, SIDEBAR_LEADERBOARD_ROTATION_MS);
-
-    return () => clearInterval(interval);
-  }, []);
-
   const currentLevel = blindLevels[gameState.currentLevelIndex] ?? null;
   const nextLevel    = blindLevels[gameState.currentLevelIndex + 1] ?? null;
 
@@ -173,10 +161,7 @@ export function Display() {
 
   const rankPoints   = getRankPoints(gameState.players);
   const top3         = ratingPlayers.slice(0, 3);
-  const top3Bounty   = bountyPlayers.slice(0, 3);
   const activeCombos = combinations.filter(c => c.enabled);
-  const sidebarLeaderboardTitle = sidebarLeaderboardMode === 'rating' ? 'Топ-3 месяца' : 'Топ-3 баунти';
-  const sidebarLeaderboardPlayers = sidebarLeaderboardMode === 'rating' ? top3 : top3Bounty;
 
   // Сколько секунд до следующего перерыва (живой отсчёт)
   const nextBreakIdx = !isBreak
@@ -437,15 +422,10 @@ export function Display() {
 
             {/* Top-3 */}
             <div className="flex flex-col gap-2">
-              <ColLabel>{sidebarLeaderboardTitle}</ColLabel>
-              {sidebarLeaderboardPlayers.length === 0
+              <ColLabel>Топ-3 месяца</ColLabel>
+              {top3.length === 0
                 ? <div className="text-[#252525] text-sm">Загрузка...</div>
-                : sidebarLeaderboardPlayers.map((player, i) => {
-                    const value = sidebarLeaderboardMode === 'rating'
-                      ? (player as { points: number }).points.toFixed(1)
-                      : fmt((player as { total_bounty: number }).total_bounty);
-                    const suffix = sidebarLeaderboardMode === 'rating' ? 'pts' : 'KO';
-
+                : top3.map((player, i) => {
                     return (
                       <div key={player.telegram_id}
                            className={`flex items-center gap-3 rounded-xl px-3 py-2 ${
@@ -456,8 +436,7 @@ export function Display() {
                         <img src={`${import.meta.env.BASE_URL}medal-${MEDAL_IMGS[i]}.png`} style={{ width: 28, height: 28, objectFit: 'contain' }} alt="" />
                         <span className="text-white font-bold text-base flex-1 truncate">{player.name}</span>
                         <span className={`font-black text-2xl ${i === 0 ? 'text-[#E31E24]' : 'text-[#555]'}`}>
-                          {value}
-                          <span className="ml-1 text-xs font-normal uppercase opacity-70">{suffix}</span>
+                          {player.points.toFixed(1)}
                         </span>
                       </div>
                     );

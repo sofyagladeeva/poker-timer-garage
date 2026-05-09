@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useRef, Component } from 'react';
 import type { ChangeEvent, ReactNode } from 'react';
 import { useGameState } from '../hooks/useGameState';
-import { useTournamentPlayers } from '../hooks/useTournamentPlayers';
 import { supabase } from '../supabase';
 import { getNextGarageBlindPair } from '../blindStructure';
 import { calcTotalStack } from '../gameStateMath';
 import type { BlindLevel, BlindTemplate, Combination, Card, Suit, Rank, TournamentRecord, GameState } from '../types';
 import { SUIT_SYMBOLS } from '../types';
 import { PokerCard } from '../components/PokerCard';
-import { TournamentPlayersTab } from '../components/TournamentPlayersTab';
 import {
   buildBlindTemplate,
   deleteSharedBlindTemplates,
@@ -310,7 +308,7 @@ export function Admin() {
   const [authed, setAuthed] = useState(false);
   const [pwInput, setPwInput] = useState('');
   const [pwError, setPwError] = useState(false);
-  const [activeTab, setActiveTab] = useState<'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings'>('control');
+  const [activeTab, setActiveTab] = useState<'control' | 'blinds' | 'combos' | 'archive' | 'settings'>('control');
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
   const [customGameOpen, setCustomGameOpen] = useState(false);
   const [customGameTitle, setCustomGameTitle] = useState('');
@@ -352,30 +350,6 @@ export function Admin() {
       .then(setBotGames)
       .catch(() => {});
   }, []);
-
-  const currentBotGame = botGames.find(game => game.id === gameState.tournamentBotId) ?? null;
-  const {
-    players: tournamentPlayers,
-    groupedPlayers,
-    summary: tournamentPlayersSummary,
-    playerSyncState,
-    botSyncState,
-    exportState,
-    refreshFromBot,
-    addManualPlayer,
-    updatePlayerField,
-    setPlayerArrival,
-    markPlayerOut,
-    restorePlayer,
-    removeManualPlayer,
-    setPlayerPlace,
-    exportTournamentResults,
-  } = useTournamentPlayers({
-    gameState,
-    updateGameState,
-    defaultBuyIn: currentBotGame?.buy_in ?? null,
-  });
-  const managedPlayerCountsActive = tournamentPlayers.length > 0;
 
   useEffect(() => {
     blindTemplatesRef.current = blindTemplates;
@@ -856,12 +830,6 @@ export function Admin() {
     if (!confirm(confirmationMessage)) return;
 
     const levelsPlayed = gameState.currentLevelIndex + 1;
-    const exportResult = await exportTournamentResults(levelsPlayed);
-    if (!exportResult.ok && !exportResult.skipped && !exportResult.queued) {
-      alert(`${exportResult.error ?? 'Не удалось отправить итоги турнира в бот.'} Турнир не был завершен, чтобы не потерять результаты игроков.`);
-      return;
-    }
-
     const archiveSave = await saveTournament(gameState, levelsPlayed);
     if (!archiveSave.ok) {
       alert(`${archiveSave.error} Турнир не был завершен, чтобы не потерять архив.`);
@@ -872,12 +840,6 @@ export function Admin() {
     if (!resetOk) {
       alert('Не удалось сохранить завершение турнира в Supabase. Не закрывайте страницу и попробуйте еще раз.');
       return;
-    }
-
-    if (!exportResult.ok && exportResult.queued) {
-      alert(`${exportResult.error ?? 'Не удалось отправить итоги в бот.'} Данные игроков сохранены в очередь отправки, турнир завершен.`);
-    } else if (!exportResult.ok && exportResult.queueError) {
-      alert(exportResult.queueError);
     }
   };
 
@@ -991,7 +953,6 @@ export function Admin() {
   // ── Tabs ──────────────────────────────────────────────────────────────
   const tabs = [
     { id: 'control', label: '▶ Управление' },
-    { id: 'players', label: '👥 Игроки' },
     { id: 'blinds',  label: '💰 Блайнды' },
     { id: 'combos',  label: '🃏 Комбо' },
     { id: 'archive', label: '📋 Архив' },
@@ -1163,37 +1124,6 @@ export function Admin() {
                   )}
                 </div>
               )}
-            </div>
-
-            <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
-              <div className="text-white font-bold text-sm mb-3">Тип турнира</div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => updateGameState({ tournamentMode: 'garage' })}
-                  className={`rounded-xl border px-4 py-3 text-sm font-bold transition-colors ${
-                    gameState.tournamentMode === 'garage'
-                      ? 'border-[#C0392B] bg-[#220D0B] text-white'
-                      : 'border-[#2D2D2D] bg-[#0A0A0A] text-[#888] hover:text-white hover:border-[#555]'
-                  }`}
-                >
-                  Garage
-                </button>
-                <button
-                  type="button"
-                  onClick={() => updateGameState({ tournamentMode: 'phoenix' })}
-                  className={`rounded-xl border px-4 py-3 text-sm font-bold transition-colors ${
-                    gameState.tournamentMode === 'phoenix'
-                      ? 'border-[#C0392B] bg-[#220D0B] text-white'
-                      : 'border-[#2D2D2D] bg-[#0A0A0A] text-[#888] hover:text-white hover:border-[#555]'
-                  }`}
-                >
-                  Phoenix
-                </button>
-              </div>
-              <div className="text-[#555] text-xs mt-3">
-                Этот тип уходит в итоговый payload турнира и нужен для правильной формулы рейтинга на стороне бота.
-              </div>
             </div>
 
             {/* ── Следующая игра ──────────────────────────────────── */}
@@ -1411,11 +1341,6 @@ export function Admin() {
             {/* Player / Stack */}
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-4">
               <div className="text-[#888] text-xs uppercase tracking-widest">Участники и стеки</div>
-              {managedPlayerCountsActive && (
-                <div className="rounded-xl border border-blue-900/40 bg-blue-950/20 px-3 py-2 text-blue-200 text-xs">
-                  Игроки, ауты, rebuy и addon теперь считаются по вкладке `Игроки`. Здесь вручную остается только бонус и размеры стеков.
-                </div>
-              )}
 
               {/* Стартовый стек */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1465,21 +1390,18 @@ export function Admin() {
                 <CounterBlock
                   label="Игроки"
                   value={gameState.players ?? 0}
-                  disabled={managedPlayerCountsActive}
                   onAdd={() => updateStackState({ players: (gameState.players ?? 0) + 1 })}
                   onRemove={() => updateStackState({ players: Math.max(0, (gameState.players ?? 0) - 1) })}
                 />
                 <CounterBlock
                   label="Ребаи"
                   value={gameState.rebuys ?? 0}
-                  disabled={managedPlayerCountsActive}
                   onAdd={() => updateStackState({ rebuys: (gameState.rebuys ?? 0) + 1 })}
                   onRemove={() => updateStackState({ rebuys: Math.max(0, (gameState.rebuys ?? 0) - 1) })}
                 />
                 <CounterBlock
                   label="Аддоны"
                   value={gameState.addonCount ?? 0}
-                  disabled={managedPlayerCountsActive}
                   onAdd={() => updateStackState({ addonCount: (gameState.addonCount ?? 0) + 1 })}
                   onRemove={() => updateStackState({ addonCount: Math.max(0, (gameState.addonCount ?? 0) - 1) })}
                 />
@@ -1510,7 +1432,6 @@ export function Admin() {
                   <CounterBlock
                     label="Ауты"
                     value={gameState.outs ?? 0}
-                    disabled={managedPlayerCountsActive}
                     onAdd={() => updateGameState({ outs: Math.min((gameState.players ?? 0), (gameState.outs ?? 0) + 1) })}
                     onRemove={() => updateGameState({ outs: Math.max(0, (gameState.outs ?? 0) - 1) })}
                   />
@@ -1550,60 +1471,6 @@ export function Admin() {
             </div>
 
           </div>
-        )}
-
-        {activeTab === 'players' && (
-          <TournamentPlayersTab
-            groupedPlayers={groupedPlayers}
-            summary={tournamentPlayersSummary}
-            playerSyncState={playerSyncState}
-            botSyncState={botSyncState}
-            exportState={exportState}
-            tournamentMode={gameState.tournamentMode}
-            tournamentBotId={gameState.tournamentBotId}
-            lateRegistrationClosedAt={gameState.lateRegistrationClosedAt}
-            lateRegistrationPlayers={gameState.lateRegistrationPlayers}
-            levelsPlayed={gameState.currentLevelIndex + 1}
-            onRefreshFromBot={refreshFromBot}
-            onAddManualPlayer={addManualPlayer}
-            onUpdatePlayerField={updatePlayerField}
-            onSetPlayerArrival={setPlayerArrival}
-            onMarkPlayerOut={markPlayerOut}
-            onRestorePlayer={restorePlayer}
-            onRemoveManualPlayer={removeManualPlayer}
-            onSetPlayerPlace={setPlayerPlace}
-            onCaptureLateRegistration={async () => {
-              await updateGameState({
-                lateRegistrationPlayers: tournamentPlayersSummary.active,
-                lateRegistrationClosedAt: Date.now(),
-              }, true);
-            }}
-            onResetLateRegistration={async () => {
-              await updateGameState({
-                lateRegistrationPlayers: null,
-                lateRegistrationClosedAt: null,
-              }, true);
-            }}
-            onSetLateRegistrationPlayers={async (value: string) => {
-              const trimmed = value.trim();
-              if (!trimmed) {
-                await updateGameState({
-                  lateRegistrationPlayers: null,
-                  lateRegistrationClosedAt: null,
-                }, true);
-                return;
-              }
-
-              const parsed = Number(trimmed);
-              if (!Number.isFinite(parsed)) return;
-
-              await updateGameState({
-                lateRegistrationPlayers: Math.max(0, Math.round(parsed)),
-                lateRegistrationClosedAt: gameState.lateRegistrationClosedAt ?? Date.now(),
-              }, true);
-            }}
-            onExportResults={exportTournamentResults}
-          />
         )}
 
         {/* ─── BLINDS TAB ──────────────────────────────────────────────── */}

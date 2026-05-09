@@ -73,6 +73,7 @@ export function normalizeGameState(raw: unknown, fallback: GameState): GameState
     tournamentTitle: toStringValue(source.tournamentTitle, fallback.tournamentTitle),
     tournamentBotId: toNullableNumber(source.tournamentBotId, fallback.tournamentBotId),
     tournamentMode: isTournamentMode(source.tournamentMode) ? source.tournamentMode : fallback.tournamentMode,
+    lateRegistrationCloseLevel: toNullableNumber(source.lateRegistrationCloseLevel, fallback.lateRegistrationCloseLevel),
     lateRegistrationClosedAt: toNullableNumber(source.lateRegistrationClosedAt, fallback.lateRegistrationClosedAt),
     lateRegistrationPlayers: toNullableNumber(source.lateRegistrationPlayers, fallback.lateRegistrationPlayers),
     nextGameBotId: toNullableNumber(source.nextGameBotId, fallback.nextGameBotId),
@@ -110,7 +111,11 @@ export function hasMissingLateRegistrationColumns(error: unknown) {
   const message = typeof error === 'object' && error && 'message' in error
     ? String((error as { message?: unknown }).message ?? '')
     : '';
-  return message.includes('lateRegistrationClosedAt') || message.includes('lateRegistrationPlayers');
+  return (
+    message.includes('lateRegistrationCloseLevel') ||
+    message.includes('lateRegistrationClosedAt') ||
+    message.includes('lateRegistrationPlayers')
+  );
 }
 
 export function hasMissingBonusColumns(error: unknown) {
@@ -131,6 +136,7 @@ export function toLegacyGameState(state: GameState) {
     bonusCount: ignoredBonusCount,
     bonusStack: ignoredBonusStack,
     tournamentMode: ignoredTournamentMode,
+    lateRegistrationCloseLevel: ignoredLateRegistrationCloseLevel,
     lateRegistrationClosedAt: ignoredLateRegistrationClosedAt,
     lateRegistrationPlayers: ignoredLateRegistrationPlayers,
     ...legacy
@@ -138,6 +144,7 @@ export function toLegacyGameState(state: GameState) {
   void ignoredBonusCount;
   void ignoredBonusStack;
   void ignoredTournamentMode;
+  void ignoredLateRegistrationCloseLevel;
   void ignoredLateRegistrationClosedAt;
   void ignoredLateRegistrationPlayers;
   return legacy;

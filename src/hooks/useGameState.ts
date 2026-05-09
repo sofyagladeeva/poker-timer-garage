@@ -501,6 +501,7 @@ export function useGameState(readOnly = false) {
 
         if (hasMissingLateRegistrationColumns(error)) {
           const noLateRegistration = { ...conditionalPayload };
+          delete noLateRegistration.lateRegistrationCloseLevel;
           delete noLateRegistration.lateRegistrationClosedAt;
           delete noLateRegistration.lateRegistrationPlayers;
           conditionalPayload = noLateRegistration;
@@ -548,6 +549,7 @@ export function useGameState(readOnly = false) {
 
       if (hasMissingLateRegistrationColumns(error)) {
         const noLateRegistration = { ...payload };
+        delete noLateRegistration.lateRegistrationCloseLevel;
         delete noLateRegistration.lateRegistrationClosedAt;
         delete noLateRegistration.lateRegistrationPlayers;
         payload = noLateRegistration;
