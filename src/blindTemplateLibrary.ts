@@ -93,12 +93,19 @@ function toTemplate(row: BlindTemplateRow): BlindTemplate | null {
 
 function formatSharedTemplateError(action: string, error: unknown) {
   const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code ?? '') : '';
+  const message = typeof error === 'object' && error && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : '';
   if (code === '42P01') {
     return `В Supabase еще нет таблицы ${SHARED_TABLE}. Выполните SQL из supabase/blind_templates.sql, затем повторите ${action}.`;
   }
 
   if (code === '42501') {
     return `Supabase не разрешает ${action} шаблоны блайндов. Проверьте policies для таблицы ${SHARED_TABLE}.`;
+  }
+
+  if (message.includes('exceed_egress_quota') || message.includes('Service for this project is restricted')) {
+    return 'Supabase временно ограничил проект из-за exceed_egress_quota, поэтому общие шаблоны блайндов сейчас недоступны.';
   }
 
   return `Не удалось ${action} шаблоны блайндов.`;

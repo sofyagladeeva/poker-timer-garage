@@ -32,6 +32,7 @@ export interface BlindTemplate {
 }
 
 export type GameStatus = 'idle' | 'running' | 'paused' | 'break' | 'ended';
+export type TournamentMode = 'garage' | 'phoenix';
 
 export interface GameState {
   status: GameStatus;
@@ -54,8 +55,92 @@ export interface GameState {
   prizePlaces: number;
   tournamentTitle: string; // название текущей игры
   tournamentBotId: number | null; // id игры в боте
+  tournamentMode: TournamentMode; // профиль рейтинга / типа турнира
+  lateRegistrationClosedAt: number | null; // unix ms timestamp when late reg was closed/fixed
+  lateRegistrationPlayers: number | null; // players still in game at late reg close
   nextGameBotId: number | null; // id следующей игры (выбирается вручную в админке)
   resetAt: number; // unix ms timestamp of last resetTournament() — used to detect stale admin devices
+}
+
+export type LiveTournamentPlayerSource = 'bot' | 'manual';
+export type LiveTournamentRegistrationSource = 'registered' | 'waitlist';
+export type LiveTournamentPlayerStatus = 'registered' | 'waitlist' | 'active' | 'out';
+export type LiveTournamentArrivalStatus = 'absent' | 'paid' | 'free';
+export type LiveTournamentPaymentMethod = 'unpaid' | 'cash' | 'card';
+
+export interface LiveTournamentPlayer {
+  id: string;
+  sessionId: number;
+  tournamentBotId: number | null;
+  botRegistrationId: string | null;
+  telegramId: number | null;
+  name: string;
+  username: string | null;
+  source: LiveTournamentPlayerSource;
+  registrationSource: LiveTournamentRegistrationSource;
+  status: LiveTournamentPlayerStatus;
+  arrivalStatus: LiveTournamentArrivalStatus;
+  rebuyCount: number;
+  addonCount: number;
+  bounty: number;
+  paymentDue: number;
+  paymentMethod: LiveTournamentPaymentMethod;
+  place: number | null;
+  placeOverride: boolean;
+  bustoutOrder: number | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TournamentPlayersSummary {
+  entrants: number;
+  active: number;
+  bustouts: number;
+  pending: number;
+  waitlist: number;
+  rebuys: number;
+  addons: number;
+  bountyTotal: number;
+  paidEntries: number;
+  freeEntries: number;
+  totalDue: number;
+}
+
+export interface TournamentResultsPlayerRecord {
+  id: string;
+  botRegistrationId: string | null;
+  telegramId: number | null;
+  name: string;
+  username: string | null;
+  source: LiveTournamentPlayerSource;
+  registrationSource: LiveTournamentRegistrationSource;
+  arrivalStatus: LiveTournamentArrivalStatus;
+  paymentMethod: LiveTournamentPaymentMethod;
+  paymentDue: number;
+  rebuyCount: number;
+  addonCount: number;
+  bounty: number;
+  status: LiveTournamentPlayerStatus;
+  place: number | null;
+  bustoutOrder: number | null;
+}
+
+export interface TournamentResultsPayload {
+  sessionId: number;
+  tournamentBotId: number | null;
+  tournamentTitle: string;
+  tournamentMode: TournamentMode;
+  finishedAt: string;
+  levelsPlayed: number;
+  gameStatus: GameStatus;
+  summary: TournamentPlayersSummary & {
+    bonusCount: number;
+    totalStack: number;
+    lateRegistrationPlayers: number | null;
+    ratingPlayerCount: number;
+  };
+  players: TournamentResultsPlayerRecord[];
 }
 
 export interface RatingPlayer {

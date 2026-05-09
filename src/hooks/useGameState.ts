@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, DEFAULT_BLIND_LEVELS, DEFAULT_GAME_STATE } from '../supabase';
-import { hasMissingBonusColumns, hasMissingNextGameBotId, hasMissingResetAt, normalizeGameState, toLegacyGameState } from '../gameStateMath';
+import { hasMissingBonusColumns, hasMissingLateRegistrationColumns, hasMissingNextGameBotId, hasMissingResetAt, hasMissingTournamentMode, normalizeGameState, toLegacyGameState } from '../gameStateMath';
 import type { GameState, BlindLevel, Combination, TournamentRecord } from '../types';
 
 const STATE_KEY = 'poker_game_state';
 const BLINDS_KEY = 'poker_blind_levels';
 const COMBINATIONS_KEY = 'poker_combinations';
 const TOURNAMENTS_KEY = 'poker_tournaments';
-const LOCAL_WRITE_SYNC_GRACE_MS = 20_000;
+const LOCAL_WRITE_SYNC_GRACE_MS = 3_000;
 const INITIAL_SYNC_TIMEOUT_MS = 20_000;
 const INITIAL_SYNC_RETRY_COUNT = 2;
 const GAME_STATE_POLL_MS = 2_000;
@@ -15,6 +15,7 @@ const AUX_SYNC_POLL_MS = 5_000;
 const DISPLAY_STALE_RELOAD_MS = 45_000;
 const DISPLAY_WATCHDOG_MS = 5_000;
 const AUTO_ADVANCE_SERVER_CHECK_MS = 350;
+const TIMER_HEARTBEAT_MS = 3_000;
 
 // ─── Local storage fallback (when Supabase not configured) ─────────────────
 function loadLocal<T>(key: string, defaultValue: T): T {
@@ -116,6 +117,31 @@ function normalizeBlindLevels(levels: BlindLevel[]) {
   });
 }
 
+function isTimerActiveStatus(status: GameState['status']) {
+  return status === 'running' || status === 'break';
+}
+
+function formatTournamentArchiveError(action: string, error: unknown) {
+  const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code ?? '') : '';
+  const message = typeof error === 'object' && error && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : '';
+
+  if (code === '42P01') {
+    return 'В Supabase еще нет таблицы tournaments. Выполните SQL из supabase/tournaments.sql.';
+  }
+
+  if (code === '42501') {
+    return `Supabase не разрешает ${action} архив турниров. Проверьте доступ к таблице tournaments.`;
+  }
+
+  if (message.includes('exceed_egress_quota') || message.includes('Service for this project is restricted')) {
+    return `Supabase временно ограничил проект из-за exceed_egress_quota, поэтому не удалось ${action} архив турниров.`;
+  }
+
+  return `Не удалось ${action} архив турниров.`;
+}
+
 // ─── Hook ──────────────────────────────────────────────────────────────────
 export function useGameState(readOnly = false) {
   const [gameState, setGameState] = useState<GameState>(() =>
@@ -170,23 +196,32 @@ export function useGameState(readOnly = false) {
   const baseTimeLeft  = useRef(gameState.timeLeft);
   const baseTimestamp = useRef(gameState.lastTickAt ?? Date.now());
   // Remote clients can have clocks that drift by minutes (smart TVs do this).
-  // Calibrate once per incoming anchor so displays tick from their local receipt
-  // time instead of trusting another device's wall clock.
+  // After the first authoritative sync we may rebase fresh anchors to local
+  // receipt time so already-open displays do not jump on skewed device clocks.
   const clockOffsetMs = useRef(0);
   const clockOffsetTick = useRef<number | null>(null);
+  const hasRemoteAnchorSync = useRef(false);
 
-  // Track when WE last wrote to Supabase — polling won't override local state
-  // for 20 seconds after any local write, breaking the multi-device fight cycle
+  // Track when WE last wrote to Supabase — brief grace prevents same-anchor
+  // polling echoes from overwriting local edits before they finish persisting.
   const lastLocalWriteAt = useRef(0);
   const hasFreshLocalWrite = useCallback(() => {
     return Date.now() - lastLocalWriteAt.current < LOCAL_WRITE_SYNC_GRACE_MS;
   }, []);
   const lastServerSyncAt = useRef(isSupabaseConfigured ? 0 : Date.now());
+  const gameStateLoaded = useRef(!isSupabaseConfigured);
+  const blindLevelsLoaded = useRef(!isSupabaseConfigured);
 
   // Guard: don't allow auto-advance until authoritative state is loaded from
   // Supabase. Prevents stale localStorage from writing wrong level to the DB
   // when a second device opens the admin panel mid-tournament.
   const serverLoaded = useRef(!isSupabaseConfigured);
+
+  const markSyncReadyIfLoaded = useCallback(() => {
+    if (gameStateLoaded.current && blindLevelsLoaded.current) {
+      setSyncReady(true);
+    }
+  }, []);
 
   // ─── Shared sync helper (stable ref, usable in any effect) ─────────────
   const hydrateSyncedState = useCallback((raw: Record<string, unknown>) => {
@@ -197,7 +232,11 @@ export function useGameState(readOnly = false) {
       : normalized.lastTickAt;
 
     if (persistedLastTickAt && clockOffsetTick.current !== persistedLastTickAt) {
-      clockOffsetMs.current = Date.now() - persistedLastTickAt;
+      // On the very first sync we trust the persisted wall clock so a newly
+      // opened admin/display sees the real remaining time instead of full level.
+      clockOffsetMs.current = hasRemoteAnchorSync.current
+        ? Date.now() - persistedLastTickAt
+        : 0;
       clockOffsetTick.current = persistedLastTickAt;
     }
 
@@ -224,6 +263,7 @@ export function useGameState(readOnly = false) {
     if (persistedLastTickAt) {
       baseTimeLeft.current = persistedTimeLeft;
       baseTimestamp.current = persistedLastTickAt + clockOffsetMs.current;
+      hasRemoteAnchorSync.current = true;
     }
     setGameState(liveState);
     saveLocal(STATE_KEY, persistedState);
@@ -234,19 +274,36 @@ export function useGameState(readOnly = false) {
   }, []);
 
   const shouldApplyRemoteGameState = useCallback((data: Record<string, unknown>) => {
+    const localState = gameStateRef.current;
     const incomingResetAt = typeof data.resetAt === 'number' ? data.resetAt : null;
-    const localResetAt = gameStateRef.current.resetAt;
+    const localResetAt = localState.resetAt;
     if (incomingResetAt !== null && localResetAt > 0 && incomingResetAt < localResetAt) return false;
-    if (hasFreshLocalWrite()) return false;
     const incomingTick = typeof data.lastTickAt === 'number' ? data.lastTickAt : 0;
-    const localTick = gameStateRef.current.lastTickAt ?? 0;
+    const localTick = localState.lastTickAt ?? 0;
+    const incomingLevelIndex = typeof data.currentLevelIndex === 'number'
+      ? data.currentLevelIndex
+      : localState.currentLevelIndex;
+    const incomingStatus = typeof data.status === 'string' ? data.status : localState.status;
+    if (hasFreshLocalWrite() && incomingTick <= localTick) return false;
+    if (
+      incomingResetAt === localResetAt &&
+      incomingLevelIndex === localState.currentLevelIndex &&
+      incomingTick === localTick &&
+      isTimerActiveStatus(localState.status) &&
+      isTimerActiveStatus(incomingStatus as GameState['status'])
+    ) {
+      return false;
+    }
     return incomingTick >= localTick;
   }, [hasFreshLocalWrite]);
 
   const applyAuthoritativeGameState = useCallback((data: Record<string, unknown>, source?: string) => {
+    gameStateLoaded.current = true;
+    serverLoaded.current = true;
     markServerSync();
     applySync(data, source);
-  }, [applySync, markServerSync]);
+    markSyncReadyIfLoaded();
+  }, [applySync, markServerSync, markSyncReadyIfLoaded]);
 
   const applyIfNewerGameState = useCallback((data: Record<string, unknown>, source?: string) => {
     markServerSync();
@@ -257,10 +314,12 @@ export function useGameState(readOnly = false) {
 
   const applyBlindLevelsSync = useCallback((levels: BlindLevel[]) => {
     const normalized = normalizeBlindLevels(levels);
+    blindLevelsLoaded.current = true;
     setBlindLevels(normalized);
     saveLocal(BLINDS_KEY, normalized);
     markServerSync();
-  }, [markServerSync]);
+    markSyncReadyIfLoaded();
+  }, [markServerSync, markSyncReadyIfLoaded]);
 
   const applyCombinationsSync = useCallback((nextCombinations: Combination[]) => {
     setCombinations(nextCombinations);
@@ -268,17 +327,83 @@ export function useGameState(readOnly = false) {
     markServerSync();
   }, [markServerSync]);
 
+  const getLiveTimeLeft = useCallback((state: GameState = gameStateRef.current) => {
+    if (!isTimerActiveStatus(state.status)) return state.timeLeft;
+    const elapsed = Math.floor((Date.now() - baseTimestamp.current) / 1000);
+    return Math.max(0, baseTimeLeft.current - elapsed);
+  }, []);
+
+  const buildLiveGameState = useCallback((state: GameState = gameStateRef.current) => {
+    return normalizeGameState({ ...state, timeLeft: getLiveTimeLeft(state) }, state);
+  }, [getLiveTimeLeft]);
+
+  const applyLiveTimerSnapshot = useCallback((data: Record<string, unknown>, source = 'live-snapshot') => {
+    void source;
+    const incoming = normalizeGameState(data as unknown as GameState, gameStateRef.current);
+    const local = gameStateRef.current;
+    const incomingResetAt = incoming.resetAt;
+    const localResetAt = local.resetAt;
+    if (incomingResetAt < localResetAt) return false;
+    if (incomingResetAt === localResetAt && incoming.currentLevelIndex < local.currentLevelIndex) return false;
+
+    const incomingTick = incoming.lastTickAt ?? 0;
+    const localTick = local.lastTickAt ?? 0;
+    if (hasFreshLocalWrite() && incomingTick <= localTick && incoming.currentLevelIndex <= local.currentLevelIndex) {
+      return false;
+    }
+
+    if (isTimerActiveStatus(incoming.status)) {
+      baseTimeLeft.current = incoming.timeLeft;
+      baseTimestamp.current = Date.now();
+    } else if (incoming.lastTickAt) {
+      baseTimeLeft.current = incoming.timeLeft;
+      baseTimestamp.current = incoming.lastTickAt;
+    }
+
+    setGameState(incoming);
+    saveLocal(STATE_KEY, incoming);
+    markServerSync();
+    return true;
+  }, [hasFreshLocalWrite, markServerSync]);
+
+  const broadcastLiveTimerSnapshot = useCallback(() => {
+    if (!broadcastChannelRef.current) return;
+    const liveState = buildLiveGameState();
+    broadcastChannelRef.current.send({
+      type: 'broadcast',
+      event: 'timer_snapshot',
+      payload: { ...liveState, _cid: clientId.current },
+    });
+  }, [buildLiveGameState]);
+
+  const requestLiveTimerSnapshot = useCallback(() => {
+    if (!broadcastChannelRef.current) return;
+    broadcastChannelRef.current.send({
+      type: 'broadcast',
+      event: 'timer_sync_request',
+      payload: { _cid: clientId.current },
+    });
+  }, []);
+
   const syncGameStateFromServer = useCallback(async (source = 'sync') => {
     if (!isSupabaseConfigured || skipGameStateRealtime.current) return false;
     const { data } = await supabase.from('game_state').select('*').single();
     if (!data || skipGameStateRealtime.current) return false;
+    if (!gameStateLoaded.current) {
+      applyAuthoritativeGameState(data as Record<string, unknown>, `${source}-bootstrap`);
+      return true;
+    }
     return applyIfNewerGameState(data as Record<string, unknown>, source);
-  }, [applyIfNewerGameState, isSupabaseConfigured]);
+  }, [applyAuthoritativeGameState, applyIfNewerGameState, isSupabaseConfigured]);
 
   const syncBlindLevelsFromServer = useCallback(async () => {
     if (!isSupabaseConfigured || skipBlindRealtime.current) return false;
     const { data } = await supabase.from('blind_levels').select('*').order('id');
     if (!data || skipBlindRealtime.current) return false;
+    if (!blindLevelsLoaded.current) {
+      applyBlindLevelsSync(data);
+      return true;
+    }
     applyBlindLevelsSync(data);
     return true;
   }, [applyBlindLevelsSync, isSupabaseConfigured]);
@@ -291,7 +416,7 @@ export function useGameState(readOnly = false) {
     return true;
   }, [applyCombinationsSync, isSupabaseConfigured]);
 
-  const persistGameState = useCallback(async (stateToSave: GameState, immediate = false) => {
+  const persistGameState = useCallback(async (stateToSave: GameState, immediate = false, expectedBase?: GameState) => {
     skipGameStateRealtime.current = true;
     if (skipGameStateTimer.current) clearTimeout(skipGameStateTimer.current);
     skipGameStateTimer.current = setTimeout(() => { skipGameStateRealtime.current = false; }, immediate ? 8000 : 4000);
@@ -314,6 +439,89 @@ export function useGameState(readOnly = false) {
     let payload: Record<string, unknown> = { id: 1, ...stateToSave };
     let error: unknown = null;
 
+    if (immediate && expectedBase) {
+      let conditionalPayload = payload;
+      let includeResetField = true;
+
+      for (let attempt = 0; attempt < 4; attempt++) {
+        let query = supabase
+          .from('game_state')
+          .update(conditionalPayload)
+          .eq('id', 1)
+          .eq('status', expectedBase.status)
+          .eq('currentLevelIndex', expectedBase.currentLevelIndex);
+
+        if (includeResetField) {
+          query = query.eq('resetAt', expectedBase.resetAt);
+        }
+
+        query = expectedBase.lastTickAt === null
+          ? query.is('lastTickAt', null)
+          : query.eq('lastTickAt', expectedBase.lastTickAt);
+
+        if (!isTimerActiveStatus(expectedBase.status)) {
+          query = query.eq('timeLeft', expectedBase.timeLeft);
+        }
+
+        const result = await query.select('*');
+        error = result.error;
+
+        if (!error) {
+          const updatedRow = Array.isArray(result.data) ? result.data[0] : null;
+          if (updatedRow) {
+            applyAuthoritativeGameState(updatedRow as Record<string, unknown>, 'persist-conditional');
+            return true;
+          }
+
+          const { data: latestServerState } = await supabase.from('game_state').select('*').single();
+          if (latestServerState) {
+            applyAuthoritativeGameState(latestServerState as Record<string, unknown>, 'persist-conflict');
+          }
+          return false;
+        }
+
+        if (hasMissingBonusColumns(error)) {
+          conditionalPayload = { id: 1, ...toLegacyGameState(stateToSave) };
+          continue;
+        }
+
+        if (hasMissingNextGameBotId(error)) {
+          const noNextGameBotId = { ...conditionalPayload };
+          delete noNextGameBotId.nextGameBotId;
+          conditionalPayload = noNextGameBotId;
+          continue;
+        }
+
+        if (hasMissingTournamentMode(error)) {
+          const noTournamentMode = { ...conditionalPayload };
+          delete noTournamentMode.tournamentMode;
+          conditionalPayload = noTournamentMode;
+          continue;
+        }
+
+        if (hasMissingLateRegistrationColumns(error)) {
+          const noLateRegistration = { ...conditionalPayload };
+          delete noLateRegistration.lateRegistrationClosedAt;
+          delete noLateRegistration.lateRegistrationPlayers;
+          conditionalPayload = noLateRegistration;
+          continue;
+        }
+
+        if (hasMissingResetAt(error)) {
+          includeResetField = false;
+          const noReset = { ...conditionalPayload };
+          delete noReset.resetAt;
+          conditionalPayload = noReset;
+          continue;
+        }
+
+        break;
+      }
+
+      payload = conditionalPayload;
+      if (!error) return true;
+    }
+
     for (let attempt = 0; attempt < 4; attempt++) {
       const result = await supabase.from('game_state').upsert(payload);
       error = result.error;
@@ -325,13 +533,30 @@ export function useGameState(readOnly = false) {
       }
 
       if (hasMissingNextGameBotId(error)) {
-        const { nextGameBotId: _nextGameBotId, ...noNextGameBotId } = payload;
+        const noNextGameBotId = { ...payload };
+        delete noNextGameBotId.nextGameBotId;
         payload = noNextGameBotId;
         continue;
       }
 
+      if (hasMissingTournamentMode(error)) {
+        const noTournamentMode = { ...payload };
+        delete noTournamentMode.tournamentMode;
+        payload = noTournamentMode;
+        continue;
+      }
+
+      if (hasMissingLateRegistrationColumns(error)) {
+        const noLateRegistration = { ...payload };
+        delete noLateRegistration.lateRegistrationClosedAt;
+        delete noLateRegistration.lateRegistrationPlayers;
+        payload = noLateRegistration;
+        continue;
+      }
+
       if (hasMissingResetAt(error)) {
-        const { resetAt: _resetAt, ...noReset } = payload;
+        const noReset = { ...payload };
+        delete noReset.resetAt;
         payload = noReset;
         continue;
       }
@@ -343,7 +568,7 @@ export function useGameState(readOnly = false) {
       console.error('Failed to persist game_state', error, payload);
       return false;
     }
-  }, [applySync]);
+  }, [applyAuthoritativeGameState]);
 
   // ─── Supabase real-time subscriptions ───────────────────────────────────
   useEffect(() => {
@@ -374,7 +599,6 @@ export function useGameState(readOnly = false) {
       ]);
 
       if (cancelled) return;
-      serverLoaded.current = true;
 
       if (gs.status === 'fulfilled' && gs.value.data) {
         applyAuthoritativeGameState(gs.value.data as Record<string, unknown>, 'init');
@@ -387,8 +611,10 @@ export function useGameState(readOnly = false) {
           applyBlindLevelsSync(bl.value.data);
         } else if (Array.isArray(bl.value.data) && bl.value.data.length === 0) {
           const defaults = normalizeBlindLevels(DEFAULT_BLIND_LEVELS);
+          blindLevelsLoaded.current = true;
           setBlindLevels(defaults);
           saveLocal(BLINDS_KEY, defaults);
+          markSyncReadyIfLoaded();
 
           skipBlindRealtime.current = true;
           if (skipBlindTimer.current) clearTimeout(skipBlindTimer.current);
@@ -412,16 +638,21 @@ export function useGameState(readOnly = false) {
     void loadInitialState()
       .catch(error => {
         if (!cancelled) {
-          serverLoaded.current = true;
           console.error('Initial Supabase sync crashed', error);
         }
-      })
-      .finally(() => {
-        if (!cancelled) setSyncReady(true);
       });
 
     // Broadcast channel — low-latency (<100ms) for pause/start/level commands
     const bc = supabase.channel('poker-broadcast')
+      .on('broadcast', { event: 'timer_sync_request' }, (msg) => {
+        if (!msg.payload || msg.payload._cid === clientId.current) return;
+        if (!syncReady || readOnly) return;
+        broadcastLiveTimerSnapshot();
+      })
+      .on('broadcast', { event: 'timer_snapshot' }, (msg) => {
+        if (!msg.payload || msg.payload._cid === clientId.current) return;
+        applyLiveTimerSnapshot(msg.payload as Record<string, unknown>, 'timer-snapshot');
+      })
       .on('broadcast', { event: 'game_state' }, (msg) => {
         if (!msg.payload || msg.payload._cid === clientId.current) return;
         const incoming = msg.payload as Record<string, unknown>;
@@ -470,11 +701,15 @@ export function useGameState(readOnly = false) {
       broadcastChannelRef.current = null;
     };
   }, [
+    applyLiveTimerSnapshot,
     isSupabaseConfigured,
+    broadcastLiveTimerSnapshot,
     applyAuthoritativeGameState,
     applyBlindLevelsSync,
     applyCombinationsSync,
     applyIfNewerGameState,
+    readOnly,
+    syncReady,
     syncBlindLevelsFromServer,
     syncCombinationsFromServer,
   ]);
@@ -488,6 +723,7 @@ export function useGameState(readOnly = false) {
       void syncGameStateFromServer('visibility');
       void syncBlindLevelsFromServer();
       void syncCombinationsFromServer();
+      requestLiveTimerSnapshot();
     };
 
     document.addEventListener('visibilitychange', syncNow);
@@ -507,7 +743,30 @@ export function useGameState(readOnly = false) {
       clearInterval(gameStatePollInterval);
       clearInterval(auxiliaryPollInterval);
     };
-  }, [isSupabaseConfigured, syncBlindLevelsFromServer, syncCombinationsFromServer, syncGameStateFromServer]);
+  }, [
+    isSupabaseConfigured,
+    requestLiveTimerSnapshot,
+    syncBlindLevelsFromServer,
+    syncCombinationsFromServer,
+    syncGameStateFromServer,
+  ]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !syncReady) return;
+    requestLiveTimerSnapshot();
+  }, [isSupabaseConfigured, requestLiveTimerSnapshot, syncReady]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !syncReady || readOnly) return;
+    if (!isTimerActiveStatus(gameState.status)) return;
+
+    broadcastLiveTimerSnapshot();
+    const interval = setInterval(() => {
+      broadcastLiveTimerSnapshot();
+    }, TIMER_HEARTBEAT_MS);
+
+    return () => clearInterval(interval);
+  }, [broadcastLiveTimerSnapshot, gameState.status, isSupabaseConfigured, readOnly, syncReady]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !readOnly || !syncReady) return;
@@ -559,16 +818,17 @@ export function useGameState(readOnly = false) {
   const updateGameState = useCallback((patch: Partial<GameState>, immediate = false) => {
     if (isSupabaseConfigured && !serverLoaded.current) return Promise.resolve(false);
 
+    const expectedBase = gameStateRef.current;
     const nextPatch: Partial<GameState> = { ...patch };
-    const currentStatus = gameStateRef.current.status;
-    const nextStatus = nextPatch.status ?? gameStateRef.current.status;
+    const currentStatus = expectedBase.status;
+    const nextStatus = nextPatch.status ?? expectedBase.status;
 
-    if (nextStatus === 'running' || nextStatus === 'break') {
+    if (isTimerActiveStatus(nextStatus)) {
       const now = Date.now();
-      const timerWasAdvancing = currentStatus === 'running' || currentStatus === 'break';
+      const timerWasAdvancing = isTimerActiveStatus(currentStatus);
       const liveTimeLeft = timerWasAdvancing
         ? Math.max(0, baseTimeLeft.current - Math.floor((now - baseTimestamp.current) / 1000))
-        : gameStateRef.current.timeLeft;
+        : expectedBase.timeLeft;
 
       if (nextPatch.timeLeft === undefined) {
         nextPatch.timeLeft = liveTimeLeft;
@@ -579,7 +839,7 @@ export function useGameState(readOnly = false) {
       }
     }
 
-    const updated = normalizeGameState({ ...gameStateRef.current, ...nextPatch }, gameStateRef.current);
+    const updated = normalizeGameState({ ...expectedBase, ...nextPatch }, expectedBase);
     setGameState(updated);
     saveLocal(STATE_KEY, updated);
     if (!isSupabaseConfigured) return Promise.resolve(true);
@@ -608,7 +868,7 @@ export function useGameState(readOnly = false) {
     pendingUpsertState.current = updated;
     if (supabaseUpsertTimer.current) clearTimeout(supabaseUpsertTimer.current);
     if (immediate) {
-      return persistGameState(updated, true);
+      return persistGameState(updated, true, expectedBase);
     }
 
     supabaseUpsertTimer.current = setTimeout(() => {
@@ -626,10 +886,9 @@ export function useGameState(readOnly = false) {
 
   const pauseTimer = useCallback(() => {
     // Capture the actual live time before pausing
-    const elapsed = Math.floor((Date.now() - baseTimestamp.current) / 1000);
-    const liveTimeLeft = Math.max(0, baseTimeLeft.current - elapsed);
+    const liveTimeLeft = getLiveTimeLeft();
     updateGameState({ status: 'paused', timeLeft: liveTimeLeft }, true);
-  }, [updateGameState]);
+  }, [getLiveTimeLeft, updateGameState]);
 
   const nextLevel = useCallback(() => {
     const gs = gameStateRef.current;
@@ -655,14 +914,39 @@ export function useGameState(readOnly = false) {
   // on a second device before authoritative server state is received.
   useEffect(() => {
     if (!serverLoaded.current) return;
+    if (isSupabaseConfigured && !blindLevelsLoaded.current) return;
     if (gameState.timeLeft !== 0) return;
     if (gameState.status !== 'running' && gameState.status !== 'break') return;
     if (autoAdvancePending.current) return;
 
     autoAdvancePending.current = true;
+    const triggerLevelIndex = gameState.currentLevelIndex;
+    const triggerLastTickAt = gameState.lastTickAt;
+    const triggerResetAt = gameState.resetAt;
 
-    const advanceImmediately = () => {
-      nextLevel();
+    const advanceFromTrigger = () => {
+      const current = gameStateRef.current;
+      if (current.currentLevelIndex !== triggerLevelIndex) return false;
+      if (current.lastTickAt !== triggerLastTickAt) return false;
+      if (current.resetAt !== triggerResetAt) return false;
+      if (current.timeLeft !== 0) return false;
+      if (current.status !== 'running' && current.status !== 'break') return false;
+
+      const bl = blindLevelsRef.current;
+      const nextIndex = triggerLevelIndex + 1;
+      if (nextIndex >= bl.length) {
+        void updateGameState({ status: 'ended' }, true);
+        return true;
+      }
+
+      const nextLvl = bl[nextIndex];
+      void updateGameState({
+        currentLevelIndex: nextIndex,
+        timeLeft: nextLvl.duration,
+        status: nextLvl.isBreak ? 'break' : 'running',
+        lastTickAt: Date.now(),
+      }, true);
+      return true;
     };
 
     // Before advancing, check server state to ensure this device isn't stale.
@@ -671,7 +955,7 @@ export function useGameState(readOnly = false) {
     // But never wait on this check for seconds — moving off 00:00 is more
     // important than a perfect preflight on a live game screen.
     if (!isSupabaseConfigured) {
-      advanceImmediately();
+      advanceFromTrigger();
       autoAdvancePending.current = false;
       return;
     }
@@ -683,25 +967,35 @@ export function useGameState(readOnly = false) {
     )
       .then(({ data }) => {
         if (!data) {
-          advanceImmediately();
+          advanceFromTrigger();
           return;
         }
         const serverTick = typeof data.lastTickAt === 'number' ? data.lastTickAt : 0;
-        const localTick = gameStateRef.current.lastTickAt ?? 0;
-        if (serverTick > localTick) {
+        const serverLevelIndex = typeof data.currentLevelIndex === 'number' ? data.currentLevelIndex : triggerLevelIndex;
+        const localTick = triggerLastTickAt ?? 0;
+        if (serverTick > localTick || serverLevelIndex !== triggerLevelIndex) {
           // Server is ahead — someone else already acted, just sync
           applyAuthoritativeGameState(data as Record<string, unknown>, 'auto-advance-server-ahead');
         } else {
-          advanceImmediately();
+          advanceFromTrigger();
         }
       })
       .catch(() => {
-        advanceImmediately();
+        advanceFromTrigger();
       })
       .finally(() => {
         autoAdvancePending.current = false;
       });
-  }, [readOnly, gameState.timeLeft, gameState.status, nextLevel, isSupabaseConfigured, applyAuthoritativeGameState]);
+  }, [
+    gameState.currentLevelIndex,
+    gameState.lastTickAt,
+    gameState.resetAt,
+    gameState.timeLeft,
+    gameState.status,
+    isSupabaseConfigured,
+    applyAuthoritativeGameState,
+    updateGameState,
+  ]);
 
   const prevLevel = useCallback(() => {
     const gs = gameStateRef.current;
@@ -749,7 +1043,7 @@ export function useGameState(readOnly = false) {
   }, [isSupabaseConfigured]);
 
   const saveTournament = useCallback(async (gs: GameState, levelsPlayed: number) => {
-    if (gs.players === 0 && gs.totalStack === 0) return;
+    if (gs.players === 0 && gs.totalStack === 0) return { ok: true as const };
     const record = {
       title: gs.tournamentTitle || null,
       players: gs.players,
@@ -764,25 +1058,45 @@ export function useGameState(readOnly = false) {
       const existing = loadLocal<TournamentRecord[]>(TOURNAMENTS_KEY, []);
       const local: TournamentRecord = { ...record, id: Date.now(), finished_at: new Date().toISOString() };
       saveLocal(TOURNAMENTS_KEY, [local, ...existing]);
-      return;
+      return { ok: true as const };
     }
 
     let { error } = await supabase.from('tournaments').insert(record);
     if (error && hasMissingBonusColumns(error)) {
-      const { bonus_count, bonus_stack, ...legacyRecord } = record;
+      const {
+        bonus_count: ignoredBonusCount,
+        bonus_stack: ignoredBonusStack,
+        ...legacyRecord
+      } = record;
+      void ignoredBonusCount;
+      void ignoredBonusStack;
       ({ error } = await supabase.from('tournaments').insert(legacyRecord));
     }
+
+    if (error) {
+      return {
+        ok: false as const,
+        error: formatTournamentArchiveError('сохранить', error),
+      };
+    }
+
+    return { ok: true as const };
   }, [isSupabaseConfigured]);
 
   const fetchTournaments = useCallback(async (): Promise<TournamentRecord[]> => {
     if (!isSupabaseConfigured) {
       return loadLocal<TournamentRecord[]>(TOURNAMENTS_KEY, []);
     }
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('tournaments')
       .select('*')
       .order('finished_at', { ascending: false })
       .limit(50);
+
+    if (error) {
+      throw new Error(formatTournamentArchiveError('загрузить', error));
+    }
+
     return data ?? [];
   }, [isSupabaseConfigured]);
 

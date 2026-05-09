@@ -1,4 +1,4 @@
-import type { GameState, GameStatus } from './types';
+import type { GameState, GameStatus, TournamentMode } from './types';
 
 function toNumber(value: unknown, fallback = 0) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -35,6 +35,10 @@ function isGameStatus(value: unknown): value is GameStatus {
   return value === 'idle' || value === 'running' || value === 'paused' || value === 'break' || value === 'ended';
 }
 
+function isTournamentMode(value: unknown): value is TournamentMode {
+  return value === 'garage' || value === 'phoenix';
+}
+
 export function calcTotalStack(state: Pick<GameState, 'players' | 'rebuys' | 'startStack' | 'addonCount' | 'addonStack' | 'bonusCount' | 'bonusStack'>) {
   return (
     Math.max(0, state.players + state.rebuys) * Math.max(0, state.startStack) +
@@ -68,6 +72,9 @@ export function normalizeGameState(raw: unknown, fallback: GameState): GameState
     prizePlaces: toWholeNumber(source.prizePlaces, fallback.prizePlaces),
     tournamentTitle: toStringValue(source.tournamentTitle, fallback.tournamentTitle),
     tournamentBotId: toNullableNumber(source.tournamentBotId, fallback.tournamentBotId),
+    tournamentMode: isTournamentMode(source.tournamentMode) ? source.tournamentMode : fallback.tournamentMode,
+    lateRegistrationClosedAt: toNullableNumber(source.lateRegistrationClosedAt, fallback.lateRegistrationClosedAt),
+    lateRegistrationPlayers: toNullableNumber(source.lateRegistrationPlayers, fallback.lateRegistrationPlayers),
     nextGameBotId: toNullableNumber(source.nextGameBotId, fallback.nextGameBotId),
     resetAt: toWholeNumber(source.resetAt, fallback.resetAt ?? 0),
   };
@@ -92,6 +99,20 @@ export function hasMissingNextGameBotId(error: unknown) {
   return message.includes('nextGameBotId');
 }
 
+export function hasMissingTournamentMode(error: unknown) {
+  const message = typeof error === 'object' && error && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : '';
+  return message.includes('tournamentMode');
+}
+
+export function hasMissingLateRegistrationColumns(error: unknown) {
+  const message = typeof error === 'object' && error && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : '';
+  return message.includes('lateRegistrationClosedAt') || message.includes('lateRegistrationPlayers');
+}
+
 export function hasMissingBonusColumns(error: unknown) {
   const message = typeof error === 'object' && error && 'message' in error
     ? String((error as { message?: unknown }).message ?? '')
@@ -106,6 +127,18 @@ export function hasMissingBonusColumns(error: unknown) {
 }
 
 export function toLegacyGameState(state: GameState) {
-  const { bonusCount, bonusStack, ...legacy } = state;
+  const {
+    bonusCount: ignoredBonusCount,
+    bonusStack: ignoredBonusStack,
+    tournamentMode: ignoredTournamentMode,
+    lateRegistrationClosedAt: ignoredLateRegistrationClosedAt,
+    lateRegistrationPlayers: ignoredLateRegistrationPlayers,
+    ...legacy
+  } = state;
+  void ignoredBonusCount;
+  void ignoredBonusStack;
+  void ignoredTournamentMode;
+  void ignoredLateRegistrationClosedAt;
+  void ignoredLateRegistrationPlayers;
   return legacy;
 }
