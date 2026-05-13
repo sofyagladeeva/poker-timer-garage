@@ -182,6 +182,7 @@ export function useGameState(readOnly = false) {
   const supabaseUpsertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingUpsertState = useRef<GameState | null>(null);
   const autoAdvancePending = useRef(false);
+  const visibilityResyncPending = useRef(false);
 
   // Broadcast channel ref — for low-latency state push (<100ms)
   const broadcastChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -722,10 +723,17 @@ export function useGameState(readOnly = false) {
 
     const syncNow = () => {
       if (document.visibilityState !== 'visible') return;
-      void syncGameStateFromServer('visibility');
-      void syncBlindLevelsFromServer();
-      void syncCombinationsFromServer();
-      requestLiveTimerSnapshot();
+      visibilityResyncPending.current = true;
+      void (async () => {
+        try {
+          await syncGameStateFromServer('visibility');
+          await syncBlindLevelsFromServer();
+          await syncCombinationsFromServer();
+        } finally {
+          visibilityResyncPending.current = false;
+          requestLiveTimerSnapshot();
+        }
+      })();
     };
 
     document.addEventListener('visibilitychange', syncNow);
@@ -762,9 +770,15 @@ export function useGameState(readOnly = false) {
     if (!isSupabaseConfigured || !syncReady || readOnly) return;
     if (!isTimerActiveStatus(gameState.status)) return;
 
-    broadcastLiveTimerSnapshot();
-    const interval = setInterval(() => {
+    const broadcastIfAllowed = () => {
+      if (visibilityResyncPending.current) return;
+      if (document.visibilityState !== 'visible') return;
       broadcastLiveTimerSnapshot();
+    };
+
+    broadcastIfAllowed();
+    const interval = setInterval(() => {
+      broadcastIfAllowed();
     }, TIMER_HEARTBEAT_MS);
 
     return () => clearInterval(interval);
@@ -819,6 +833,7 @@ export function useGameState(readOnly = false) {
   // immediate=true skips debounce — used for pause/start/level changes
   const updateGameState = useCallback((patch: Partial<GameState>, immediate = false) => {
     if (isSupabaseConfigured && !serverLoaded.current) return Promise.resolve(false);
+    if (isSupabaseConfigured && visibilityResyncPending.current) return Promise.resolve(false);
 
     const expectedBase = gameStateRef.current;
     const nextPatch: Partial<GameState> = { ...patch };
