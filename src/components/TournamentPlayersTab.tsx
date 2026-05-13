@@ -25,18 +25,10 @@ type Props = {
     lastSyncedAt: string | null;
     disabled: boolean;
   };
-  exportState: {
-    sending: boolean;
-    status: 'idle' | 'sent' | 'failed';
-    error: string | null;
-    lastAttemptAt: string | null;
-    queued: boolean;
-  };
   tournamentMode: TournamentMode;
   tournamentBotId: number | null;
   lateRegistrationClosedAt: number | null;
   lateRegistrationPlayers: number | null;
-  levelsPlayed: number;
   onRefreshFromBot: (force?: boolean) => Promise<boolean>;
   onAddManualPlayer: (name: string) => Promise<boolean>;
   onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<void>;
@@ -46,13 +38,6 @@ type Props = {
   onCaptureLateRegistration: () => Promise<void>;
   onResetLateRegistration: () => Promise<void>;
   onSetLateRegistrationPlayers: (value: string) => Promise<void>;
-  onExportResults: (levelsPlayed: number) => Promise<{
-    ok: boolean;
-    skipped: boolean;
-    queued: boolean;
-    error: string | null;
-    queueError?: string | null;
-  }>;
 };
 
 function formatSyncMoment(value: string | null) {
@@ -66,12 +51,10 @@ export function TournamentPlayersTab({
   summary,
   playerSyncState,
   botSyncState,
-  exportState,
   tournamentMode,
   tournamentBotId,
   lateRegistrationClosedAt,
   lateRegistrationPlayers,
-  levelsPlayed,
   onRefreshFromBot,
   onAddManualPlayer,
   onUpdatePlayerField,
@@ -81,7 +64,6 @@ export function TournamentPlayersTab({
   onCaptureLateRegistration,
   onResetLateRegistration,
   onSetLateRegistrationPlayers,
-  onExportResults,
 }: Props) {
   const [manualPlayerName, setManualPlayerName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -178,6 +160,26 @@ export function TournamentPlayersTab({
             Показано: {allPlayers.length} из {totalPlayers}. Все основные действия идут из одной таблицы.
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={manualPlayerName}
+              onChange={event => setManualPlayerName(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter' && manualPlayerName.trim()) {
+                  void handleAddManualPlayer();
+                }
+              }}
+              placeholder="Никнейм"
+              className="admin-input !w-40 !py-2 !text-xs"
+            />
+            <button
+              type="button"
+              onClick={() => void handleAddManualPlayer()}
+              disabled={!manualPlayerName.trim()}
+              className="admin-btn-primary px-3 py-2 text-xs"
+            >
+              + Добавить
+            </button>
             <button
               type="button"
               onClick={() => void onRefreshFromBot(true)}
@@ -185,14 +187,6 @@ export function TournamentPlayersTab({
               className="admin-btn-secondary px-3 py-2 text-xs"
             >
               {botSyncState.loading ? 'Синхронизация...' : '↻ Бот'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void onExportResults(levelsPlayed)}
-              disabled={exportState.sending || totalPlayers === 0}
-              className="admin-btn-secondary px-3 py-2 text-xs"
-            >
-              {exportState.sending ? 'Отправляю...' : '⇪ Итоги'}
             </button>
             <div className="flex items-center gap-2">
               <input
@@ -221,6 +215,10 @@ export function TournamentPlayersTab({
               </button>
             </div>
           </div>
+        </div>
+
+        <div className="text-[#666] text-[11px]">
+          Итоги отправляются в бот при завершении турнира.
         </div>
 
         <div className="grid grid-cols-1 gap-2 text-[11px] md:grid-cols-3">
@@ -255,65 +253,6 @@ export function TournamentPlayersTab({
           <span>{tournamentBotId == null ? 'Для авто-импорта нужно выбрать игру из бота.' : `Последний sync: ${formatSyncMoment(botSyncState.lastSyncedAt)}`}</span>
           {playerSyncState.loading && !playerSyncState.error && <span>Синхронизация списка игроков...</span>}
         </div>
-      </div>
-
-      <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-3">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-end">
-          <div className="flex-1">
-            <div className="text-white font-bold text-sm mb-1">Быстрое добавление</div>
-            <input
-              type="text"
-              value={manualPlayerName}
-              onChange={event => setManualPlayerName(event.target.value)}
-              onKeyDown={event => {
-                if (event.key === 'Enter' && manualPlayerName.trim()) {
-                  void handleAddManualPlayer();
-                }
-              }}
-              placeholder="Никнейм игрока"
-              className="admin-input"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => void handleAddManualPlayer()}
-            disabled={!manualPlayerName.trim()}
-            className="admin-btn-primary px-4 py-3 text-sm lg:min-w-[180px]"
-          >
-            + Добавить
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-3">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="text-white font-bold text-sm">Итоги в бот</div>
-            <div className="text-[#666] text-xs mt-1">
-              Отправка берет текущий live-список, места, re-entry, addon, bounty и оплату.
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => void onExportResults(levelsPlayed)}
-            disabled={exportState.sending || totalPlayers === 0}
-            className="admin-btn-secondary px-4 py-3 text-sm"
-          >
-            {exportState.sending ? 'Отправляю...' : '⇪ Отправить итоги'}
-          </button>
-        </div>
-
-        {exportState.status === 'sent' && (
-          <div className="rounded-xl border border-green-900/60 bg-green-950/30 px-3 py-2 text-green-300 text-sm">
-            Итоги турнира отправлены. {exportState.queued ? 'Копия также сохранена в очередь.' : ''}
-          </div>
-        )}
-
-        {exportState.status === 'failed' && exportState.error && (
-          <div className="rounded-xl border border-amber-900/70 bg-amber-950/30 px-3 py-2 text-amber-200 text-sm">
-            {exportState.error} {exportState.queued ? 'Данные турнира сохранены в очередь отправки.' : ''}
-          </div>
-        )}
       </div>
 
       <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
@@ -395,13 +334,11 @@ function PlayerRow({
   return (
     <tr className="rounded-2xl bg-[#0A0A0A]">
       <td className="px-1.5 py-1.5 align-top rounded-l-2xl border-y border-l border-[#2D2D2D]">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <div className="min-w-0 text-white font-black text-[12px] sm:text-sm truncate">{player.name}</div>
-            <Badge tone={isOut ? 'red' : player.arrivalStatus === 'absent' ? 'amber' : 'blue'}>
-              {liveStateLabel}
-            </Badge>
-          </div>
+        <div className="min-w-0 flex flex-col gap-1">
+          <div className="text-white font-black text-[12px] sm:text-sm truncate">{player.name}</div>
+          <Badge tone={isOut ? 'red' : player.arrivalStatus === 'absent' ? 'amber' : 'blue'}>
+            {liveStateLabel}
+          </Badge>
         </div>
       </td>
 
@@ -529,7 +466,7 @@ function PlayerRow({
           >
             {paymentMethodLabel}
           </button>
-          <div className="text-[9px] sm:text-[10px] leading-none uppercase tracking-widest text-[#777]">
+          <div className="text-[9px] sm:text-[10px] leading-none whitespace-nowrap uppercase tracking-widest text-[#777]">
             {player.paymentDue > 0 ? `${player.paymentDue} ₽ к оплате` : 'К оплате 0 ₽'}
           </div>
           {openField === 'payment' && (
@@ -607,7 +544,7 @@ function Badge({
   };
 
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wide ${classes[tone]}`}>
+    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[8px] sm:text-[9px] font-bold uppercase tracking-wide ${classes[tone]}`}>
       {children}
     </span>
   );

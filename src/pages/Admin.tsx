@@ -343,6 +343,8 @@ export function Admin() {
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [finishReviewOpen, setFinishReviewOpen] = useState(false);
+  const [finishBusy, setFinishBusy] = useState(false);
 
   // ── Bot games list ─────────────────────────────────────────────────────
   const [botGames, setBotGames] = useState<BotGameSummary[]>([]);
@@ -360,7 +362,6 @@ export function Admin() {
     summary: tournamentPlayersSummary,
     playerSyncState,
     botSyncState,
-    exportState,
     refreshFromBot,
     addManualPlayer,
     updatePlayerField,
@@ -374,6 +375,12 @@ export function Admin() {
     defaultBuyIn: currentBotGame?.buy_in ?? null,
   });
   const managedPlayerCountsActive = tournamentPlayers.length > 0;
+  const finishReviewPlayers = [...tournamentPlayers].sort((a, b) => {
+    if (a.place !== null && b.place !== null) return a.place - b.place;
+    if (a.place !== null) return -1;
+    if (b.place !== null) return 1;
+    return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'ru');
+  });
 
   useEffect(() => {
     blindTemplatesRef.current = blindTemplates;
@@ -850,32 +857,37 @@ export function Admin() {
     );
   };
 
-  const finishTournamentFlow = async (confirmationMessage: string) => {
-    if (!confirm(confirmationMessage)) return;
+  const finishTournamentFlow = async () => {
+    setFinishBusy(true);
+    try {
+      const levelsPlayed = gameState.currentLevelIndex + 1;
+      const exportResult = await exportTournamentResults(levelsPlayed);
+      if (!exportResult.ok && !exportResult.skipped && !exportResult.queued) {
+        alert(`${exportResult.error ?? 'Не удалось отправить итоги турнира в бот.'} Турнир не был завершен, чтобы не потерять результаты игроков.`);
+        return;
+      }
 
-    const levelsPlayed = gameState.currentLevelIndex + 1;
-    const exportResult = await exportTournamentResults(levelsPlayed);
-    if (!exportResult.ok && !exportResult.skipped && !exportResult.queued) {
-      alert(`${exportResult.error ?? 'Не удалось отправить итоги турнира в бот.'} Турнир не был завершен, чтобы не потерять результаты игроков.`);
-      return;
-    }
+      const archiveSave = await saveTournament(gameState, levelsPlayed);
+      if (!archiveSave.ok) {
+        alert(`${archiveSave.error} Турнир не был завершен, чтобы не потерять архив.`);
+        return;
+      }
 
-    const archiveSave = await saveTournament(gameState, levelsPlayed);
-    if (!archiveSave.ok) {
-      alert(`${archiveSave.error} Турнир не был завершен, чтобы не потерять архив.`);
-      return;
-    }
+      const resetOk = await resetTournament();
+      if (!resetOk) {
+        alert('Не удалось сохранить завершение турнира в Supabase. Не закрывайте страницу и попробуйте еще раз.');
+        return;
+      }
 
-    const resetOk = await resetTournament();
-    if (!resetOk) {
-      alert('Не удалось сохранить завершение турнира в Supabase. Не закрывайте страницу и попробуйте еще раз.');
-      return;
-    }
+      setFinishReviewOpen(false);
 
-    if (!exportResult.ok && exportResult.queued) {
-      alert(`${exportResult.error ?? 'Не удалось отправить итоги в бот.'} Данные игроков сохранены в очередь отправки, турнир завершен.`);
-    } else if (!exportResult.ok && exportResult.queueError) {
-      alert(exportResult.queueError);
+      if (!exportResult.ok && exportResult.queued) {
+        alert(`${exportResult.error ?? 'Не удалось отправить итоги в бот.'} Данные игроков сохранены в очередь отправки, турнир завершен.`);
+      } else if (!exportResult.ok && exportResult.queueError) {
+        alert(exportResult.queueError);
+      }
+    } finally {
+      setFinishBusy(false);
     }
   };
 
@@ -1287,7 +1299,7 @@ export function Admin() {
                   <div className="text-[#C0392B] font-black text-3xl">{(gameState.totalStack ?? 0).toLocaleString('ru-RU')}</div>
                 </div>
                 <button
-                  onClick={() => void finishTournamentFlow('Завершить и начать новый турнир? Данные сохранятся в архив и отправятся в бот.')}
+                  onClick={() => void resetTournament()}
                   className="admin-btn-primary py-4 text-base font-bold"
                 >
                   ↺ Новый турнир
@@ -1372,7 +1384,7 @@ export function Admin() {
                     ↺ Сбросить время
                   </button>
                   <button
-                    onClick={() => void finishTournamentFlow('Завершить турнир? Данные будут сохранены в архив и отправлены в бот.')}
+                    onClick={() => setFinishReviewOpen(true)}
                     className="admin-btn-danger py-4 text-sm"
                   >
                     ✕ Завершить
@@ -1581,12 +1593,10 @@ export function Admin() {
             summary={tournamentPlayersSummary}
             playerSyncState={playerSyncState}
             botSyncState={botSyncState}
-            exportState={exportState}
             tournamentMode={gameState.tournamentMode}
             tournamentBotId={gameState.tournamentBotId}
             lateRegistrationClosedAt={gameState.lateRegistrationClosedAt}
             lateRegistrationPlayers={gameState.lateRegistrationPlayers}
-            levelsPlayed={gameState.currentLevelIndex + 1}
             onRefreshFromBot={refreshFromBot}
             onAddManualPlayer={addManualPlayer}
             onUpdatePlayerField={updatePlayerField}
@@ -1623,7 +1633,6 @@ export function Admin() {
                 lateRegistrationClosedAt: gameState.lateRegistrationClosedAt ?? Date.now(),
               }, true);
             }}
-            onExportResults={exportTournamentResults}
           />
         )}
 
@@ -2079,6 +2088,99 @@ export function Admin() {
                 <div className="text-[#555] text-xs mt-1">
                   Если нужен внешний файл, ссылку можно вставить вручную. Загруженные выше фоны выбирать удобнее через сетку.
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {finishReviewOpen && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4 py-6">
+            <div className="w-full max-w-3xl rounded-2xl border border-[#2D2D2D] bg-[#111] shadow-2xl shadow-black/50">
+              <div className="border-b border-[#2D2D2D] px-4 py-3">
+                <div className="text-white font-black text-lg">Проверка итогов турнира</div>
+                <div className="text-[#777] text-xs mt-1">
+                  Проверь места, никнеймы и баунти. После подтверждения результаты уйдут в бот и в архив.
+                </div>
+              </div>
+
+              <div className="px-4 py-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] mb-3">
+                  <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2">
+                    <div className="text-[#666] uppercase tracking-widest">Игроков</div>
+                    <div className="text-white font-black text-lg">{tournamentPlayersSummary.entrants}</div>
+                  </div>
+                  <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2">
+                    <div className="text-[#666] uppercase tracking-widest">Ребаев</div>
+                    <div className="text-white font-black text-lg">{tournamentPlayersSummary.rebuys}</div>
+                  </div>
+                  <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2">
+                    <div className="text-[#666] uppercase tracking-widest">Аддонов</div>
+                    <div className="text-white font-black text-lg">{tournamentPlayersSummary.addons}</div>
+                  </div>
+                  <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2">
+                    <div className="text-[#666] uppercase tracking-widest">К оплате</div>
+                    <div className="text-white font-black text-lg">{tournamentPlayersSummary.totalDue.toLocaleString('ru-RU')} ₽</div>
+                  </div>
+                </div>
+
+                <div className="max-h-[44vh] overflow-auto rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A]">
+                  <table className="w-full border-collapse">
+                    <thead className="sticky top-0 z-10 bg-[#111]">
+                      <tr className="text-[10px] uppercase tracking-widest text-[#666]">
+                        <th className="px-3 py-2 text-left font-normal">Место</th>
+                        <th className="px-3 py-2 text-left font-normal">Никнейм</th>
+                        <th className="px-3 py-2 text-left font-normal">Bounty</th>
+                        <th className="px-3 py-2 text-left font-normal">К оплате</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {finishReviewPlayers.map(player => (
+                        <tr key={player.id} className="border-t border-[#1F1F1F]">
+                          <td className="px-3 py-2 text-white font-bold">
+                            {player.place ?? '—'}
+                          </td>
+                          <td className="px-3 py-2 text-white font-bold">
+                            <div className="max-w-[180px] truncate">{player.name}</div>
+                          </td>
+                          <td className="px-3 py-2 text-[#ddd]">
+                            {player.bounty > 0 ? `${player.bounty.toLocaleString('ru-RU')} ₽` : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-[#ddd] whitespace-nowrap">
+                            {player.paymentDue.toLocaleString('ru-RU')} ₽
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="border-t border-[#2D2D2D] px-4 py-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFinishReviewOpen(false);
+                    setActiveTab('players');
+                  }}
+                  className="admin-btn-secondary px-4 py-3 text-sm"
+                >
+                  Изменить вручную
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFinishReviewOpen(false)}
+                  className="admin-btn-secondary px-4 py-3 text-sm"
+                >
+                  Нет
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void finishTournamentFlow()}
+                  disabled={finishBusy}
+                  className="admin-btn-primary px-4 py-3 text-sm"
+                >
+                  {finishBusy ? 'Завершаю...' : 'Да, завершить и отправить'}
+                </button>
               </div>
             </div>
           </div>
