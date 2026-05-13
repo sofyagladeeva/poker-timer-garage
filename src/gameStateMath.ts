@@ -1,4 +1,4 @@
-import { normalizeTournamentMode, type GameState, type GameStatus } from './types';
+import type { GameState, GameStatus, TournamentMode } from './types';
 
 function toNumber(value: unknown, fallback = 0) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -33,6 +33,10 @@ function toBoolean(value: unknown, fallback = false) {
 
 function isGameStatus(value: unknown): value is GameStatus {
   return value === 'idle' || value === 'running' || value === 'paused' || value === 'break' || value === 'ended';
+}
+
+function isTournamentMode(value: unknown): value is TournamentMode {
+  return value === 'garage' || value === 'phoenix';
 }
 
 export function calcTotalStack(state: Pick<GameState, 'players' | 'rebuys' | 'startStack' | 'addonCount' | 'addonStack' | 'bonusCount' | 'bonusStack' | 'burnedChips'>) {
@@ -70,7 +74,7 @@ export function normalizeGameState(raw: unknown, fallback: GameState): GameState
     prizePlaces: toWholeNumber(source.prizePlaces, fallback.prizePlaces),
     tournamentTitle: toStringValue(source.tournamentTitle, fallback.tournamentTitle),
     tournamentBotId: toNullableNumber(source.tournamentBotId, fallback.tournamentBotId),
-    tournamentMode: normalizeTournamentMode(source.tournamentMode, fallback.tournamentMode),
+    tournamentMode: isTournamentMode(source.tournamentMode) ? source.tournamentMode : fallback.tournamentMode,
     lateRegistrationCloseLevel: toNullableNumber(source.lateRegistrationCloseLevel, fallback.lateRegistrationCloseLevel),
     lateRegistrationClosedAt: toNullableNumber(source.lateRegistrationClosedAt, fallback.lateRegistrationClosedAt),
     lateRegistrationPlayers: toNullableNumber(source.lateRegistrationPlayers, fallback.lateRegistrationPlayers),

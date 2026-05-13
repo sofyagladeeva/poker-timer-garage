@@ -494,14 +494,10 @@ function summarizePlayers(players: LiveTournamentPlayer[]): TournamentPlayersSum
 }
 
 function getRatingPlayerCount(gameState: GameState, summary: TournamentPlayersSummary) {
-  switch (gameState.tournamentMode) {
-    case 'phoenix':
-      return gameState.lateRegistrationPlayers ?? 0;
-    case 'quarterly':
-      return 0;
-    default:
-      return summary.entrants;
+  if (gameState.tournamentMode === 'phoenix') {
+    return gameState.lateRegistrationPlayers ?? 0;
   }
+  return summary.entrants;
 }
 
 function buildResultsPayload(
@@ -868,26 +864,6 @@ export function useTournamentPlayers({ gameState, updateGameState, defaultBuyIn 
     updateGameState,
   ]);
 
-  useEffect(() => {
-    if (gameState.tournamentMode !== 'phoenix') return;
-    if (gameState.lateRegistrationPlayers !== null) return;
-    if (summary.addons <= 0) return;
-    if (summary.active <= 0) return;
-
-    void updateGameState({
-      lateRegistrationPlayers: summary.active,
-      lateRegistrationClosedAt: Date.now(),
-      lateRegistrationCloseLevel: gameState.currentLevelIndex + 1,
-    }, true);
-  }, [
-    gameState.currentLevelIndex,
-    gameState.lateRegistrationPlayers,
-    gameState.tournamentMode,
-    summary.active,
-    summary.addons,
-    updateGameState,
-  ]);
-
   const addManualPlayer = useCallback(async (name: string) => {
     const trimmedName = name.trim();
     if (!trimmedName) return false;
@@ -1091,7 +1067,7 @@ export function useTournamentPlayers({ gameState, updateGameState, defaultBuyIn 
     if (gameState.tournamentMode === 'phoenix') {
       const lateRegistrationPlayers = gameState.lateRegistrationPlayers ?? 0;
       if (lateRegistrationPlayers <= 0) {
-        const error = 'Для Phoenix late reg фиксируется автоматически при первом addon. Сейчас это значение еще не определилось.';
+        const error = 'Для Phoenix сначала зафиксируйте late reg: сколько игроков оставалось в игре на момент закрытия поздней регистрации.';
         setExportState({
           sending: false,
           status: 'failed',

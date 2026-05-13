@@ -5,7 +5,8 @@ import { useTournamentPlayers } from '../hooks/useTournamentPlayers';
 import { supabase } from '../supabase';
 import { getNextGarageBlindPair } from '../blindStructure';
 import { calcTotalStack } from '../gameStateMath';
-import { getTournamentModeLabel, normalizeTournamentMode, SUIT_SYMBOLS, type BlindLevel, type BlindTemplate, type Combination, type Card, type Suit, type Rank, type TournamentRecord, type GameState, type TournamentMode } from '../types';
+import type { BlindLevel, BlindTemplate, Combination, Card, Suit, Rank, TournamentRecord, GameState } from '../types';
+import { SUIT_SYMBOLS } from '../types';
 import { PokerCard } from '../components/PokerCard';
 import { TournamentPlayersTab } from '../components/TournamentPlayersTab';
 import {
@@ -66,62 +67,18 @@ const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'poker2024';
 const MAX_BACKGROUND_ITEMS = 24;
 const SHARED_LIBRARY_TIMEOUT_MS = 20_000;
 const SHARED_LIBRARY_RETRY_COUNT = 2;
-const BOT_GAMES_POLL_MS = 60_000;
 
 type BotGameSummary = {
   id: number;
   title: string;
   date: string;
   format: string;
-  tournamentMode: TournamentMode;
+  tournament_mode?: 'garage' | 'phoenix';
   buy_in: number;
   confirmed: number;
   max_players: number;
   status: string;
 };
-
-function toOptionalNumber(value: unknown) {
-  if (typeof value === 'number' && Number.isFinite(value)) return Math.round(value);
-  if (typeof value === 'string' && value.trim() !== '') {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return Math.round(parsed);
-  }
-  return null;
-}
-
-function toStringValue(value: unknown, fallback = '') {
-  return typeof value === 'string' ? value : fallback;
-}
-
-function normalizeBotGame(raw: unknown): BotGameSummary | null {
-  if (!raw || typeof raw !== 'object') return null;
-
-  const source = raw as Record<string, unknown>;
-  const id = toOptionalNumber(source.id);
-  if (id === null) return null;
-
-  return {
-    id,
-    title: toStringValue(source.title, `Игра #${id}`),
-    date: toStringValue(source.date),
-    format: toStringValue(source.format),
-    tournamentMode: normalizeTournamentMode(
-      source.tournament_mode ?? source.tournamentMode ?? source.tournament_type ?? source.tournamentType,
-      'classic'
-    ),
-    buy_in: toOptionalNumber(source.buy_in ?? source.buyIn) ?? 0,
-    confirmed: toOptionalNumber(source.confirmed ?? source.confirmed_count ?? source.confirmedCount) ?? 0,
-    max_players: toOptionalNumber(source.max_players ?? source.maxPlayers) ?? 0,
-    status: toStringValue(source.status),
-  };
-}
-
-function normalizeBotGames(raw: unknown) {
-  if (!Array.isArray(raw)) return [] as BotGameSummary[];
-  return raw
-    .map(normalizeBotGame)
-    .filter((game): game is BotGameSummary => game !== null);
-}
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -392,49 +349,13 @@ export function Admin() {
   // ── Bot games list ─────────────────────────────────────────────────────
   const [botGames, setBotGames] = useState<BotGameSummary[]>([]);
   useEffect(() => {
-    let active = true;
-
-    const loadBotGames = () => {
-      fetch(`${BOT_API}/api/games`)
-        .then(r => r.json())
-        .then(data => {
-          if (!active) return;
-          setBotGames(normalizeBotGames(data));
-        })
-        .catch(() => {
-          if (!active) return;
-          setBotGames([]);
-        });
-    };
-
-    loadBotGames();
-    const interval = setInterval(loadBotGames, BOT_GAMES_POLL_MS);
-
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
+    fetch(`${BOT_API}/api/games`)
+      .then(r => r.json())
+      .then(setBotGames)
+      .catch(() => {});
   }, []);
 
   const currentBotGame = botGames.find(game => game.id === gameState.tournamentBotId) ?? null;
-
-  useEffect(() => {
-    if (gameState.tournamentBotId == null || currentBotGame == null) return;
-
-    const nextTournamentMode = currentBotGame.tournamentMode;
-
-    if (gameState.tournamentMode === nextTournamentMode) return;
-
-    void updateGameState({
-      tournamentMode: nextTournamentMode,
-    });
-  }, [
-    currentBotGame,
-    gameState.tournamentBotId,
-    gameState.tournamentMode,
-    updateGameState,
-  ]);
-
   const {
     players: tournamentPlayers,
     groupedPlayers,
@@ -1186,7 +1107,7 @@ export function Admin() {
                               onClick={() => updateGameState({
                                 tournamentTitle: g.title,
                                 tournamentBotId: g.id,
-                                tournamentMode: g.tournamentMode,
+                                tournamentMode: g.tournament_mode === 'phoenix' ? 'phoenix' : 'garage',
                               })}
                               className={`flex items-center justify-between px-4 py-3 rounded-xl border text-left transition-all ${
                                 isSelected
@@ -1197,9 +1118,6 @@ export function Admin() {
                               <div>
                                 <div className={`font-bold uppercase text-sm ${isSelected ? 'text-white' : 'text-[#666]'}`}>{g.title}</div>
                                 <div className="text-xs text-[#444] mt-0.5">{dateStr}</div>
-                                <div className={`text-[10px] uppercase tracking-[0.18em] mt-1 ${isSelected ? 'text-[#F2D2CD]' : 'text-[#555]'}`}>
-                                  {getTournamentModeLabel(g.tournamentMode)}
-                                </div>
                               </div>
                               <div className="text-right ml-3">
                                 <div className={`text-sm font-bold ${isSelected ? 'text-[#C0392B]' : 'text-[#444]'}`}>{g.confirmed} / {g.max_players}</div>
@@ -1221,7 +1139,7 @@ export function Admin() {
                         onChange={e => setCustomGameTitle(e.target.value)}
                         onKeyDown={e => {
                           if (e.key === 'Enter' && customGameTitle.trim()) {
-                            updateGameState({ tournamentTitle: customGameTitle.trim(), tournamentBotId: null, tournamentMode: 'classic' });
+                            updateGameState({ tournamentTitle: customGameTitle.trim(), tournamentBotId: null });
                             setCustomGameTitle('');
                             setGamePickerOpen(false);
                           }
@@ -1232,7 +1150,7 @@ export function Admin() {
                       <button
                         onClick={() => {
                           if (!customGameTitle.trim()) return;
-                          updateGameState({ tournamentTitle: customGameTitle.trim(), tournamentBotId: null, tournamentMode: 'classic' });
+                          updateGameState({ tournamentTitle: customGameTitle.trim(), tournamentBotId: null });
                           setCustomGameTitle('');
                           setGamePickerOpen(false);
                         }}
@@ -1247,7 +1165,7 @@ export function Admin() {
                   {/* Сбросить выбор */}
                   {gameState.tournamentTitle && (
                     <button
-                      onClick={() => updateGameState({ tournamentTitle: '', tournamentBotId: null, tournamentMode: 'classic' })}
+                      onClick={() => updateGameState({ tournamentTitle: '', tournamentBotId: null })}
                       className="text-[#444] text-xs text-center hover:text-[#888] py-1"
                     >
                       Сбросить выбор
@@ -1255,6 +1173,37 @@ export function Admin() {
                   )}
                 </div>
               )}
+            </div>
+
+            <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
+              <div className="text-white font-bold text-sm mb-3">Тип турнира</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => updateGameState({ tournamentMode: 'garage' })}
+                  className={`rounded-xl border px-4 py-3 text-sm font-bold transition-colors ${
+                    gameState.tournamentMode === 'garage'
+                      ? 'border-[#C0392B] bg-[#220D0B] text-white'
+                      : 'border-[#2D2D2D] bg-[#0A0A0A] text-[#888] hover:text-white hover:border-[#555]'
+                  }`}
+                >
+                  Garage
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateGameState({ tournamentMode: 'phoenix' })}
+                  className={`rounded-xl border px-4 py-3 text-sm font-bold transition-colors ${
+                    gameState.tournamentMode === 'phoenix'
+                      ? 'border-[#C0392B] bg-[#220D0B] text-white'
+                      : 'border-[#2D2D2D] bg-[#0A0A0A] text-[#888] hover:text-white hover:border-[#555]'
+                  }`}
+                >
+                  Phoenix
+                </button>
+              </div>
+              <div className="text-[#555] text-xs mt-3">
+                Этот тип уходит в итоговый payload турнира и нужен для правильной формулы рейтинга на стороне бота.
+              </div>
             </div>
 
             {/* ── Следующая игра ──────────────────────────────────── */}
@@ -1641,15 +1590,49 @@ export function Admin() {
         {activeTab === 'players' && (
           <TournamentPlayersTab
             groupedPlayers={groupedPlayers}
+            summary={tournamentPlayersSummary}
             playerSyncState={playerSyncState}
             botSyncState={botSyncState}
+            tournamentMode={gameState.tournamentMode}
             tournamentBotId={gameState.tournamentBotId}
+            lateRegistrationClosedAt={gameState.lateRegistrationClosedAt}
+            lateRegistrationPlayers={gameState.lateRegistrationPlayers}
             onRefreshFromBot={refreshFromBot}
             onAddManualPlayer={addManualPlayer}
             onUpdatePlayerField={updatePlayerField}
             onSetPlayerArrival={setPlayerArrival}
             onMarkPlayerOut={markPlayerOut}
             onRestorePlayer={restorePlayer}
+            onCaptureLateRegistration={async () => {
+              await updateGameState({
+                lateRegistrationPlayers: tournamentPlayersSummary.active,
+                lateRegistrationClosedAt: Date.now(),
+              }, true);
+            }}
+            onResetLateRegistration={async () => {
+              await updateGameState({
+                lateRegistrationPlayers: null,
+                lateRegistrationClosedAt: null,
+              }, true);
+            }}
+            onSetLateRegistrationPlayers={async (value: string) => {
+              const trimmed = value.trim();
+              if (!trimmed) {
+                await updateGameState({
+                  lateRegistrationPlayers: null,
+                  lateRegistrationClosedAt: null,
+                }, true);
+                return;
+              }
+
+              const parsed = Number(trimmed);
+              if (!Number.isFinite(parsed)) return;
+
+              await updateGameState({
+                lateRegistrationPlayers: Math.max(0, Math.round(parsed)),
+                lateRegistrationClosedAt: gameState.lateRegistrationClosedAt ?? Date.now(),
+              }, true);
+            }}
           />
         )}
 

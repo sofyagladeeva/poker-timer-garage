@@ -1,12 +1,5 @@
 alter table public.game_state
-  add column if not exists "tournamentMode" text not null default 'classic';
-
-alter table public.game_state
-  alter column "tournamentMode" set default 'classic';
-
-update public.game_state
-set "tournamentMode" = 'classic'
-where "tournamentMode" = 'garage';
+  add column if not exists "tournamentMode" text not null default 'garage';
 
 alter table public.game_state
   add column if not exists "lateRegistrationClosedAt" bigint;
@@ -89,7 +82,7 @@ create table if not exists public.tournament_result_exports (
   session_id bigint not null,
   tournament_bot_id bigint,
   tournament_title text,
-  tournament_mode text not null default 'classic',
+  tournament_mode text not null default 'garage',
   payload jsonb not null,
   status text not null default 'failed',
   last_error text,
@@ -97,13 +90,6 @@ create table if not exists public.tournament_result_exports (
   sent_at timestamptz,
   created_at timestamptz not null default timezone('utc', now())
 );
-
-alter table public.tournament_result_exports
-  alter column tournament_mode set default 'classic';
-
-update public.tournament_result_exports
-set tournament_mode = 'classic'
-where tournament_mode = 'garage';
 
 create index if not exists tournament_result_exports_session_idx
   on public.tournament_result_exports (session_id, created_at desc);

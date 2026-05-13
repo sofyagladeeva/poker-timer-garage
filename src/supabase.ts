@@ -39,7 +39,7 @@ export const DEFAULT_GAME_STATE = {
   prizePlaces: 3,
   tournamentTitle: '',
   tournamentBotId: null,
-  tournamentMode: 'classic' as const,
+  tournamentMode: 'garage' as const,
   lateRegistrationCloseLevel: null,
   lateRegistrationClosedAt: null,
   lateRegistrationPlayers: null,

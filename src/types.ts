@@ -32,34 +32,7 @@ export interface BlindTemplate {
 }
 
 export type GameStatus = 'idle' | 'running' | 'paused' | 'break' | 'ended';
-export type TournamentMode = 'classic' | 'phoenix' | 'quarterly';
-
-export function normalizeTournamentMode(value: unknown, fallback: TournamentMode = 'classic'): TournamentMode {
-  if (typeof value !== 'string') return fallback;
-
-  switch (value.trim().toLowerCase()) {
-    case 'classic':
-    case 'garage':
-      return 'classic';
-    case 'phoenix':
-      return 'phoenix';
-    case 'quarterly':
-      return 'quarterly';
-    default:
-      return fallback;
-  }
-}
-
-export function getTournamentModeLabel(mode: TournamentMode) {
-  switch (mode) {
-    case 'phoenix':
-      return 'Phoenix';
-    case 'quarterly':
-      return 'Квартальный';
-    default:
-      return 'Классический';
-  }
-}
+export type TournamentMode = 'garage' | 'phoenix';
 
 export interface GameState {
   status: GameStatus;
