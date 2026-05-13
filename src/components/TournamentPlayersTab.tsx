@@ -43,7 +43,6 @@ type Props = {
   onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
   onMarkPlayerOut: (playerId: string) => Promise<void>;
   onRestorePlayer: (playerId: string) => Promise<void>;
-  onRemoveManualPlayer: (playerId: string) => Promise<boolean>;
   onCaptureLateRegistration: () => Promise<void>;
   onResetLateRegistration: () => Promise<void>;
   onSetLateRegistrationPlayers: (value: string) => Promise<void>;
@@ -79,7 +78,6 @@ export function TournamentPlayersTab({
   onSetPlayerArrival,
   onMarkPlayerOut,
   onRestorePlayer,
-  onRemoveManualPlayer,
   onCaptureLateRegistration,
   onResetLateRegistration,
   onSetLateRegistrationPlayers,
@@ -95,7 +93,6 @@ export function TournamentPlayersTab({
     if (!normalizedQuery) return true;
     const haystack = [
       player.name,
-      player.username ?? '',
       player.source,
       player.registrationSource,
       player.status,
@@ -160,7 +157,7 @@ export function TournamentPlayersTab({
             type="text"
             value={searchQuery}
             onChange={event => setSearchQuery(event.target.value)}
-            placeholder="Поиск по имени, @username, статусу, оплате"
+            placeholder="Поиск по имени, статусу, оплате"
             className="admin-input"
           />
 
@@ -345,18 +342,17 @@ export function TournamentPlayersTab({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-[1360px] w-full border-separate border-spacing-y-2">
+            <table className="min-w-[1160px] w-full border-separate border-spacing-y-2">
               <thead>
                 <tr className="text-[11px] uppercase tracking-widest text-[#666]">
-                  <th className="text-left font-normal px-3 py-2">Игрок</th>
-                  <th className="text-left font-normal px-3 py-2">Статус</th>
-                  <th className="text-left font-normal px-3 py-2">Rebuy</th>
-                  <th className="text-left font-normal px-3 py-2">Addon</th>
-                  <th className="text-left font-normal px-3 py-2">Bounty</th>
-                  <th className="text-left font-normal px-3 py-2">Выбыл</th>
-                  <th className="text-left font-normal px-3 py-2">Оплата</th>
-                  <th className="text-left font-normal px-3 py-2">Место</th>
-                  <th className="text-left font-normal px-3 py-2">Действия</th>
+                  <th className="sticky top-0 z-10 text-left font-normal px-3 py-2 bg-[#111]">Игрок</th>
+                  <th className="sticky top-0 z-10 text-left font-normal px-3 py-2 bg-[#111]">Статус</th>
+                  <th className="sticky top-0 z-10 text-left font-normal px-3 py-2 bg-[#111]">Rebuy</th>
+                  <th className="sticky top-0 z-10 text-left font-normal px-3 py-2 bg-[#111]">Addon</th>
+                  <th className="sticky top-0 z-10 text-left font-normal px-3 py-2 bg-[#111]">Bounty</th>
+                  <th className="sticky top-0 z-10 text-left font-normal px-3 py-2 bg-[#111]">Выбыл</th>
+                  <th className="sticky top-0 z-10 text-left font-normal px-3 py-2 bg-[#111]">Оплата</th>
+                  <th className="sticky top-0 z-10 text-left font-normal px-3 py-2 bg-[#111]">Место</th>
                 </tr>
               </thead>
               <tbody>
@@ -368,7 +364,6 @@ export function TournamentPlayersTab({
                     onSetPlayerArrival={onSetPlayerArrival}
                     onMarkPlayerOut={onMarkPlayerOut}
                     onRestorePlayer={onRestorePlayer}
-                    onRemoveManualPlayer={onRemoveManualPlayer}
                   />
                 ))}
               </tbody>
@@ -386,14 +381,12 @@ function PlayerRow({
   onSetPlayerArrival,
   onMarkPlayerOut,
   onRestorePlayer,
-  onRemoveManualPlayer,
 }: {
   player: LiveTournamentPlayer;
   onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<void>;
   onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
   onMarkPlayerOut: (playerId: string) => Promise<void>;
   onRestorePlayer: (playerId: string) => Promise<void>;
-  onRemoveManualPlayer: (playerId: string) => Promise<boolean>;
 }) {
   const [openField, setOpenField] = useState<'status' | 'rebuy' | 'addon' | 'payment' | null>(null);
   const canEditCounters = player.arrivalStatus !== 'absent';
@@ -403,11 +396,6 @@ function PlayerRow({
     : player.arrivalStatus === 'absent'
       ? 'Не в игре'
       : 'В игре';
-  const paymentLabel = player.paymentMethod === 'cash'
-    ? 'Наличные'
-    : player.paymentMethod === 'card'
-      ? 'Карта'
-      : 'Не оплачено';
   const placeLabel = isOut && player.place !== null ? String(player.place) : '—';
 
   const toggleField = (field: typeof openField) => {
@@ -417,26 +405,22 @@ function PlayerRow({
   return (
     <tr className="rounded-2xl bg-[#0A0A0A]">
       <td className="px-3 py-3 align-top rounded-l-2xl border-y border-l border-[#2D2D2D]">
-        <div className="min-w-[240px]">
+        <div className="min-w-[200px]">
           <div className="flex flex-wrap items-center gap-2">
             <div className="text-white font-black text-sm truncate">{player.name}</div>
             <Badge tone={isOut ? 'red' : player.arrivalStatus === 'absent' ? 'amber' : 'blue'}>
               {liveStateLabel}
             </Badge>
           </div>
-
-          {player.username && (
-            <div className="text-[#666] text-[11px] mt-1 truncate">{player.username.replace(/^@/, '')}</div>
-          )}
         </div>
       </td>
 
       <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <div className="min-w-[230px] flex flex-col gap-2">
+        <div className="min-w-[170px] flex flex-col gap-2">
           <button
             type="button"
             onClick={() => toggleField('status')}
-            className={`rounded-xl border px-3 py-2 text-left text-sm font-bold transition-colors ${
+            className={`rounded-lg border px-2.5 py-2 text-left text-xs font-bold transition-colors ${
               openField === 'status'
                 ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
                 : 'border-[#2D2D2D] bg-[#141414] text-[#EEE] hover:border-[#555]'
@@ -450,13 +434,22 @@ function PlayerRow({
           </button>
           {openField === 'status' && (
             <div className="grid grid-cols-1 gap-1">
-              <MiniChoice active={player.arrivalStatus === 'absent'} onClick={() => void onSetPlayerArrival(player.id, 'absent')}>
+              <MiniChoice active={player.arrivalStatus === 'absent'} onClick={async () => {
+                await onSetPlayerArrival(player.id, 'absent');
+                setOpenField(null);
+              }}>
                 Не в игре
               </MiniChoice>
-              <MiniChoice active={player.arrivalStatus === 'paid'} onClick={() => void onSetPlayerArrival(player.id, 'paid')}>
+              <MiniChoice active={player.arrivalStatus === 'paid'} onClick={async () => {
+                await onSetPlayerArrival(player.id, 'paid');
+                setOpenField(null);
+              }}>
                 В игре платно
               </MiniChoice>
-              <MiniChoice active={player.arrivalStatus === 'free'} onClick={() => void onSetPlayerArrival(player.id, 'free')}>
+              <MiniChoice active={player.arrivalStatus === 'free'} onClick={async () => {
+                await onSetPlayerArrival(player.id, 'free');
+                setOpenField(null);
+              }}>
                 В игре бесплатно
               </MiniChoice>
             </div>
@@ -465,30 +458,30 @@ function PlayerRow({
       </td>
 
       <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <div className="min-w-[110px] flex flex-col gap-2">
+        <div className="min-w-[78px] flex flex-col gap-2">
           <button
             type="button"
             onClick={() => toggleField('rebuy')}
-            className="rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-left text-sm font-bold text-white hover:border-[#555]"
+            className="rounded-lg border border-[#2D2D2D] bg-[#141414] px-2 py-2 text-left text-sm font-bold text-white hover:border-[#555]"
           >
             {player.rebuyCount}
           </button>
           {openField === 'rebuy' && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => void onUpdatePlayerField(player.id, { rebuyCount: Math.max(0, player.rebuyCount - 1) })}
                 disabled={!canEditCounters}
-                className="h-8 w-8 rounded-lg bg-[#2D2D2D] text-[#AAA] font-bold disabled:opacity-30"
+                className="h-7 w-7 rounded-lg bg-[#2D2D2D] text-[#AAA] font-bold disabled:opacity-30"
               >
                 −
               </button>
-              <div className="min-w-[24px] text-center text-white font-black text-xl leading-none">{player.rebuyCount}</div>
+              <div className="min-w-[20px] text-center text-white font-black text-lg leading-none">{player.rebuyCount}</div>
               <button
                 type="button"
                 onClick={() => void onUpdatePlayerField(player.id, { rebuyCount: player.rebuyCount + 1 })}
                 disabled={!canEditCounters}
-                className="h-8 w-8 rounded-lg bg-[#C0392B] text-white font-bold disabled:opacity-30"
+                className="h-7 w-7 rounded-lg bg-[#C0392B] text-white font-bold disabled:opacity-30"
               >
                 +
               </button>
@@ -498,30 +491,30 @@ function PlayerRow({
       </td>
 
       <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <div className="min-w-[110px] flex flex-col gap-2">
+        <div className="min-w-[78px] flex flex-col gap-2">
           <button
             type="button"
             onClick={() => toggleField('addon')}
-            className="rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-left text-sm font-bold text-white hover:border-[#555]"
+            className="rounded-lg border border-[#2D2D2D] bg-[#141414] px-2 py-2 text-left text-sm font-bold text-white hover:border-[#555]"
           >
             {player.addonCount}
           </button>
           {openField === 'addon' && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => void onUpdatePlayerField(player.id, { addonCount: Math.max(0, player.addonCount - 1) })}
                 disabled={!canEditCounters}
-                className="h-8 w-8 rounded-lg bg-[#2D2D2D] text-[#AAA] font-bold disabled:opacity-30"
+                className="h-7 w-7 rounded-lg bg-[#2D2D2D] text-[#AAA] font-bold disabled:opacity-30"
               >
                 −
               </button>
-              <div className="min-w-[24px] text-center text-white font-black text-xl leading-none">{player.addonCount}</div>
+              <div className="min-w-[20px] text-center text-white font-black text-lg leading-none">{player.addonCount}</div>
               <button
                 type="button"
                 onClick={() => void onUpdatePlayerField(player.id, { addonCount: player.addonCount + 1 })}
                 disabled={!canEditCounters}
-                className="h-8 w-8 rounded-lg bg-[#C0392B] text-white font-bold disabled:opacity-30"
+                className="h-7 w-7 rounded-lg bg-[#C0392B] text-white font-bold disabled:opacity-30"
               >
                 +
               </button>
@@ -536,19 +529,19 @@ function PlayerRow({
           type="number"
           defaultValue={player.bounty || ''}
           onBlur={event => void onUpdatePlayerField(player.id, { bounty: Math.max(0, Number(event.currentTarget.value) || 0) })}
-          className="admin-input !py-2 !text-sm !w-28"
+          className="admin-input !py-2 !text-sm !w-20"
           placeholder="0"
           inputMode="numeric"
         />
       </td>
 
       <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <div className="min-w-[110px] flex flex-col gap-2">
+        <div className="min-w-[84px] flex flex-col gap-2">
           <button
             type="button"
             onClick={() => void (isOut ? onRestorePlayer(player.id) : onMarkPlayerOut(player.id))}
             disabled={!canEditCounters && !isOut}
-            className={`rounded-xl border px-3 py-2 text-left text-sm font-bold transition-colors ${
+            className={`rounded-lg border px-2 py-2 text-left text-xs font-bold transition-colors ${
               isOut
                 ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
                 : 'border-[#2D2D2D] bg-[#141414] text-[#EEE] hover:border-[#555]'
@@ -556,20 +549,15 @@ function PlayerRow({
           >
             {isOut ? `Выбыл · ${placeLabel}` : 'Выбыл'}
           </button>
-          {isOut && (
-            <div className="text-[11px] text-[#666]">
-              Место: {placeLabel}
-            </div>
-          )}
         </div>
       </td>
 
       <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <div className="min-w-[230px] flex flex-col gap-2">
+        <div className="min-w-[120px] flex flex-col gap-2">
           <button
             type="button"
             onClick={() => toggleField('payment')}
-            className="rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-left text-sm font-bold text-white hover:border-[#555]"
+            className="rounded-lg border border-[#2D2D2D] bg-[#141414] px-2 py-2 text-left text-xs font-bold text-white hover:border-[#555]"
           >
             {player.paymentMethod === 'cash'
               ? 'Наличные'
@@ -579,13 +567,22 @@ function PlayerRow({
           </button>
           {openField === 'payment' && (
             <div className="grid grid-cols-1 gap-1">
-              <MiniChoice active={player.paymentMethod === 'unpaid'} onClick={() => void onUpdatePlayerField(player.id, { paymentMethod: 'unpaid' })}>
+              <MiniChoice active={player.paymentMethod === 'unpaid'} onClick={async () => {
+                await onUpdatePlayerField(player.id, { paymentMethod: 'unpaid' });
+                setOpenField(null);
+              }}>
                 Не оплачено
               </MiniChoice>
-              <MiniChoice active={player.paymentMethod === 'cash'} onClick={() => void onUpdatePlayerField(player.id, { paymentMethod: 'cash' })}>
+              <MiniChoice active={player.paymentMethod === 'cash'} onClick={async () => {
+                await onUpdatePlayerField(player.id, { paymentMethod: 'cash' });
+                setOpenField(null);
+              }}>
                 Наличные
               </MiniChoice>
-              <MiniChoice active={player.paymentMethod === 'card'} onClick={() => void onUpdatePlayerField(player.id, { paymentMethod: 'card' })}>
+              <MiniChoice active={player.paymentMethod === 'card'} onClick={async () => {
+                await onUpdatePlayerField(player.id, { paymentMethod: 'card' });
+                setOpenField(null);
+              }}>
                 Карта
               </MiniChoice>
             </div>
@@ -594,22 +591,9 @@ function PlayerRow({
       </td>
 
       <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <div className="min-w-[90px]">
-          <div className={`rounded-xl border px-3 py-2 text-sm font-bold ${isOut ? 'border-[#C0392B] bg-[#220D0B] text-white' : 'border-[#2D2D2D] bg-[#141414] text-[#777]'}`}>
+        <div className="min-w-[52px]">
+          <div className={`rounded-lg border px-2 py-2 text-xs font-bold ${isOut ? 'border-[#C0392B] bg-[#220D0B] text-white' : 'border-[#2D2D2D] bg-[#141414] text-[#777]'}`}>
             {placeLabel}
-          </div>
-        </div>
-      </td>
-
-      <td className="px-3 py-3 align-top rounded-r-2xl border-y border-r border-[#2D2D2D]">
-        <div className="flex flex-col gap-2 min-w-[120px]">
-          {player.source === 'manual' && (
-            <button type="button" onClick={() => void onRemoveManualPlayer(player.id)} className="admin-btn-secondary px-3 py-2 text-[11px]">
-              Удалить
-            </button>
-          )}
-          <div className="text-[11px] text-[#666]">
-            {player.arrivalStatus === 'absent' ? 'Не отмечен' : `Оплата: ${paymentLabel}`}
           </div>
         </div>
       </td>

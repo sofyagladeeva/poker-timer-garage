@@ -367,7 +367,6 @@ export function Admin() {
     setPlayerArrival,
     markPlayerOut,
     restorePlayer,
-    removeManualPlayer,
     exportTournamentResults,
   } = useTournamentPlayers({
     gameState,
@@ -1594,7 +1593,6 @@ export function Admin() {
             onSetPlayerArrival={setPlayerArrival}
             onMarkPlayerOut={markPlayerOut}
             onRestorePlayer={restorePlayer}
-            onRemoveManualPlayer={removeManualPlayer}
             onCaptureLateRegistration={async () => {
               await updateGameState({
                 lateRegistrationPlayers: tournamentPlayersSummary.active,
