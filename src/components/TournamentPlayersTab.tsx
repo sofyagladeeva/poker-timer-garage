@@ -3,8 +3,6 @@ import type { ReactNode } from 'react';
 import type {
   LiveTournamentArrivalStatus,
   LiveTournamentPlayer,
-  TournamentMode,
-  TournamentPlayersSummary,
 } from '../types';
 
 type Props = {
@@ -14,7 +12,6 @@ type Props = {
     waitlist: LiveTournamentPlayer[];
     out: LiveTournamentPlayer[];
   };
-  summary: TournamentPlayersSummary;
   playerSyncState: {
     loading: boolean;
     error: string | null;
@@ -25,19 +22,13 @@ type Props = {
     lastSyncedAt: string | null;
     disabled: boolean;
   };
-  tournamentMode: TournamentMode;
   tournamentBotId: number | null;
-  lateRegistrationClosedAt: number | null;
-  lateRegistrationPlayers: number | null;
   onRefreshFromBot: (force?: boolean) => Promise<boolean>;
   onAddManualPlayer: (name: string) => Promise<boolean>;
   onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<void>;
   onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
   onMarkPlayerOut: (playerId: string) => Promise<void>;
   onRestorePlayer: (playerId: string) => Promise<void>;
-  onCaptureLateRegistration: () => Promise<void>;
-  onResetLateRegistration: () => Promise<void>;
-  onSetLateRegistrationPlayers: (value: string) => Promise<void>;
 };
 
 function formatSyncMoment(value: string | null) {
@@ -48,22 +39,15 @@ function formatSyncMoment(value: string | null) {
 
 export function TournamentPlayersTab({
   groupedPlayers,
-  summary,
   playerSyncState,
   botSyncState,
-  tournamentMode,
   tournamentBotId,
-  lateRegistrationClosedAt,
-  lateRegistrationPlayers,
   onRefreshFromBot,
   onAddManualPlayer,
   onUpdatePlayerField,
   onSetPlayerArrival,
   onMarkPlayerOut,
   onRestorePlayer,
-  onCaptureLateRegistration,
-  onResetLateRegistration,
-  onSetLateRegistrationPlayers,
 }: Props) {
   const [manualPlayerName, setManualPlayerName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -160,26 +144,6 @@ export function TournamentPlayersTab({
             Показано: {allPlayers.length} из {totalPlayers}. Все основные действия идут из одной таблицы.
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              value={manualPlayerName}
-              onChange={event => setManualPlayerName(event.target.value)}
-              onKeyDown={event => {
-                if (event.key === 'Enter' && manualPlayerName.trim()) {
-                  void handleAddManualPlayer();
-                }
-              }}
-              placeholder="Никнейм"
-              className="admin-input !w-40 !py-2 !text-xs"
-            />
-            <button
-              type="button"
-              onClick={() => void handleAddManualPlayer()}
-              disabled={!manualPlayerName.trim()}
-              className="admin-btn-primary px-3 py-2 text-xs"
-            >
-              + Добавить
-            </button>
             <button
               type="button"
               onClick={() => void onRefreshFromBot(true)}
@@ -188,55 +152,6 @@ export function TournamentPlayersTab({
             >
               {botSyncState.loading ? 'Синхронизация...' : '↻ Бот'}
             </button>
-            <div className="flex items-center gap-2">
-              <input
-                key={`late-reg-${lateRegistrationPlayers ?? 'empty'}-${lateRegistrationClosedAt ?? 'none'}`}
-                type="number"
-                defaultValue={lateRegistrationPlayers ?? ''}
-                onBlur={event => void onSetLateRegistrationPlayers(event.currentTarget.value)}
-                className="admin-input !py-2 !text-xs !w-24"
-                placeholder="Late reg"
-                inputMode="numeric"
-              />
-              <button
-                type="button"
-                onClick={() => void onCaptureLateRegistration()}
-                disabled={summary.active <= 0}
-                className="admin-btn-primary px-3 py-2 text-xs"
-              >
-                Фикс. {summary.active}
-              </button>
-              <button
-                type="button"
-                onClick={() => void onResetLateRegistration()}
-                className="admin-btn-secondary px-3 py-2 text-xs"
-              >
-                Сброс
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="text-[#666] text-[11px]">
-          Итоги отправляются в бот при завершении турнира.
-        </div>
-
-        <div className="grid grid-cols-1 gap-2 text-[11px] md:grid-cols-3">
-          <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2 text-[#999]">
-            <span className="text-[#666] uppercase tracking-widest mr-2">Текущих</span>
-            <span className="text-white font-bold">{summary.active}</span>
-          </div>
-          <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2 text-[#999]">
-            <span className="text-[#666] uppercase tracking-widest mr-2">Late reg</span>
-            <span className="text-white font-bold">{lateRegistrationPlayers ?? '—'}</span>
-          </div>
-          <div className={`rounded-xl border px-3 py-2 ${tournamentMode === 'phoenix' ? 'border-[#C0392B]/60 bg-[#220D0B] text-[#F2D2CD]' : 'border-[#2D2D2D] bg-[#0A0A0A] text-[#777]'}`}>
-            <div className="text-[10px] uppercase tracking-widest mb-1 text-[#666]">Late reg</div>
-            <div className="text-xs leading-relaxed">
-              {tournamentMode === 'phoenix'
-                ? 'Для Phoenix это число фиксирует базу рейтинга. Ничего нажимать не нужно.'
-                : 'Для Garage это только справка. На рейтинг не влияет.'}
-            </div>
           </div>
         </div>
 
@@ -261,6 +176,28 @@ export function TournamentPlayersTab({
       <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
         <div className="flex items-center justify-between gap-3 mb-3">
           <div className="text-white font-bold text-sm">Игроки</div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <input
+              type="text"
+              value={manualPlayerName}
+              onChange={event => setManualPlayerName(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter' && manualPlayerName.trim()) {
+                  void handleAddManualPlayer();
+                }
+              }}
+              placeholder="Никнейм игрока"
+              className="admin-input !w-44 !py-2 !text-xs"
+            />
+            <button
+              type="button"
+              onClick={() => void handleAddManualPlayer()}
+              disabled={!manualPlayerName.trim()}
+              className="admin-btn-primary px-3 py-2 text-xs"
+            >
+              + Добавить
+            </button>
+          </div>
         </div>
 
         {allPlayers.length === 0 ? (
@@ -273,12 +210,12 @@ export function TournamentPlayersTab({
               <thead>
                 <tr className="text-[9px] sm:text-[11px] uppercase tracking-[0.18em] text-[#666]">
                   <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[24%]">Игрок</th>
-                  <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[13%]">Статус</th>
-                  <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[12%]">Rebuy</th>
-                  <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[12%]">Addon</th>
-                  <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Bounty</th>
-                  <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Выбыл</th>
-                  <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[13%]">Оплата</th>
+                  <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[16%]">Статус</th>
+                  <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Rebuy</th>
+                  <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Addon</th>
+                  <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[9%]">Bounty</th>
+                  <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[11%]">Выбыл</th>
+                  <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[16%]">Оплата</th>
                   <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[4%]">Место</th>
                 </tr>
               </thead>
@@ -350,7 +287,7 @@ function PlayerRow({
           <button
             type="button"
             onClick={() => toggleField('status')}
-            className={`inline-flex w-fit max-w-full items-center justify-start whitespace-nowrap rounded-lg border px-1.5 py-1 text-left text-[10px] sm:text-[11px] font-bold transition-colors ${
+            className={`inline-flex w-fit max-w-full items-center justify-center whitespace-nowrap rounded-xl border px-3 py-2 text-left text-[10px] sm:text-[11px] font-bold transition-colors ${
               openField === 'status'
                 ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
                 : 'border-[#2D2D2D] bg-[#141414] text-[#EEE] hover:border-[#555]'
@@ -449,7 +386,7 @@ function PlayerRow({
             type="button"
             onClick={() => void (isOut ? onRestorePlayer(player.id) : onMarkPlayerOut(player.id))}
             disabled={!canEditCounters && !isOut}
-            className={`inline-flex w-full items-center justify-center whitespace-nowrap rounded-lg border px-1.5 py-1 text-left text-[10px] sm:text-[11px] font-bold transition-colors ${
+            className={`inline-flex w-fit max-w-full items-center justify-center whitespace-nowrap rounded-xl border px-3 py-2 text-left text-[10px] sm:text-[11px] font-bold transition-colors ${
               isOut
                 ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
                 : 'border-[#2D2D2D] bg-[#141414] text-[#EEE] hover:border-[#555]'
@@ -465,11 +402,11 @@ function PlayerRow({
           <button
             type="button"
             onClick={() => toggleField('payment')}
-            className="inline-flex w-full items-center justify-start whitespace-nowrap rounded-lg border border-[#2D2D2D] bg-[#141414] px-1.5 py-1 text-left text-[10px] sm:text-[11px] font-bold text-white hover:border-[#555]"
+            className="inline-flex w-fit max-w-full items-center justify-center whitespace-nowrap rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-left text-[10px] sm:text-[11px] font-bold text-white hover:border-[#555]"
           >
             {paymentMethodLabel}
           </button>
-          <div className="text-[9px] sm:text-[10px] leading-none whitespace-nowrap uppercase tracking-widest text-[#777]">
+          <div className="text-[8px] sm:text-[9px] leading-none whitespace-nowrap uppercase tracking-wide text-[#777]">
             {player.paymentDue > 0 ? `${player.paymentDue} ₽ к оплате` : 'К оплате 0 ₽'}
           </div>
           {openField === 'payment' && (
@@ -499,7 +436,7 @@ function PlayerRow({
 
       <td className="px-1.5 py-1.5 align-top border-y border-[#2D2D2D] rounded-r-2xl border-r border-[#2D2D2D]">
         <div className="min-w-0">
-          <div className={`inline-flex w-full items-center justify-center whitespace-nowrap rounded-lg border px-1.5 py-1 text-[10px] sm:text-[11px] font-bold ${isOut ? 'border-[#C0392B] bg-[#220D0B] text-white' : 'border-[#2D2D2D] bg-[#141414] text-[#777]'}`}>
+          <div className={`inline-flex w-fit max-w-full items-center justify-center whitespace-nowrap rounded-xl border px-2.5 py-1.5 text-[10px] sm:text-[11px] font-bold ${isOut ? 'border-[#C0392B] bg-[#220D0B] text-white' : 'border-[#2D2D2D] bg-[#141414] text-[#777]'}`}>
             {placeLabel}
           </div>
         </div>
@@ -547,7 +484,7 @@ function Badge({
   };
 
   return (
-    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[8px] sm:text-[9px] font-bold uppercase tracking-wide ${classes[tone]}`}>
+    <span className={`inline-flex w-fit max-w-max self-start items-center rounded-full border px-2 py-0.5 text-[8px] sm:text-[9px] font-bold uppercase tracking-wide leading-none ${classes[tone]}`}>
       {children}
     </span>
   );
@@ -566,7 +503,7 @@ function MiniChoice({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex w-full items-center justify-start rounded-md border px-2 py-1.5 text-[10px] leading-none font-bold transition-colors ${
+      className={`inline-flex w-full items-center justify-start rounded-lg border px-2.5 py-1.5 text-[10px] leading-none font-bold transition-colors ${
         active
           ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
           : 'border-[#2D2D2D] bg-[#141414] text-[#888] hover:border-[#555] hover:text-white'
