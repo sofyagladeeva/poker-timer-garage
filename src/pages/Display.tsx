@@ -231,9 +231,9 @@ export function Display() {
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className="flex items-center justify-center gap-5 px-8 py-2 border-b border-[#181818] flex-shrink-0">
           <img
-            src={`${import.meta.env.BASE_URL}logo.png`}
+            src={`${import.meta.env.BASE_URL}logo.svg`}
             alt="Garage Game Club"
-            style={{ height: '44px', width: 'auto', backgroundColor: '#0A0A0A' }}
+            style={{ height: '44px', width: 'auto' }}
             className="opacity-90 select-none pointer-events-none"
           />
           {gameState.tournamentTitle && (
@@ -549,7 +549,7 @@ function RatingCard({ player, medal, big }: {
       className={`flex-1 bg-[#141414] rounded-2xl p-6 text-center ${big ? 'border-2 border-[#E31E24]' : 'border border-[#222]'}`}
       style={big ? { boxShadow: '0 0 40px rgba(227,30,36,0.2)' } : {}}
     >
-      <img src={`${import.meta.env.BASE_URL}medal-${medal}.png`} style={{ width: big ? 80 : 60, height: big ? 80 : 60, objectFit: 'contain', margin: '0 auto' }} alt="" />
+      <img src={`${import.meta.env.BASE_URL}medal-${medal}.svg`} style={{ width: big ? 80 : 60, height: big ? 80 : 60, objectFit: 'contain', margin: '0 auto' }} alt="" />
       <div className={`text-white font-black mt-2 ${big ? 'text-3xl' : 'text-xl'}`}>{player.name}</div>
       <div className={`text-[#E31E24] font-black mt-1 ${big ? 'text-5xl' : 'text-3xl'}`}>{player.points.toFixed(1)}</div>
       <div className="text-[#383838] text-sm mt-1">{player.games} игр</div>
