@@ -310,7 +310,7 @@ export function Admin() {
   const [authed, setAuthed] = useState(false);
   const [pwInput, setPwInput] = useState('');
   const [pwError, setPwError] = useState(false);
-  const [activeTab, setActiveTab] = useState<'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings'>('players');
+  const [activeTab, setActiveTab] = useState<'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings'>('control');
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
   const [customGameOpen, setCustomGameOpen] = useState(false);
   const [customGameTitle, setCustomGameTitle] = useState('');
@@ -1001,7 +1001,6 @@ export function Admin() {
   // ── Tabs ──────────────────────────────────────────────────────────────
   const tabs = [
     { id: 'control', label: '▶ Управление' },
-    { id: 'players', label: '👥 Игроки' },
     { id: 'blinds',  label: '💰 Блайнды' },
     { id: 'combos',  label: '🃏 Комбо' },
     { id: 'archive', label: '📋 Архив' },
@@ -2160,7 +2159,7 @@ export function Admin() {
                   type="button"
                   onClick={() => {
                     setFinishReviewOpen(false);
-                    setActiveTab('players');
+                    setActiveTab('control');
                   }}
                   className="admin-btn-secondary px-4 py-3 text-sm"
                 >
