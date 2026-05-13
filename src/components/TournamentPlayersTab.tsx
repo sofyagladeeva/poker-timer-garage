@@ -342,17 +342,17 @@ export function TournamentPlayersTab({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-[1160px] w-full border-separate border-spacing-y-2">
+            <table className="min-w-[1020px] w-full border-separate border-spacing-y-2">
               <thead>
                 <tr className="text-[11px] uppercase tracking-widest text-[#666]">
-                  <th className="sticky top-0 z-10 text-left font-normal px-3 py-2 bg-[#111]">Игрок</th>
-                  <th className="sticky top-0 z-10 text-left font-normal px-3 py-2 bg-[#111]">Статус</th>
-                  <th className="sticky top-0 z-10 text-left font-normal px-3 py-2 bg-[#111]">Rebuy</th>
-                  <th className="sticky top-0 z-10 text-left font-normal px-3 py-2 bg-[#111]">Addon</th>
-                  <th className="sticky top-0 z-10 text-left font-normal px-3 py-2 bg-[#111]">Bounty</th>
-                  <th className="sticky top-0 z-10 text-left font-normal px-3 py-2 bg-[#111]">Выбыл</th>
-                  <th className="sticky top-0 z-10 text-left font-normal px-3 py-2 bg-[#111]">Оплата</th>
-                  <th className="sticky top-0 z-10 text-left font-normal px-3 py-2 bg-[#111]">Место</th>
+                  <th className="sticky top-0 z-10 text-left font-normal px-2 py-2 bg-[#111]">Игрок</th>
+                  <th className="sticky top-0 z-10 text-left font-normal px-2 py-2 bg-[#111]">Статус</th>
+                  <th className="sticky top-0 z-10 text-left font-normal px-2 py-2 bg-[#111]">Rebuy</th>
+                  <th className="sticky top-0 z-10 text-left font-normal px-2 py-2 bg-[#111]">Addon</th>
+                  <th className="sticky top-0 z-10 text-left font-normal px-2 py-2 bg-[#111]">Bounty</th>
+                  <th className="sticky top-0 z-10 text-left font-normal px-2 py-2 bg-[#111]">Выбыл</th>
+                  <th className="sticky top-0 z-10 text-left font-normal px-2 py-2 bg-[#111]">Оплата</th>
+                  <th className="sticky top-0 z-10 text-left font-normal px-2 py-2 bg-[#111]">Место</th>
                 </tr>
               </thead>
               <tbody>
@@ -404,9 +404,9 @@ function PlayerRow({
 
   return (
     <tr className="rounded-2xl bg-[#0A0A0A]">
-      <td className="px-3 py-3 align-top rounded-l-2xl border-y border-l border-[#2D2D2D]">
-        <div className="min-w-[200px]">
-          <div className="flex flex-wrap items-center gap-2">
+      <td className="px-2 py-2 align-top rounded-l-2xl border-y border-l border-[#2D2D2D]">
+        <div className="min-w-[160px]">
+          <div className="flex items-center gap-2">
             <div className="text-white font-black text-sm truncate">{player.name}</div>
             <Badge tone={isOut ? 'red' : player.arrivalStatus === 'absent' ? 'amber' : 'blue'}>
               {liveStateLabel}
@@ -415,12 +415,12 @@ function PlayerRow({
         </div>
       </td>
 
-      <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <div className="min-w-[170px] flex flex-col gap-2">
+      <td className="px-2 py-2 align-top border-y border-[#2D2D2D]">
+        <div className="min-w-[130px] flex flex-col gap-1.5">
           <button
             type="button"
             onClick={() => toggleField('status')}
-            className={`rounded-lg border px-2.5 py-2 text-left text-xs font-bold transition-colors ${
+            className={`inline-flex w-fit whitespace-nowrap rounded-lg border px-2 py-1.5 text-left text-[11px] font-bold transition-colors ${
               openField === 'status'
                 ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
                 : 'border-[#2D2D2D] bg-[#141414] text-[#EEE] hover:border-[#555]'
@@ -457,12 +457,12 @@ function PlayerRow({
         </div>
       </td>
 
-      <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <div className="min-w-[78px] flex flex-col gap-2">
+      <td className="px-2 py-2 align-top border-y border-[#2D2D2D]">
+        <div className="min-w-[62px] flex flex-col gap-1.5">
           <button
             type="button"
             onClick={() => toggleField('rebuy')}
-            className="rounded-lg border border-[#2D2D2D] bg-[#141414] px-2 py-2 text-left text-sm font-bold text-white hover:border-[#555]"
+            className="inline-flex w-fit whitespace-nowrap rounded-lg border border-[#2D2D2D] bg-[#141414] px-2 py-1.5 text-left text-sm font-bold text-white hover:border-[#555]"
           >
             {player.rebuyCount}
           </button>
@@ -472,16 +472,16 @@ function PlayerRow({
                 type="button"
                 onClick={() => void onUpdatePlayerField(player.id, { rebuyCount: Math.max(0, player.rebuyCount - 1) })}
                 disabled={!canEditCounters}
-                className="h-7 w-7 rounded-lg bg-[#2D2D2D] text-[#AAA] font-bold disabled:opacity-30"
+                className="h-6 w-6 rounded-lg bg-[#2D2D2D] text-[#AAA] text-xs font-bold disabled:opacity-30"
               >
                 −
               </button>
-              <div className="min-w-[20px] text-center text-white font-black text-lg leading-none">{player.rebuyCount}</div>
+              <div className="min-w-[18px] text-center text-white font-black text-sm leading-none">{player.rebuyCount}</div>
               <button
                 type="button"
                 onClick={() => void onUpdatePlayerField(player.id, { rebuyCount: player.rebuyCount + 1 })}
                 disabled={!canEditCounters}
-                className="h-7 w-7 rounded-lg bg-[#C0392B] text-white font-bold disabled:opacity-30"
+                className="h-6 w-6 rounded-lg bg-[#C0392B] text-white text-xs font-bold disabled:opacity-30"
               >
                 +
               </button>
@@ -490,12 +490,12 @@ function PlayerRow({
         </div>
       </td>
 
-      <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <div className="min-w-[78px] flex flex-col gap-2">
+      <td className="px-2 py-2 align-top border-y border-[#2D2D2D]">
+        <div className="min-w-[62px] flex flex-col gap-1.5">
           <button
             type="button"
             onClick={() => toggleField('addon')}
-            className="rounded-lg border border-[#2D2D2D] bg-[#141414] px-2 py-2 text-left text-sm font-bold text-white hover:border-[#555]"
+            className="inline-flex w-fit whitespace-nowrap rounded-lg border border-[#2D2D2D] bg-[#141414] px-2 py-1.5 text-left text-sm font-bold text-white hover:border-[#555]"
           >
             {player.addonCount}
           </button>
@@ -505,16 +505,16 @@ function PlayerRow({
                 type="button"
                 onClick={() => void onUpdatePlayerField(player.id, { addonCount: Math.max(0, player.addonCount - 1) })}
                 disabled={!canEditCounters}
-                className="h-7 w-7 rounded-lg bg-[#2D2D2D] text-[#AAA] font-bold disabled:opacity-30"
+                className="h-6 w-6 rounded-lg bg-[#2D2D2D] text-[#AAA] text-xs font-bold disabled:opacity-30"
               >
                 −
               </button>
-              <div className="min-w-[20px] text-center text-white font-black text-lg leading-none">{player.addonCount}</div>
+              <div className="min-w-[18px] text-center text-white font-black text-sm leading-none">{player.addonCount}</div>
               <button
                 type="button"
                 onClick={() => void onUpdatePlayerField(player.id, { addonCount: player.addonCount + 1 })}
                 disabled={!canEditCounters}
-                className="h-7 w-7 rounded-lg bg-[#C0392B] text-white font-bold disabled:opacity-30"
+                className="h-6 w-6 rounded-lg bg-[#C0392B] text-white text-xs font-bold disabled:opacity-30"
               >
                 +
               </button>
@@ -523,25 +523,25 @@ function PlayerRow({
         </div>
       </td>
 
-      <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
+      <td className="px-2 py-2 align-top border-y border-[#2D2D2D]">
         <input
           key={`bounty-${player.id}-${player.updatedAt}`}
           type="number"
           defaultValue={player.bounty || ''}
           onBlur={event => void onUpdatePlayerField(player.id, { bounty: Math.max(0, Number(event.currentTarget.value) || 0) })}
-          className="admin-input !py-2 !text-sm !w-20"
+          className="admin-input !py-1.5 !text-xs !w-16 text-center"
           placeholder="0"
           inputMode="numeric"
         />
       </td>
 
-      <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <div className="min-w-[84px] flex flex-col gap-2">
+      <td className="px-2 py-2 align-top border-y border-[#2D2D2D]">
+        <div className="min-w-[72px] flex flex-col gap-1.5">
           <button
             type="button"
             onClick={() => void (isOut ? onRestorePlayer(player.id) : onMarkPlayerOut(player.id))}
             disabled={!canEditCounters && !isOut}
-            className={`rounded-lg border px-2 py-2 text-left text-xs font-bold transition-colors ${
+            className={`inline-flex w-fit whitespace-nowrap rounded-lg border px-2 py-1.5 text-left text-[11px] font-bold transition-colors ${
               isOut
                 ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
                 : 'border-[#2D2D2D] bg-[#141414] text-[#EEE] hover:border-[#555]'
@@ -552,12 +552,12 @@ function PlayerRow({
         </div>
       </td>
 
-      <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <div className="min-w-[120px] flex flex-col gap-2">
+      <td className="px-2 py-2 align-top border-y border-[#2D2D2D]">
+        <div className="min-w-[92px] flex flex-col gap-1.5">
           <button
             type="button"
             onClick={() => toggleField('payment')}
-            className="rounded-lg border border-[#2D2D2D] bg-[#141414] px-2 py-2 text-left text-xs font-bold text-white hover:border-[#555]"
+            className="inline-flex w-fit whitespace-nowrap rounded-lg border border-[#2D2D2D] bg-[#141414] px-2 py-1.5 text-left text-[11px] font-bold text-white hover:border-[#555]"
           >
             {player.paymentMethod === 'cash'
               ? 'Наличные'
@@ -590,9 +590,9 @@ function PlayerRow({
         </div>
       </td>
 
-      <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <div className="min-w-[52px]">
-          <div className={`rounded-lg border px-2 py-2 text-xs font-bold ${isOut ? 'border-[#C0392B] bg-[#220D0B] text-white' : 'border-[#2D2D2D] bg-[#141414] text-[#777]'}`}>
+      <td className="px-2 py-2 align-top border-y border-[#2D2D2D] rounded-r-2xl border-r border-[#2D2D2D]">
+        <div className="min-w-[40px]">
+          <div className={`inline-flex w-fit whitespace-nowrap rounded-lg border px-2 py-1.5 text-[11px] font-bold ${isOut ? 'border-[#C0392B] bg-[#220D0B] text-white' : 'border-[#2D2D2D] bg-[#141414] text-[#777]'}`}>
             {placeLabel}
           </div>
         </div>
@@ -659,7 +659,7 @@ function MiniChoice({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-md border px-2 py-2 text-[11px] leading-none font-bold transition-colors ${
+      className={`inline-flex w-full items-center justify-start rounded-md border px-2 py-1.5 text-[10px] leading-none font-bold transition-colors ${
         active
           ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
           : 'border-[#2D2D2D] bg-[#141414] text-[#888] hover:border-[#555] hover:text-white'
