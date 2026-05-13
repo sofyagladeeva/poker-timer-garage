@@ -231,9 +231,12 @@ export function TournamentPlayersTab({
             <span className="text-white font-bold">{lateRegistrationPlayers ?? '—'}</span>
           </div>
           <div className={`rounded-xl border px-3 py-2 ${tournamentMode === 'phoenix' ? 'border-[#C0392B]/60 bg-[#220D0B] text-[#F2D2CD]' : 'border-[#2D2D2D] bg-[#0A0A0A] text-[#777]'}`}>
-            {tournamentMode === 'phoenix'
-              ? 'Phoenix: рейтинг идет от числа игроков на момент закрытия late reg.'
-              : 'Garage: late reg хранится для протокола, но рейтинг не зависит от него.'}
+            <div className="text-[10px] uppercase tracking-widest mb-1 text-[#666]">Late reg</div>
+            <div className="text-xs leading-relaxed">
+              {tournamentMode === 'phoenix'
+                ? 'Для Phoenix это число фиксирует базу рейтинга. Ничего нажимать не нужно.'
+                : 'Для Garage это только справка. На рейтинг не влияет.'}
+            </div>
           </div>
         </div>
 
@@ -270,7 +273,7 @@ export function TournamentPlayersTab({
               <thead>
                 <tr className="text-[9px] sm:text-[11px] uppercase tracking-[0.18em] text-[#666]">
                   <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[24%]">Игрок</th>
-                  <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[17%]">Статус</th>
+                  <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[13%]">Статус</th>
                   <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[12%]">Rebuy</th>
                   <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[12%]">Addon</th>
                   <th className="sticky top-0 z-20 text-left font-normal px-1.5 py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Bounty</th>
@@ -347,7 +350,7 @@ function PlayerRow({
           <button
             type="button"
             onClick={() => toggleField('status')}
-            className={`inline-flex w-full items-center justify-start whitespace-nowrap rounded-lg border px-1.5 py-1 text-left text-[10px] sm:text-[11px] font-bold transition-colors ${
+            className={`inline-flex w-fit max-w-full items-center justify-start whitespace-nowrap rounded-lg border px-1.5 py-1 text-left text-[10px] sm:text-[11px] font-bold transition-colors ${
               openField === 'status'
                 ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
                 : 'border-[#2D2D2D] bg-[#141414] text-[#EEE] hover:border-[#555]'
@@ -452,7 +455,7 @@ function PlayerRow({
                 : 'border-[#2D2D2D] bg-[#141414] text-[#EEE] hover:border-[#555]'
             }`}
           >
-            {isOut ? `Выбыл · ${placeLabel}` : 'Выбыл'}
+            Выбыл
           </button>
         </div>
       </td>
