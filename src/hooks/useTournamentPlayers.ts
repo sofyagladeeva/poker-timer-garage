@@ -136,6 +136,15 @@ function normalizePlayerStatus(value: unknown, fallback: LiveTournamentPlayerSta
     : fallback;
 }
 
+function calculatePaymentDue(
+  player: Pick<LiveTournamentPlayer, 'arrivalStatus' | 'rebuyCount' | 'addonCount'>,
+  defaultBuyIn: number | null
+) {
+  const entryDue = player.arrivalStatus === 'paid' ? clampWhole(defaultBuyIn) : 0;
+  const extraDue = (clampWhole(player.rebuyCount) + clampWhole(player.addonCount)) * 1000;
+  return entryDue + extraDue;
+}
+
 function normalizePlayer(
   raw: Partial<LiveTournamentPlayer>,
   sessionId: number,
@@ -240,7 +249,7 @@ function playerSort(a: LiveTournamentPlayer, b: LiveTournamentPlayer) {
   return a.sortOrder - b.sortOrder || a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name, 'ru');
 }
 
-function recalculatePlayers(players: LiveTournamentPlayer[]) {
+function recalculatePlayers(players: LiveTournamentPlayer[], defaultBuyIn: number | null) {
   const normalized = players.map(player => normalizePlayer(player, player.sessionId, player.tournamentBotId));
   const entrants = normalized.filter(player => player.arrivalStatus !== 'absent').length;
   const sortedOut = normalized
@@ -258,10 +267,12 @@ function recalculatePlayers(players: LiveTournamentPlayer[]) {
 
   return normalized
     .map(player => {
+      const paymentDue = calculatePaymentDue(player, defaultBuyIn);
       const baseStatus = deriveBaseStatus(player.registrationSource);
       if (player.arrivalStatus === 'absent') {
         return {
           ...player,
+          paymentDue,
           status: baseStatus,
           bustoutOrder: null,
           place: null,
@@ -272,6 +283,7 @@ function recalculatePlayers(players: LiveTournamentPlayer[]) {
       if (player.status !== 'out') {
         return {
           ...player,
+          paymentDue,
           status: 'active' as const,
           bustoutOrder: null,
           place: null,
@@ -283,6 +295,7 @@ function recalculatePlayers(players: LiveTournamentPlayer[]) {
       const autoPlace = Math.max(1, entrants - bustoutOrder + 1);
       return {
         ...player,
+        paymentDue,
         status: 'out' as const,
         bustoutOrder,
         place: player.placeOverride && player.place !== null ? clampWhole(player.place) : autoPlace,
@@ -371,7 +384,8 @@ function mergeImportedRoster(
   previousPlayers: LiveTournamentPlayer[],
   importedPlayers: ImportedTournamentPlayer[],
   sessionId: number,
-  tournamentBotId: number | null
+  tournamentBotId: number | null,
+  defaultBuyIn: number | null
 ) {
   let nextSortOrder = previousPlayers.reduce((max, player) => Math.max(max, player.sortOrder), -1) + 1;
   const mutable = previousPlayers.map(player => ({ ...player }));
@@ -432,7 +446,7 @@ function mergeImportedRoster(
     mutable.push(created);
   }
 
-  const recalculated = recalculatePlayers(mutable);
+  const recalculated = recalculatePlayers(mutable, defaultBuyIn);
 
   return {
     players: recalculated,
@@ -545,7 +559,7 @@ export function useTournamentPlayers({ gameState, updateGameState, defaultBuyIn 
   const managedCountersEnabled = true;
 
   const [players, setPlayers] = useState<LiveTournamentPlayer[]>(() =>
-    recalculatePlayers(loadLocal(playersLocalKey(sessionId), [] as LiveTournamentPlayer[]).map((player: LiveTournamentPlayer) => normalizePlayer(player, sessionId, tournamentBotId)))
+    recalculatePlayers(loadLocal(playersLocalKey(sessionId), [] as LiveTournamentPlayer[]).map((player: LiveTournamentPlayer) => normalizePlayer(player, sessionId, tournamentBotId)), defaultBuyIn)
   );
   const [playerSyncState, setPlayerSyncState] = useState<PlayerSyncState>({ loading: false, error: null });
   const [botSyncState, setBotSyncState] = useState<BotSyncState>({
@@ -585,11 +599,11 @@ export function useTournamentPlayers({ gameState, updateGameState, defaultBuyIn 
   }), [players]);
 
   const replacePlayersState = useCallback((nextPlayers: LiveTournamentPlayer[]) => {
-    const normalized = recalculatePlayers(nextPlayers);
+    const normalized = recalculatePlayers(nextPlayers, defaultBuyIn);
     playersRef.current = normalized;
     setPlayers(normalized);
     saveLocal(playersLocalKey(sessionIdRef.current), normalized);
-  }, []);
+  }, [defaultBuyIn]);
 
   const persistPlayerRows = useCallback(async (changedRows: LiveTournamentPlayer[], deletedIds: string[] = []) => {
     if (!isSupabaseConfigured) return true;
@@ -670,12 +684,12 @@ export function useTournamentPlayers({ gameState, updateGameState, defaultBuyIn 
     const mutated = recalculatePlayers(mutate(previous).map(player => ({
       ...player,
       updatedAt: player.updatedAt || nowIso(),
-    })));
+    })), defaultBuyIn);
     const changedRows = diffPlayers(previous, mutated);
     replacePlayersState(mutated);
     await persistPlayerRows(changedRows, deletedIds);
     return mutated;
-  }, [persistPlayerRows, replacePlayersState]);
+  }, [defaultBuyIn, persistPlayerRows, replacePlayersState]);
 
   const loadSessionPlayers = useCallback(async () => {
     const localPlayers = loadLocal(playersLocalKey(sessionId), [] as LiveTournamentPlayer[])
@@ -769,7 +783,7 @@ export function useTournamentPlayers({ gameState, updateGameState, defaultBuyIn 
       ...result.players.map(player => ({ ...player, registrationSource: 'registered' as const })),
       ...result.waitlist.map(player => ({ ...player, registrationSource: 'waitlist' as const })),
     ];
-    const merged = mergeImportedRoster(playersRef.current, imported, sessionIdRef.current, tournamentBotId);
+    const merged = mergeImportedRoster(playersRef.current, imported, sessionIdRef.current, tournamentBotId, defaultBuyIn);
 
     replacePlayersState(merged.players);
     await persistPlayerRows(merged.changedRows);
@@ -780,7 +794,7 @@ export function useTournamentPlayers({ gameState, updateGameState, defaultBuyIn 
       disabled: false,
     });
     return true;
-  }, [persistPlayerRows, replacePlayersState, tournamentBotId]);
+  }, [defaultBuyIn, persistPlayerRows, replacePlayersState, tournamentBotId]);
 
   useEffect(() => {
     if (tournamentBotId == null) return;
@@ -835,6 +849,7 @@ export function useTournamentPlayers({ gameState, updateGameState, defaultBuyIn 
     gameState.addonStack,
     gameState.bonusCount,
     gameState.bonusStack,
+    gameState.burnedChips,
     gameState.outs,
     gameState.players,
     gameState.rebuys,
@@ -966,13 +981,13 @@ export function useTournamentPlayers({ gameState, updateGameState, defaultBuyIn 
   const removeManualPlayer = useCallback(async (playerId: string) => {
     const previous = playersRef.current;
     const next = previous.filter(player => player.id !== playerId);
-    const changedRows = diffPlayers(previous, recalculatePlayers(next));
+    const changedRows = diffPlayers(previous, recalculatePlayers(next, defaultBuyIn));
     const deletedIds = previous.filter(player => player.id === playerId && player.source === 'manual').map(player => player.id);
     if (deletedIds.length === 0) return false;
     replacePlayersState(next);
     await persistPlayerRows(changedRows, deletedIds);
     return true;
-  }, [persistPlayerRows, replacePlayersState]);
+  }, [defaultBuyIn, persistPlayerRows, replacePlayersState]);
 
   const setPlayerPlace = useCallback(async (playerId: string, value: string) => {
     const trimmed = value.trim();
