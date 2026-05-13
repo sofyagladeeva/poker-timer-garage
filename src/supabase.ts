@@ -27,7 +27,6 @@ export const DEFAULT_GAME_STATE = {
   rebuys: 0,
   addonCount: 0,
   bonusCount: 0,
-  burnedChips: 0,
   startStack: 0,
   addonStack: 0,
   bonusStack: 0,
@@ -39,10 +38,6 @@ export const DEFAULT_GAME_STATE = {
   prizePlaces: 3,
   tournamentTitle: '',
   tournamentBotId: null,
-  tournamentMode: 'garage' as const,
-  lateRegistrationCloseLevel: null,
-  lateRegistrationClosedAt: null,
-  lateRegistrationPlayers: null,
   nextGameBotId: null,
   resetAt: 0,
 };
