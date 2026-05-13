@@ -27,6 +27,7 @@ export const DEFAULT_GAME_STATE = {
   rebuys: 0,
   addonCount: 0,
   bonusCount: 0,
+  burnedChips: 0,
   startStack: 0,
   addonStack: 0,
   bonusStack: 0,

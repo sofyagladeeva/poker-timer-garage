@@ -812,6 +812,7 @@ export function useTournamentPlayers({ gameState, updateGameState, defaultBuyIn 
         rebuys: summary.rebuys,
         addonCount: summary.addons,
         bonusCount: gameState.bonusCount,
+        burnedChips: gameState.burnedChips,
         startStack: gameState.startStack,
         addonStack: gameState.addonStack,
         bonusStack: gameState.bonusStack,

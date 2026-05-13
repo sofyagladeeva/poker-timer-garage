@@ -44,10 +44,11 @@ export interface GameState {
   rebuys: number;
   addonCount: number;
   bonusCount: number;
+  burnedChips: number;
   startStack: number;   // фишек на старт (= стоимость ребая)
   addonStack: number;   // фишек за аддон
   bonusStack: number;   // фишек за бонус
-  totalStack: number;   // авто: (players+rebuys)*startStack + addonCount*addonStack + bonusCount*bonusStack
+  totalStack: number;   // авто: (players+rebuys)*startStack + addonCount*addonStack + bonusCount*bonusStack - burnedChips
   backgroundUrl: string | null;
   nextGameInfo: string;
   showRating: boolean;

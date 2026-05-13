@@ -805,7 +805,7 @@ export function Admin() {
   const anteStartLevel = regularBlindLevels.find(level => level.ante > 0)?.level ?? 0;
 
   const updateStackState = (
-    patch: Partial<Pick<GameState, 'players' | 'rebuys' | 'addonCount' | 'bonusCount' | 'startStack' | 'addonStack' | 'bonusStack'>>
+    patch: Partial<Pick<GameState, 'players' | 'rebuys' | 'addonCount' | 'bonusCount' | 'burnedChips' | 'startStack' | 'addonStack' | 'bonusStack'>>
   ) => {
     const nextState = { ...gameStateSnapshotRef.current, ...patch };
     updateGameState({ ...patch, totalStack: calcTotalStack(nextState) });
@@ -1382,6 +1382,31 @@ export function Admin() {
                     placeholder="напр. 5000"
                     inputMode="numeric"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_160px] gap-3">
+                <div>
+                  <label className="text-[#666] text-xs block mb-1">Сгоревшие фишки</label>
+                  <input
+                    type="number"
+                    className="admin-input"
+                    value={gameState.burnedChips || ''}
+                    onChange={e => {
+                      updateStackState({ burnedChips: Number(e.target.value) });
+                    }}
+                    placeholder="напр. 12000"
+                    inputMode="numeric"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={() => updateStackState({ burnedChips: 0 })}
+                    className="admin-btn-secondary w-full py-3 text-sm"
+                  >
+                    Сбросить
+                  </button>
                 </div>
               </div>
 

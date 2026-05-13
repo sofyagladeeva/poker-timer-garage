@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, DEFAULT_BLIND_LEVELS, DEFAULT_GAME_STATE } from '../supabase';
-import { hasMissingBonusColumns, hasMissingLateRegistrationColumns, hasMissingNextGameBotId, hasMissingResetAt, hasMissingTournamentMode, normalizeGameState, toLegacyGameState } from '../gameStateMath';
+import { hasMissingBonusColumns, hasMissingBurnedChips, hasMissingLateRegistrationColumns, hasMissingNextGameBotId, hasMissingResetAt, hasMissingTournamentMode, normalizeGameState, toLegacyGameState } from '../gameStateMath';
 import type { GameState, BlindLevel, Combination, TournamentRecord } from '../types';
 
 const STATE_KEY = 'poker_game_state';
@@ -486,6 +486,13 @@ export function useGameState(readOnly = false) {
           continue;
         }
 
+        if (hasMissingBurnedChips(error)) {
+          const noBurnedChips = { ...conditionalPayload };
+          delete noBurnedChips.burnedChips;
+          conditionalPayload = noBurnedChips;
+          continue;
+        }
+
         if (hasMissingNextGameBotId(error)) {
           const noNextGameBotId = { ...conditionalPayload };
           delete noNextGameBotId.nextGameBotId;
@@ -531,6 +538,13 @@ export function useGameState(readOnly = false) {
 
       if (hasMissingBonusColumns(error)) {
         payload = { id: 1, ...toLegacyGameState(stateToSave) };
+        continue;
+      }
+
+      if (hasMissingBurnedChips(error)) {
+        const noBurnedChips = { ...payload };
+        delete noBurnedChips.burnedChips;
+        payload = noBurnedChips;
         continue;
       }
 

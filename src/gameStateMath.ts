@@ -39,11 +39,12 @@ function isTournamentMode(value: unknown): value is TournamentMode {
   return value === 'garage' || value === 'phoenix';
 }
 
-export function calcTotalStack(state: Pick<GameState, 'players' | 'rebuys' | 'startStack' | 'addonCount' | 'addonStack' | 'bonusCount' | 'bonusStack'>) {
+export function calcTotalStack(state: Pick<GameState, 'players' | 'rebuys' | 'startStack' | 'addonCount' | 'addonStack' | 'bonusCount' | 'bonusStack' | 'burnedChips'>) {
   return (
     Math.max(0, state.players + state.rebuys) * Math.max(0, state.startStack) +
     Math.max(0, state.addonCount) * Math.max(0, state.addonStack) +
-    Math.max(0, state.bonusCount) * Math.max(0, state.bonusStack)
+    Math.max(0, state.bonusCount) * Math.max(0, state.bonusStack) -
+    Math.max(0, state.burnedChips)
   );
 }
 
@@ -64,6 +65,7 @@ export function normalizeGameState(raw: unknown, fallback: GameState): GameState
     startStack: toWholeNumber(source.startStack ?? source.start_stack, fallback.startStack),
     addonStack: toWholeNumber(source.addonStack ?? source.addon_stack, fallback.addonStack),
     bonusStack: toWholeNumber(source.bonusStack ?? source.bonus_stack, fallback.bonusStack),
+    burnedChips: toWholeNumber(source.burnedChips ?? source.burned_chips, fallback.burnedChips),
     totalStack: fallback.totalStack,
     backgroundUrl: toNullableString(source.backgroundUrl, fallback.backgroundUrl),
     nextGameInfo: toStringValue(source.nextGameInfo, fallback.nextGameInfo),
@@ -131,10 +133,19 @@ export function hasMissingBonusColumns(error: unknown) {
   );
 }
 
+export function hasMissingBurnedChips(error: unknown) {
+  const message = typeof error === 'object' && error && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : '';
+
+  return message.includes('burnedChips') || message.includes('burned_chips');
+}
+
 export function toLegacyGameState(state: GameState) {
   const {
     bonusCount: ignoredBonusCount,
     bonusStack: ignoredBonusStack,
+    burnedChips: ignoredBurnedChips,
     tournamentMode: ignoredTournamentMode,
     lateRegistrationCloseLevel: ignoredLateRegistrationCloseLevel,
     lateRegistrationClosedAt: ignoredLateRegistrationClosedAt,
@@ -143,6 +154,7 @@ export function toLegacyGameState(state: GameState) {
   } = state;
   void ignoredBonusCount;
   void ignoredBonusStack;
+  void ignoredBurnedChips;
   void ignoredTournamentMode;
   void ignoredLateRegistrationCloseLevel;
   void ignoredLateRegistrationClosedAt;
