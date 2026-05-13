@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type {
   LiveTournamentArrivalStatus,
@@ -98,7 +98,51 @@ export function TournamentPlayersTab({
   onExportResults,
 }: Props) {
   const [manualPlayerName, setManualPlayerName] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [viewFilter, setViewFilter] = useState<'all' | 'active' | 'pending' | 'waitlist' | 'out' | 'unpaid'>('all');
   const totalPlayers = groupedPlayers.active.length + groupedPlayers.pending.length + groupedPlayers.waitlist.length + groupedPlayers.out.length;
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  const matchesSearch = (player: LiveTournamentPlayer) => {
+    if (!normalizedQuery) return true;
+    const haystack = [
+      player.name,
+      player.username ?? '',
+      player.source,
+      player.registrationSource,
+      player.status,
+      player.arrivalStatus,
+      player.paymentMethod,
+      player.place !== null ? String(player.place) : '',
+    ].join(' ').toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  };
+
+  const matchesViewFilter = (player: LiveTournamentPlayer) => {
+    switch (viewFilter) {
+      case 'active':
+        return player.status === 'active';
+      case 'pending':
+        return player.arrivalStatus === 'absent' && player.status !== 'out';
+      case 'waitlist':
+        return player.registrationSource === 'waitlist';
+      case 'out':
+        return player.status === 'out';
+      case 'unpaid':
+        return player.paymentMethod === 'unpaid';
+      default:
+        return true;
+    }
+  };
+
+  const filterPlayers = (players: LiveTournamentPlayer[]) => players.filter(player => matchesSearch(player) && matchesViewFilter(player));
+  const filteredCounts = useMemo(() => ({
+    active: filterPlayers(groupedPlayers.active).length,
+    pending: filterPlayers(groupedPlayers.pending).length,
+    waitlist: filterPlayers(groupedPlayers.waitlist).length,
+    out: filterPlayers(groupedPlayers.out).length,
+  }), [groupedPlayers.active, groupedPlayers.out, groupedPlayers.pending, groupedPlayers.waitlist, normalizedQuery, viewFilter]);
 
   const handleAddManualPlayer = async () => {
     const ok = await onAddManualPlayer(manualPlayerName);
@@ -107,6 +151,41 @@ export function TournamentPlayersTab({
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-3">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-3">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={event => setSearchQuery(event.target.value)}
+            placeholder="Поиск по имени, @username, статусу, оплате"
+            className="admin-input"
+          />
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <FilterButton active={viewFilter === 'all'} onClick={() => setViewFilter('all')}>
+              Все
+            </FilterButton>
+            <FilterButton active={viewFilter === 'active'} onClick={() => setViewFilter('active')}>
+              В игре
+            </FilterButton>
+            <FilterButton active={viewFilter === 'pending'} onClick={() => setViewFilter('pending')}>
+              Не в игре
+            </FilterButton>
+            <FilterButton active={viewFilter === 'out'} onClick={() => setViewFilter('out')}>
+              Выбыли
+            </FilterButton>
+            <FilterButton active={viewFilter === 'waitlist'} onClick={() => setViewFilter('waitlist')}>
+              Waitlist
+            </FilterButton>
+            <FilterButton active={viewFilter === 'unpaid'} onClick={() => setViewFilter('unpaid')}>
+              Не оплачено
+            </FilterButton>
+          </div>
+        </div>
+        <div className="text-[#666] text-xs">
+          Показано: {filteredCounts.active + filteredCounts.pending + filteredCounts.waitlist + filteredCounts.out} из {totalPlayers}.
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <SummaryCard label="В игре" value={summary.active} accent="text-green-300" />
         <SummaryCard label="Пришли" value={summary.entrants} accent="text-white" />
@@ -286,7 +365,7 @@ export function TournamentPlayersTab({
       <PlayerSection
         title="В игре"
         note="Пришли и еще не выбыли"
-        players={groupedPlayers.active}
+        players={filterPlayers(groupedPlayers.active)}
         emptyText="Сейчас нет активных игроков."
         renderPlayer={player => (
           <PlayerCard
@@ -305,7 +384,7 @@ export function TournamentPlayersTab({
       <PlayerSection
         title="Зарегистрированы, но не пришли"
         note="Есть в составе турнира, но еще не отмечены на месте"
-        players={groupedPlayers.pending}
+        players={filterPlayers(groupedPlayers.pending)}
         emptyText="Все зарегистрированные уже отмечены или перемещены."
         renderPlayer={player => (
           <PlayerCard
@@ -324,7 +403,7 @@ export function TournamentPlayersTab({
       <PlayerSection
         title="Лист ожидания"
         note="Записались, но пока без посадки"
-        players={groupedPlayers.waitlist}
+        players={filterPlayers(groupedPlayers.waitlist)}
         emptyText="Лист ожидания пуст."
         renderPlayer={player => (
           <PlayerCard
@@ -343,7 +422,7 @@ export function TournamentPlayersTab({
       <PlayerSection
         title="Выбывшие"
         note="Место проставляется автоматически, но можно исправить вручную"
-        players={groupedPlayers.out}
+        players={filterPlayers(groupedPlayers.out)}
         emptyText="Пока никто не выбыл."
         renderPlayer={player => (
           <PlayerCard
@@ -436,6 +515,16 @@ function PlayerCard({
 }) {
   const canEditCounters = player.arrivalStatus !== 'absent';
   const isOut = player.status === 'out';
+  const liveStateLabel = isOut
+    ? 'Выбыл'
+    : player.arrivalStatus === 'absent'
+      ? 'Не в игре'
+      : 'В игре';
+  const paymentLabel = player.paymentMethod === 'cash'
+    ? 'Наличные'
+    : player.paymentMethod === 'card'
+      ? 'Карта'
+      : 'Не оплачено';
 
   return (
     <div className="rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] p-4 flex flex-col gap-4">
@@ -448,6 +537,12 @@ function PlayerCard({
             </Badge>
             <Badge tone={player.registrationSource === 'waitlist' ? 'blue' : 'neutral'}>
               {player.registrationSource === 'waitlist' ? 'waitlist' : 'основной список'}
+            </Badge>
+            <Badge tone={isOut ? 'red' : player.arrivalStatus === 'absent' ? 'amber' : 'blue'}>
+              {liveStateLabel}
+            </Badge>
+            <Badge tone={player.paymentMethod === 'unpaid' ? 'amber' : 'neutral'}>
+              {paymentLabel}
             </Badge>
             {isOut && player.place !== null && (
               <Badge tone="red">место {player.place}</Badge>
@@ -485,16 +580,16 @@ function PlayerCard({
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="flex flex-col gap-2">
-          <div className="text-[#666] text-[11px] uppercase tracking-widest">Приход</div>
+          <div className="text-[#666] text-[11px] uppercase tracking-widest">Участие</div>
           <div className="grid grid-cols-3 gap-2">
             <ChoiceButton active={player.arrivalStatus === 'absent'} onClick={() => void onSetPlayerArrival(player.id, 'absent')}>
-              Нет
+              Не в игре
             </ChoiceButton>
             <ChoiceButton active={player.arrivalStatus === 'paid'} onClick={() => void onSetPlayerArrival(player.id, 'paid')}>
-              Платно
+              В игре платно
             </ChoiceButton>
             <ChoiceButton active={player.arrivalStatus === 'free'} onClick={() => void onSetPlayerArrival(player.id, 'free')}>
-              Бесплатно
+              В игре бесплатно
             </ChoiceButton>
           </div>
         </div>
@@ -575,6 +670,30 @@ function PlayerCard({
         </div>
       </div>
     </div>
+  );
+}
+
+function FilterButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${
+        active
+          ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
+          : 'border-[#2D2D2D] bg-[#141414] text-[#888] hover:border-[#555] hover:text-white'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
