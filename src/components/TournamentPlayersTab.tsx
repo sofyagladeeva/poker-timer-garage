@@ -91,17 +91,7 @@ export function TournamentPlayersTab({
 
   const matchesSearch = (player: LiveTournamentPlayer) => {
     if (!normalizedQuery) return true;
-    const haystack = [
-      player.name,
-      player.source,
-      player.registrationSource,
-      player.status,
-      player.arrivalStatus,
-      player.paymentMethod,
-      player.place !== null ? String(player.place) : '',
-    ].join(' ').toLowerCase();
-
-    return haystack.includes(normalizedQuery);
+    return player.name.toLowerCase().includes(normalizedQuery);
   };
 
   const matchesViewFilter = (player: LiveTournamentPlayer) => {
@@ -157,7 +147,7 @@ export function TournamentPlayersTab({
             type="text"
             value={searchQuery}
             onChange={event => setSearchQuery(event.target.value)}
-            placeholder="Поиск по имени, статусу, оплате"
+            placeholder="Поиск по никнейму"
             className="admin-input"
           />
 
@@ -280,7 +270,7 @@ export function TournamentPlayersTab({
                   void handleAddManualPlayer();
                 }
               }}
-              placeholder="Имя игрока"
+              placeholder="Никнейм игрока"
               className="admin-input"
             />
           </div>
@@ -328,12 +318,7 @@ export function TournamentPlayersTab({
 
       <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
         <div className="flex items-center justify-between gap-3 mb-3">
-          <div>
-            <div className="text-white font-bold text-sm">Игроки</div>
-            <div className="text-[#666] text-xs mt-1">
-              Одна строка = один игрок. Статус, оплата, rebuy, addon, bounty и место меняются прямо здесь.
-            </div>
-          </div>
+          <div className="text-white font-bold text-sm">Игроки</div>
         </div>
 
         {allPlayers.length === 0 ? (
@@ -341,18 +326,18 @@ export function TournamentPlayersTab({
             По текущему фильтру игроков нет.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-[1020px] w-full border-separate border-spacing-y-2">
+          <div className="max-h-[72vh] overflow-auto">
+            <table className="min-w-[980px] w-full border-separate border-spacing-y-2">
               <thead>
                 <tr className="text-[11px] uppercase tracking-widest text-[#666]">
-                  <th className="sticky top-0 z-10 text-left font-normal px-2 py-2 bg-[#111]">Игрок</th>
-                  <th className="sticky top-0 z-10 text-left font-normal px-2 py-2 bg-[#111]">Статус</th>
-                  <th className="sticky top-0 z-10 text-left font-normal px-2 py-2 bg-[#111]">Rebuy</th>
-                  <th className="sticky top-0 z-10 text-left font-normal px-2 py-2 bg-[#111]">Addon</th>
-                  <th className="sticky top-0 z-10 text-left font-normal px-2 py-2 bg-[#111]">Bounty</th>
-                  <th className="sticky top-0 z-10 text-left font-normal px-2 py-2 bg-[#111]">Выбыл</th>
-                  <th className="sticky top-0 z-10 text-left font-normal px-2 py-2 bg-[#111]">Оплата</th>
-                  <th className="sticky top-0 z-10 text-left font-normal px-2 py-2 bg-[#111]">Место</th>
+                  <th className="sticky top-0 z-20 text-left font-normal px-2 py-2 bg-[#111] shadow-[0_1px_0_#2D2D2D]">Игрок</th>
+                  <th className="sticky top-0 z-20 text-left font-normal px-2 py-2 bg-[#111] shadow-[0_1px_0_#2D2D2D]">Статус</th>
+                  <th className="sticky top-0 z-20 text-left font-normal px-2 py-2 bg-[#111] shadow-[0_1px_0_#2D2D2D]">Rebuy</th>
+                  <th className="sticky top-0 z-20 text-left font-normal px-2 py-2 bg-[#111] shadow-[0_1px_0_#2D2D2D]">Addon</th>
+                  <th className="sticky top-0 z-20 text-left font-normal px-2 py-2 bg-[#111] shadow-[0_1px_0_#2D2D2D]">Bounty</th>
+                  <th className="sticky top-0 z-20 text-left font-normal px-2 py-2 bg-[#111] shadow-[0_1px_0_#2D2D2D]">Выбыл</th>
+                  <th className="sticky top-0 z-20 text-left font-normal px-2 py-2 bg-[#111] shadow-[0_1px_0_#2D2D2D]">Оплата</th>
+                  <th className="sticky top-0 z-20 text-left font-normal px-2 py-2 bg-[#111] shadow-[0_1px_0_#2D2D2D]">Место</th>
                 </tr>
               </thead>
               <tbody>
@@ -388,7 +373,7 @@ function PlayerRow({
   onMarkPlayerOut: (playerId: string) => Promise<void>;
   onRestorePlayer: (playerId: string) => Promise<void>;
 }) {
-  const [openField, setOpenField] = useState<'status' | 'rebuy' | 'addon' | 'payment' | null>(null);
+  const [openField, setOpenField] = useState<'status' | 'payment' | null>(null);
   const canEditCounters = player.arrivalStatus !== 'absent';
   const isOut = player.status === 'out';
   const liveStateLabel = isOut
@@ -397,6 +382,11 @@ function PlayerRow({
       ? 'Не в игре'
       : 'В игре';
   const placeLabel = isOut && player.place !== null ? String(player.place) : '—';
+  const paymentMethodLabel = player.paymentMethod === 'cash'
+    ? 'Наличные'
+    : player.paymentMethod === 'card'
+      ? 'Карта'
+      : 'Не оплачено';
 
   const toggleField = (field: typeof openField) => {
     setOpenField(current => current === field ? null : field);
@@ -458,68 +448,46 @@ function PlayerRow({
       </td>
 
       <td className="px-2 py-2 align-top border-y border-[#2D2D2D]">
-        <div className="min-w-[62px] flex flex-col gap-1.5">
+        <div className="min-w-[86px] flex items-center gap-1">
           <button
             type="button"
-            onClick={() => toggleField('rebuy')}
-            className="inline-flex w-fit whitespace-nowrap rounded-lg border border-[#2D2D2D] bg-[#141414] px-2 py-1.5 text-left text-sm font-bold text-white hover:border-[#555]"
+            onClick={() => void onUpdatePlayerField(player.id, { rebuyCount: Math.max(0, player.rebuyCount - 1) })}
+            disabled={!canEditCounters}
+            className="h-7 w-7 rounded-lg bg-[#2D2D2D] text-[#AAA] text-sm font-bold disabled:opacity-30"
           >
-            {player.rebuyCount}
+            −
           </button>
-          {openField === 'rebuy' && (
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => void onUpdatePlayerField(player.id, { rebuyCount: Math.max(0, player.rebuyCount - 1) })}
-                disabled={!canEditCounters}
-                className="h-6 w-6 rounded-lg bg-[#2D2D2D] text-[#AAA] text-xs font-bold disabled:opacity-30"
-              >
-                −
-              </button>
-              <div className="min-w-[18px] text-center text-white font-black text-sm leading-none">{player.rebuyCount}</div>
-              <button
-                type="button"
-                onClick={() => void onUpdatePlayerField(player.id, { rebuyCount: player.rebuyCount + 1 })}
-                disabled={!canEditCounters}
-                className="h-6 w-6 rounded-lg bg-[#C0392B] text-white text-xs font-bold disabled:opacity-30"
-              >
-                +
-              </button>
-            </div>
-          )}
+          <div className="min-w-[20px] text-center text-white font-black text-sm leading-none">{player.rebuyCount}</div>
+          <button
+            type="button"
+            onClick={() => void onUpdatePlayerField(player.id, { rebuyCount: player.rebuyCount + 1 })}
+            disabled={!canEditCounters}
+            className="h-7 w-7 rounded-lg bg-[#C0392B] text-white text-sm font-bold disabled:opacity-30"
+          >
+            +
+          </button>
         </div>
       </td>
 
       <td className="px-2 py-2 align-top border-y border-[#2D2D2D]">
-        <div className="min-w-[62px] flex flex-col gap-1.5">
+        <div className="min-w-[86px] flex items-center gap-1">
           <button
             type="button"
-            onClick={() => toggleField('addon')}
-            className="inline-flex w-fit whitespace-nowrap rounded-lg border border-[#2D2D2D] bg-[#141414] px-2 py-1.5 text-left text-sm font-bold text-white hover:border-[#555]"
+            onClick={() => void onUpdatePlayerField(player.id, { addonCount: Math.max(0, player.addonCount - 1) })}
+            disabled={!canEditCounters}
+            className="h-7 w-7 rounded-lg bg-[#2D2D2D] text-[#AAA] text-sm font-bold disabled:opacity-30"
           >
-            {player.addonCount}
+            −
           </button>
-          {openField === 'addon' && (
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => void onUpdatePlayerField(player.id, { addonCount: Math.max(0, player.addonCount - 1) })}
-                disabled={!canEditCounters}
-                className="h-6 w-6 rounded-lg bg-[#2D2D2D] text-[#AAA] text-xs font-bold disabled:opacity-30"
-              >
-                −
-              </button>
-              <div className="min-w-[18px] text-center text-white font-black text-sm leading-none">{player.addonCount}</div>
-              <button
-                type="button"
-                onClick={() => void onUpdatePlayerField(player.id, { addonCount: player.addonCount + 1 })}
-                disabled={!canEditCounters}
-                className="h-6 w-6 rounded-lg bg-[#C0392B] text-white text-xs font-bold disabled:opacity-30"
-              >
-                +
-              </button>
-            </div>
-          )}
+          <div className="min-w-[20px] text-center text-white font-black text-sm leading-none">{player.addonCount}</div>
+          <button
+            type="button"
+            onClick={() => void onUpdatePlayerField(player.id, { addonCount: player.addonCount + 1 })}
+            disabled={!canEditCounters}
+            className="h-7 w-7 rounded-lg bg-[#C0392B] text-white text-sm font-bold disabled:opacity-30"
+          >
+            +
+          </button>
         </div>
       </td>
 
@@ -553,18 +521,17 @@ function PlayerRow({
       </td>
 
       <td className="px-2 py-2 align-top border-y border-[#2D2D2D]">
-        <div className="min-w-[92px] flex flex-col gap-1.5">
+        <div className="min-w-[110px] flex flex-col gap-1.5">
           <button
             type="button"
             onClick={() => toggleField('payment')}
             className="inline-flex w-fit whitespace-nowrap rounded-lg border border-[#2D2D2D] bg-[#141414] px-2 py-1.5 text-left text-[11px] font-bold text-white hover:border-[#555]"
           >
-            {player.paymentMethod === 'cash'
-              ? 'Наличные'
-              : player.paymentMethod === 'card'
-                ? 'Карта'
-                : 'Не оплачено'}
+            {paymentMethodLabel}
           </button>
+          <div className="text-[10px] uppercase tracking-widest text-[#777]">
+            {player.paymentDue > 0 ? `${player.paymentDue} ₽ к оплате` : 'К оплате 0 ₽'}
+          </div>
           {openField === 'payment' && (
             <div className="grid grid-cols-1 gap-1">
               <MiniChoice active={player.paymentMethod === 'unpaid'} onClick={async () => {
