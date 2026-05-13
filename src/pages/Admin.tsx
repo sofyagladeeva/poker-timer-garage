@@ -374,7 +374,6 @@ export function Admin() {
     updateGameState,
     defaultBuyIn: currentBotGame?.buy_in ?? null,
   });
-  const managedPlayerCountsActive = tournamentPlayers.length > 0;
   const finishReviewPlayers = [...tournamentPlayers].sort((a, b) => {
     if (a.place !== null && b.place !== null) return a.place - b.place;
     if (a.place !== null) return -1;
@@ -1174,37 +1173,6 @@ export function Admin() {
               )}
             </div>
 
-            <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
-              <div className="text-white font-bold text-sm mb-3">Тип турнира</div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => updateGameState({ tournamentMode: 'garage' })}
-                  className={`rounded-xl border px-4 py-3 text-sm font-bold transition-colors ${
-                    gameState.tournamentMode === 'garage'
-                      ? 'border-[#C0392B] bg-[#220D0B] text-white'
-                      : 'border-[#2D2D2D] bg-[#0A0A0A] text-[#888] hover:text-white hover:border-[#555]'
-                  }`}
-                >
-                  Garage
-                </button>
-                <button
-                  type="button"
-                  onClick={() => updateGameState({ tournamentMode: 'phoenix' })}
-                  className={`rounded-xl border px-4 py-3 text-sm font-bold transition-colors ${
-                    gameState.tournamentMode === 'phoenix'
-                      ? 'border-[#C0392B] bg-[#220D0B] text-white'
-                      : 'border-[#2D2D2D] bg-[#0A0A0A] text-[#888] hover:text-white hover:border-[#555]'
-                  }`}
-                >
-                  Phoenix
-                </button>
-              </div>
-              <div className="text-[#555] text-xs mt-3">
-                Этот тип уходит в итоговый payload турнира и нужен для правильной формулы рейтинга на стороне бота.
-              </div>
-            </div>
-
             {/* ── Следующая игра ──────────────────────────────────── */}
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
               <button
@@ -1420,11 +1388,6 @@ export function Admin() {
             {/* Player / Stack */}
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-4">
               <div className="text-[#888] text-xs uppercase tracking-widest">Участники и стеки</div>
-              {managedPlayerCountsActive && (
-                <div className="rounded-xl border border-blue-900/40 bg-blue-950/20 px-3 py-2 text-blue-200 text-xs">
-                  Игроки, ауты, rebuy и addon теперь считаются по вкладке `Игроки`. Здесь вручную остается только бонус и размеры стеков.
-                </div>
-              )}
 
               {/* Стартовый стек */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1499,21 +1462,18 @@ export function Admin() {
                 <CounterBlock
                   label="Игроки"
                   value={gameState.players ?? 0}
-                  disabled={managedPlayerCountsActive}
                   onAdd={() => updateStackState({ players: (gameState.players ?? 0) + 1 })}
                   onRemove={() => updateStackState({ players: Math.max(0, (gameState.players ?? 0) - 1) })}
                 />
                 <CounterBlock
                   label="Ребаи"
                   value={gameState.rebuys ?? 0}
-                  disabled={managedPlayerCountsActive}
                   onAdd={() => updateStackState({ rebuys: (gameState.rebuys ?? 0) + 1 })}
                   onRemove={() => updateStackState({ rebuys: Math.max(0, (gameState.rebuys ?? 0) - 1) })}
                 />
                 <CounterBlock
                   label="Аддоны"
                   value={gameState.addonCount ?? 0}
-                  disabled={managedPlayerCountsActive}
                   onAdd={() => updateStackState({ addonCount: (gameState.addonCount ?? 0) + 1 })}
                   onRemove={() => updateStackState({ addonCount: Math.max(0, (gameState.addonCount ?? 0) - 1) })}
                 />
@@ -1544,7 +1504,6 @@ export function Admin() {
                   <CounterBlock
                     label="Ауты"
                     value={gameState.outs ?? 0}
-                    disabled={managedPlayerCountsActive}
                     onAdd={() => updateGameState({ outs: Math.min((gameState.players ?? 0), (gameState.outs ?? 0) + 1) })}
                     onRemove={() => updateGameState({ outs: Math.max(0, (gameState.outs ?? 0) - 1) })}
                   />
