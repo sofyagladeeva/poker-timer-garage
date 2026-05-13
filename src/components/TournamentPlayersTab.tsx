@@ -44,7 +44,6 @@ type Props = {
   onMarkPlayerOut: (playerId: string) => Promise<void>;
   onRestorePlayer: (playerId: string) => Promise<void>;
   onRemoveManualPlayer: (playerId: string) => Promise<boolean>;
-  onSetPlayerPlace: (playerId: string, value: string) => Promise<void>;
   onCaptureLateRegistration: () => Promise<void>;
   onResetLateRegistration: () => Promise<void>;
   onSetLateRegistrationPlayers: (value: string) => Promise<void>;
@@ -81,7 +80,6 @@ export function TournamentPlayersTab({
   onMarkPlayerOut,
   onRestorePlayer,
   onRemoveManualPlayer,
-  onSetPlayerPlace,
   onCaptureLateRegistration,
   onResetLateRegistration,
   onSetLateRegistrationPlayers,
@@ -351,11 +349,12 @@ export function TournamentPlayersTab({
               <thead>
                 <tr className="text-[11px] uppercase tracking-widest text-[#666]">
                   <th className="text-left font-normal px-3 py-2">Игрок</th>
-                  <th className="text-left font-normal px-3 py-2">В игре</th>
-                  <th className="text-left font-normal px-3 py-2">Оплата</th>
+                  <th className="text-left font-normal px-3 py-2">Статус</th>
                   <th className="text-left font-normal px-3 py-2">Rebuy</th>
                   <th className="text-left font-normal px-3 py-2">Addon</th>
                   <th className="text-left font-normal px-3 py-2">Bounty</th>
+                  <th className="text-left font-normal px-3 py-2">Выбыл</th>
+                  <th className="text-left font-normal px-3 py-2">Оплата</th>
                   <th className="text-left font-normal px-3 py-2">Место</th>
                   <th className="text-left font-normal px-3 py-2">Действия</th>
                 </tr>
@@ -370,7 +369,6 @@ export function TournamentPlayersTab({
                     onMarkPlayerOut={onMarkPlayerOut}
                     onRestorePlayer={onRestorePlayer}
                     onRemoveManualPlayer={onRemoveManualPlayer}
-                    onSetPlayerPlace={onSetPlayerPlace}
                   />
                 ))}
               </tbody>
@@ -389,7 +387,6 @@ function PlayerRow({
   onMarkPlayerOut,
   onRestorePlayer,
   onRemoveManualPlayer,
-  onSetPlayerPlace,
 }: {
   player: LiveTournamentPlayer;
   onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<void>;
@@ -397,8 +394,8 @@ function PlayerRow({
   onMarkPlayerOut: (playerId: string) => Promise<void>;
   onRestorePlayer: (playerId: string) => Promise<void>;
   onRemoveManualPlayer: (playerId: string) => Promise<boolean>;
-  onSetPlayerPlace: (playerId: string, value: string) => Promise<void>;
 }) {
+  const [openField, setOpenField] = useState<'status' | 'rebuy' | 'addon' | 'payment' | null>(null);
   const canEditCounters = player.arrivalStatus !== 'absent';
   const isOut = player.status === 'out';
   const liveStateLabel = isOut
@@ -411,6 +408,11 @@ function PlayerRow({
     : player.paymentMethod === 'card'
       ? 'Карта'
       : 'Не оплачено';
+  const placeLabel = isOut && player.place !== null ? String(player.place) : '—';
+
+  const toggleField = (field: typeof openField) => {
+    setOpenField(current => current === field ? null : field);
+  };
 
   return (
     <tr className="rounded-2xl bg-[#0A0A0A]">
@@ -418,67 +420,114 @@ function PlayerRow({
         <div className="min-w-[240px]">
           <div className="flex flex-wrap items-center gap-2">
             <div className="text-white font-black text-sm truncate">{player.name}</div>
-            <Badge tone={player.source === 'manual' ? 'amber' : 'neutral'}>
-              {player.source === 'manual' ? 'ручной' : 'бот'}
-            </Badge>
-            <Badge tone={player.registrationSource === 'waitlist' ? 'blue' : 'neutral'}>
-              {player.registrationSource === 'waitlist' ? 'waitlist' : 'основной'}
-            </Badge>
             <Badge tone={isOut ? 'red' : player.arrivalStatus === 'absent' ? 'amber' : 'blue'}>
               {liveStateLabel}
             </Badge>
           </div>
 
           {player.username && (
-            <div className="text-[#666] text-[11px] mt-1 truncate">@{player.username.replace(/^@/, '')}</div>
+            <div className="text-[#666] text-[11px] mt-1 truncate">{player.username.replace(/^@/, '')}</div>
           )}
         </div>
       </td>
 
       <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <div className="grid min-w-[260px] grid-cols-3 gap-1">
-          <MiniChoice active={player.arrivalStatus === 'absent'} onClick={() => void onSetPlayerArrival(player.id, 'absent')}>
-            Не в игре
-          </MiniChoice>
-          <MiniChoice active={player.arrivalStatus === 'paid'} onClick={() => void onSetPlayerArrival(player.id, 'paid')}>
-            Платно
-          </MiniChoice>
-          <MiniChoice active={player.arrivalStatus === 'free'} onClick={() => void onSetPlayerArrival(player.id, 'free')}>
-            Бесплатно
-          </MiniChoice>
+        <div className="min-w-[230px] flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => toggleField('status')}
+            className={`rounded-xl border px-3 py-2 text-left text-sm font-bold transition-colors ${
+              openField === 'status'
+                ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
+                : 'border-[#2D2D2D] bg-[#141414] text-[#EEE] hover:border-[#555]'
+            }`}
+          >
+            {player.arrivalStatus === 'paid'
+              ? 'В игре платно'
+              : player.arrivalStatus === 'free'
+                ? 'В игре бесплатно'
+                : 'Не в игре'}
+          </button>
+          {openField === 'status' && (
+            <div className="grid grid-cols-1 gap-1">
+              <MiniChoice active={player.arrivalStatus === 'absent'} onClick={() => void onSetPlayerArrival(player.id, 'absent')}>
+                Не в игре
+              </MiniChoice>
+              <MiniChoice active={player.arrivalStatus === 'paid'} onClick={() => void onSetPlayerArrival(player.id, 'paid')}>
+                В игре платно
+              </MiniChoice>
+              <MiniChoice active={player.arrivalStatus === 'free'} onClick={() => void onSetPlayerArrival(player.id, 'free')}>
+                В игре бесплатно
+              </MiniChoice>
+            </div>
+          )}
         </div>
       </td>
 
       <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <div className="grid min-w-[220px] grid-cols-3 gap-1">
-          <MiniChoice active={player.paymentMethod === 'unpaid'} onClick={() => void onUpdatePlayerField(player.id, { paymentMethod: 'unpaid' })}>
-            Не опл.
-          </MiniChoice>
-          <MiniChoice active={player.paymentMethod === 'cash'} onClick={() => void onUpdatePlayerField(player.id, { paymentMethod: 'cash' })}>
-            Нал.
-          </MiniChoice>
-          <MiniChoice active={player.paymentMethod === 'card'} onClick={() => void onUpdatePlayerField(player.id, { paymentMethod: 'card' })}>
-            Карта
-          </MiniChoice>
+        <div className="min-w-[110px] flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => toggleField('rebuy')}
+            className="rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-left text-sm font-bold text-white hover:border-[#555]"
+          >
+            {player.rebuyCount}
+          </button>
+          {openField === 'rebuy' && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void onUpdatePlayerField(player.id, { rebuyCount: Math.max(0, player.rebuyCount - 1) })}
+                disabled={!canEditCounters}
+                className="h-8 w-8 rounded-lg bg-[#2D2D2D] text-[#AAA] font-bold disabled:opacity-30"
+              >
+                −
+              </button>
+              <div className="min-w-[24px] text-center text-white font-black text-xl leading-none">{player.rebuyCount}</div>
+              <button
+                type="button"
+                onClick={() => void onUpdatePlayerField(player.id, { rebuyCount: player.rebuyCount + 1 })}
+                disabled={!canEditCounters}
+                className="h-8 w-8 rounded-lg bg-[#C0392B] text-white font-bold disabled:opacity-30"
+              >
+                +
+              </button>
+            </div>
+          )}
         </div>
       </td>
 
       <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <CompactCounter
-          value={player.rebuyCount}
-          disabled={!canEditCounters}
-          onDecrement={() => void onUpdatePlayerField(player.id, { rebuyCount: Math.max(0, player.rebuyCount - 1) })}
-          onIncrement={() => void onUpdatePlayerField(player.id, { rebuyCount: player.rebuyCount + 1 })}
-        />
-      </td>
-
-      <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <CompactCounter
-          value={player.addonCount}
-          disabled={!canEditCounters}
-          onDecrement={() => void onUpdatePlayerField(player.id, { addonCount: Math.max(0, player.addonCount - 1) })}
-          onIncrement={() => void onUpdatePlayerField(player.id, { addonCount: player.addonCount + 1 })}
-        />
+        <div className="min-w-[110px] flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => toggleField('addon')}
+            className="rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-left text-sm font-bold text-white hover:border-[#555]"
+          >
+            {player.addonCount}
+          </button>
+          {openField === 'addon' && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void onUpdatePlayerField(player.id, { addonCount: Math.max(0, player.addonCount - 1) })}
+                disabled={!canEditCounters}
+                className="h-8 w-8 rounded-lg bg-[#2D2D2D] text-[#AAA] font-bold disabled:opacity-30"
+              >
+                −
+              </button>
+              <div className="min-w-[24px] text-center text-white font-black text-xl leading-none">{player.addonCount}</div>
+              <button
+                type="button"
+                onClick={() => void onUpdatePlayerField(player.id, { addonCount: player.addonCount + 1 })}
+                disabled={!canEditCounters}
+                className="h-8 w-8 rounded-lg bg-[#C0392B] text-white font-bold disabled:opacity-30"
+              >
+                +
+              </button>
+            </div>
+          )}
+        </div>
       </td>
 
       <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
@@ -494,72 +543,77 @@ function PlayerRow({
       </td>
 
       <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
-        <input
-          key={`place-${player.id}-${player.updatedAt}`}
-          type="number"
-          defaultValue={player.place ?? ''}
-          onBlur={event => void onSetPlayerPlace(player.id, event.currentTarget.value)}
-          className="admin-input !py-2 !text-sm !w-24"
-          placeholder="—"
-          inputMode="numeric"
-          disabled={!isOut}
-        />
+        <div className="min-w-[110px] flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => void (isOut ? onRestorePlayer(player.id) : onMarkPlayerOut(player.id))}
+            disabled={!canEditCounters && !isOut}
+            className={`rounded-xl border px-3 py-2 text-left text-sm font-bold transition-colors ${
+              isOut
+                ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
+                : 'border-[#2D2D2D] bg-[#141414] text-[#EEE] hover:border-[#555]'
+            }`}
+          >
+            {isOut ? `Выбыл · ${placeLabel}` : 'Выбыл'}
+          </button>
+          {isOut && (
+            <div className="text-[11px] text-[#666]">
+              Место: {placeLabel}
+            </div>
+          )}
+        </div>
+      </td>
+
+      <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
+        <div className="min-w-[230px] flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => toggleField('payment')}
+            className="rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-left text-sm font-bold text-white hover:border-[#555]"
+          >
+            {player.paymentMethod === 'cash'
+              ? 'Наличные'
+              : player.paymentMethod === 'card'
+                ? 'Карта'
+                : 'Не оплачено'}
+          </button>
+          {openField === 'payment' && (
+            <div className="grid grid-cols-1 gap-1">
+              <MiniChoice active={player.paymentMethod === 'unpaid'} onClick={() => void onUpdatePlayerField(player.id, { paymentMethod: 'unpaid' })}>
+                Не оплачено
+              </MiniChoice>
+              <MiniChoice active={player.paymentMethod === 'cash'} onClick={() => void onUpdatePlayerField(player.id, { paymentMethod: 'cash' })}>
+                Наличные
+              </MiniChoice>
+              <MiniChoice active={player.paymentMethod === 'card'} onClick={() => void onUpdatePlayerField(player.id, { paymentMethod: 'card' })}>
+                Карта
+              </MiniChoice>
+            </div>
+          )}
+        </div>
+      </td>
+
+      <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
+        <div className="min-w-[90px]">
+          <div className={`rounded-xl border px-3 py-2 text-sm font-bold ${isOut ? 'border-[#C0392B] bg-[#220D0B] text-white' : 'border-[#2D2D2D] bg-[#141414] text-[#777]'}`}>
+            {placeLabel}
+          </div>
+        </div>
       </td>
 
       <td className="px-3 py-3 align-top rounded-r-2xl border-y border-r border-[#2D2D2D]">
-        <div className="flex flex-col gap-2 min-w-[200px]">
-          <div className="flex flex-wrap gap-2">
-            {isOut ? (
-              <button type="button" onClick={() => void onRestorePlayer(player.id)} className="admin-btn-secondary px-3 py-2 text-[11px]">
-                Вернуть
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => void onMarkPlayerOut(player.id)}
-                disabled={!canEditCounters}
-                className="admin-btn-danger px-3 py-2 text-[11px]"
-              >
-                Выбыл
-              </button>
-            )}
-
-            {player.source === 'manual' && (
-              <button type="button" onClick={() => void onRemoveManualPlayer(player.id)} className="admin-btn-secondary px-3 py-2 text-[11px]">
-                Удалить
-              </button>
-            )}
-          </div>
+        <div className="flex flex-col gap-2 min-w-[120px]">
+          {player.source === 'manual' && (
+            <button type="button" onClick={() => void onRemoveManualPlayer(player.id)} className="admin-btn-secondary px-3 py-2 text-[11px]">
+              Удалить
+            </button>
+          )}
           <div className="text-[11px] text-[#666]">
-            {player.arrivalStatus === 'absent' ? 'Не отмечен на месте' : `Оплата: ${paymentLabel}`}
+            {player.arrivalStatus === 'absent' ? 'Не отмечен' : `Оплата: ${paymentLabel}`}
           </div>
         </div>
       </td>
     </tr>
-  );
-}
-
-function MiniChoice({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean;
-  children: ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-md border px-2 py-2 text-[11px] leading-none font-bold transition-colors ${
-        active
-          ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
-          : 'border-[#2D2D2D] bg-[#141414] text-[#888] hover:border-[#555] hover:text-white'
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -608,36 +662,26 @@ function Badge({
   );
 }
 
-function CompactCounter({
-  value,
-  disabled,
-  onDecrement,
-  onIncrement,
+function MiniChoice({
+  active,
+  children,
+  onClick,
 }: {
-  value: number;
-  disabled: boolean;
-  onDecrement: () => void;
-  onIncrement: () => void;
+  active: boolean;
+  children: ReactNode;
+  onClick: () => void;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <button
-        type="button"
-        onClick={onDecrement}
-        disabled={disabled}
-        className="h-8 w-8 rounded-lg bg-[#2D2D2D] text-[#AAA] font-bold disabled:opacity-30"
-      >
-        −
-      </button>
-      <div className="min-w-[24px] text-center text-white font-black text-xl leading-none">{value}</div>
-      <button
-        type="button"
-        onClick={onIncrement}
-        disabled={disabled}
-        className="h-8 w-8 rounded-lg bg-[#C0392B] text-white font-bold disabled:opacity-30"
-      >
-        +
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md border px-2 py-2 text-[11px] leading-none font-bold transition-colors ${
+        active
+          ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
+          : 'border-[#2D2D2D] bg-[#141414] text-[#888] hover:border-[#555] hover:text-white'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
