@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import type {
   LiveTournamentArrivalStatus,
@@ -61,16 +61,6 @@ function formatSyncMoment(value: string | null) {
   if (!value) return 'еще не синхронизировалось';
   const date = new Date(value);
   return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
-function formatLateRegMoment(value: number | null) {
-  if (!value) return 'не зафиксировано';
-  return new Date(value).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 export function TournamentPlayersTab({
@@ -137,22 +127,37 @@ export function TournamentPlayersTab({
   };
 
   const filterPlayers = (players: LiveTournamentPlayer[]) => players.filter(player => matchesSearch(player) && matchesViewFilter(player));
-  const filteredCounts = useMemo(() => ({
+  const filteredCounts = {
     active: filterPlayers(groupedPlayers.active).length,
     pending: filterPlayers(groupedPlayers.pending).length,
     waitlist: filterPlayers(groupedPlayers.waitlist).length,
     out: filterPlayers(groupedPlayers.out).length,
-  }), [groupedPlayers.active, groupedPlayers.out, groupedPlayers.pending, groupedPlayers.waitlist, normalizedQuery, viewFilter]);
+  };
 
   const handleAddManualPlayer = async () => {
     const ok = await onAddManualPlayer(manualPlayerName);
     if (ok) setManualPlayerName('');
   };
 
+  const allPlayers = viewFilter === 'active'
+    ? filterPlayers(groupedPlayers.active)
+    : viewFilter === 'pending'
+      ? filterPlayers(groupedPlayers.pending)
+      : viewFilter === 'waitlist'
+        ? filterPlayers(groupedPlayers.waitlist)
+        : viewFilter === 'out'
+          ? filterPlayers(groupedPlayers.out)
+          : [
+              ...filterPlayers(groupedPlayers.active),
+              ...filterPlayers(groupedPlayers.pending),
+              ...filterPlayers(groupedPlayers.waitlist),
+              ...filterPlayers(groupedPlayers.out),
+            ];
+
   return (
     <div className="flex flex-col gap-4">
       <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-3">
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-3">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
           <input
             type="text"
             value={searchQuery}
@@ -160,126 +165,92 @@ export function TournamentPlayersTab({
             placeholder="Поиск по имени, @username, статусу, оплате"
             className="admin-input"
           />
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+
+          <div className="flex flex-wrap gap-2">
             <FilterButton active={viewFilter === 'all'} onClick={() => setViewFilter('all')}>
-              Все
+              Все <span className="text-[10px] opacity-70">{totalPlayers}</span>
             </FilterButton>
             <FilterButton active={viewFilter === 'active'} onClick={() => setViewFilter('active')}>
-              В игре
+              В игре <span className="text-[10px] opacity-70">{filteredCounts.active}</span>
             </FilterButton>
             <FilterButton active={viewFilter === 'pending'} onClick={() => setViewFilter('pending')}>
-              Не в игре
-            </FilterButton>
-            <FilterButton active={viewFilter === 'out'} onClick={() => setViewFilter('out')}>
-              Выбыли
+              Не в игре <span className="text-[10px] opacity-70">{filteredCounts.pending}</span>
             </FilterButton>
             <FilterButton active={viewFilter === 'waitlist'} onClick={() => setViewFilter('waitlist')}>
-              Waitlist
+              Waitlist <span className="text-[10px] opacity-70">{filteredCounts.waitlist}</span>
+            </FilterButton>
+            <FilterButton active={viewFilter === 'out'} onClick={() => setViewFilter('out')}>
+              Выбыли <span className="text-[10px] opacity-70">{filteredCounts.out}</span>
             </FilterButton>
             <FilterButton active={viewFilter === 'unpaid'} onClick={() => setViewFilter('unpaid')}>
               Не оплачено
             </FilterButton>
           </div>
         </div>
-        <div className="text-[#666] text-xs">
-          Показано: {filteredCounts.active + filteredCounts.pending + filteredCounts.waitlist + filteredCounts.out} из {totalPlayers}.
-        </div>
-      </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <SummaryCard label="В игре" value={summary.active} accent="text-green-300" />
-        <SummaryCard label="Пришли" value={summary.entrants} accent="text-white" />
-        <SummaryCard label="Ожидают" value={summary.pending} accent="text-yellow-300" />
-        <SummaryCard label="Waitlist" value={summary.waitlist} accent="text-blue-300" />
-        <SummaryCard label="К оплате" value={summary.totalDue.toLocaleString('ru-RU')} accent="text-[#C0392B]" suffix="₽" />
-      </div>
-
-      <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-3">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="flex-1">
-            <div className="text-white font-bold text-sm">Late reg</div>
-            <div className="text-[#666] text-xs mt-1">
-              Для Phoenix рейтинг считается от числа игроков, которые оставались в игре на момент закрытия late reg.
-            </div>
+        <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+          <div className="text-[#666] text-xs">
+            Показано: {allPlayers.length} из {totalPlayers}. Все основные действия идут из одной таблицы.
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-[140px_auto_auto] gap-2 lg:min-w-[520px]">
-            <input
-              key={`late-reg-${lateRegistrationPlayers ?? 'empty'}-${lateRegistrationClosedAt ?? 'none'}`}
-              type="number"
-              defaultValue={lateRegistrationPlayers ?? ''}
-              onBlur={event => void onSetLateRegistrationPlayers(event.currentTarget.value)}
-              className="admin-input"
-              placeholder="Игроков"
-              inputMode="numeric"
-            />
-            <button
-              type="button"
-              onClick={() => void onCaptureLateRegistration()}
-              disabled={summary.active <= 0}
-              className="admin-btn-primary px-4 py-3 text-sm"
-            >
-              Зафиксировать по текущим ({summary.active})
-            </button>
-            <button
-              type="button"
-              onClick={() => void onResetLateRegistration()}
-              className="admin-btn-secondary px-4 py-3 text-sm"
-            >
-              Сбросить
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-sm">
-          <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3">
-            <div className="text-[#666] text-[11px] uppercase tracking-widest">Текущих в игре</div>
-            <div className="mt-2 text-white font-black text-2xl">{summary.active}</div>
-          </div>
-          <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3">
-            <div className="text-[#666] text-[11px] uppercase tracking-widest">Зафиксировано на late reg</div>
-            <div className="mt-2 text-white font-black text-2xl">{lateRegistrationPlayers ?? '—'}</div>
-          </div>
-          <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3">
-            <div className="text-[#666] text-[11px] uppercase tracking-widest">Когда зафиксировано</div>
-            <div className="mt-2 text-[#DDD] font-bold">{formatLateRegMoment(lateRegistrationClosedAt)}</div>
-          </div>
-        </div>
-
-        <div className={`rounded-xl border px-3 py-2 text-sm ${
-          tournamentMode === 'phoenix'
-            ? 'border-[#C0392B]/60 bg-[#220D0B] text-[#F2D2CD]'
-            : 'border-[#2D2D2D] bg-[#0A0A0A] text-[#777]'
-        }`}>
-          {tournamentMode === 'phoenix'
-            ? 'Сейчас выбран Phoenix: без этого числа экспорт итогов будет остановлен, чтобы рейтинг не посчитался неверно.'
-            : 'Сейчас выбран Garage: late reg сохраняется для протокола, но на формулу рейтинга не влияет.'}
-        </div>
-      </div>
-
-      <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-3">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex-1">
-            <div className="text-white font-bold text-sm">Состав турнира</div>
-            <div className="text-[#666] text-xs mt-1">
-              Всего карточек игроков: {totalPlayers}. Поздние регистрации можно подхватывать повторной синхронизацией или добавлять вручную.
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2 lg:items-end">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => void onRefreshFromBot(true)}
               disabled={tournamentBotId == null || botSyncState.loading}
-              className="admin-btn-secondary px-4 py-2 text-sm"
+              className="admin-btn-secondary px-3 py-2 text-xs"
             >
-              {botSyncState.loading ? 'Обновляю состав...' : '↻ Обновить из бота'}
+              {botSyncState.loading ? 'Синхронизация...' : '↻ Бот'}
             </button>
-            <div className="text-[11px] text-[#666] text-right">
-              {tournamentBotId == null
-                ? 'Для авто-импорта нужно выбрать игру из бота.'
-                : `Последний sync: ${formatSyncMoment(botSyncState.lastSyncedAt)}`}
+            <button
+              type="button"
+              onClick={() => void onExportResults(levelsPlayed)}
+              disabled={exportState.sending || totalPlayers === 0}
+              className="admin-btn-secondary px-3 py-2 text-xs"
+            >
+              {exportState.sending ? 'Отправляю...' : '⇪ Итоги'}
+            </button>
+            <div className="flex items-center gap-2">
+              <input
+                key={`late-reg-${lateRegistrationPlayers ?? 'empty'}-${lateRegistrationClosedAt ?? 'none'}`}
+                type="number"
+                defaultValue={lateRegistrationPlayers ?? ''}
+                onBlur={event => void onSetLateRegistrationPlayers(event.currentTarget.value)}
+                className="admin-input !py-2 !text-xs !w-24"
+                placeholder="Late reg"
+                inputMode="numeric"
+              />
+              <button
+                type="button"
+                onClick={() => void onCaptureLateRegistration()}
+                disabled={summary.active <= 0}
+                className="admin-btn-primary px-3 py-2 text-xs"
+              >
+                Фикс. {summary.active}
+              </button>
+              <button
+                type="button"
+                onClick={() => void onResetLateRegistration()}
+                className="admin-btn-secondary px-3 py-2 text-xs"
+              >
+                Сброс
+              </button>
             </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2 text-[11px] md:grid-cols-3">
+          <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2 text-[#999]">
+            <span className="text-[#666] uppercase tracking-widest mr-2">Текущих</span>
+            <span className="text-white font-bold">{summary.active}</span>
+          </div>
+          <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2 text-[#999]">
+            <span className="text-[#666] uppercase tracking-widest mr-2">Late reg</span>
+            <span className="text-white font-bold">{lateRegistrationPlayers ?? '—'}</span>
+          </div>
+          <div className={`rounded-xl border px-3 py-2 ${tournamentMode === 'phoenix' ? 'border-[#C0392B]/60 bg-[#220D0B] text-[#F2D2CD]' : 'border-[#2D2D2D] bg-[#0A0A0A] text-[#777]'}`}>
+            {tournamentMode === 'phoenix'
+              ? 'Phoenix: рейтинг идет от числа игроков на момент закрытия late reg.'
+              : 'Garage: late reg хранится для протокола, но рейтинг не зависит от него.'}
           </div>
         </div>
 
@@ -295,15 +266,16 @@ export function TournamentPlayersTab({
           </div>
         )}
 
-        {playerSyncState.loading && !playerSyncState.error && (
-          <div className="text-[#666] text-xs">Синхронизация списка игроков...</div>
-        )}
+        <div className="text-[11px] text-[#666] flex flex-wrap gap-x-3 gap-y-1">
+          <span>{tournamentBotId == null ? 'Для авто-импорта нужно выбрать игру из бота.' : `Последний sync: ${formatSyncMoment(botSyncState.lastSyncedAt)}`}</span>
+          {playerSyncState.loading && !playerSyncState.error && <span>Синхронизация списка игроков...</span>}
+        </div>
       </div>
 
       <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-3">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-end">
           <div className="flex-1">
-            <div className="text-white font-bold text-sm mb-1">Добавить игрока вручную</div>
+            <div className="text-white font-bold text-sm mb-1">Быстрое добавление</div>
             <input
               type="text"
               value={manualPlayerName}
@@ -323,11 +295,8 @@ export function TournamentPlayersTab({
             disabled={!manualPlayerName.trim()}
             className="admin-btn-primary px-4 py-3 text-sm lg:min-w-[180px]"
           >
-            + Добавить в игру
+            + Добавить
           </button>
-        </div>
-        <div className="text-[11px] text-[#666]">
-          Ручной игрок сразу попадает в игру как платный вход. Если это free entry, поменяйте статус на карточке игрока.
         </div>
       </div>
 
@@ -362,141 +331,58 @@ export function TournamentPlayersTab({
         )}
       </div>
 
-      <PlayerSection
-        title="В игре"
-        note="Пришли и еще не выбыли"
-        players={filterPlayers(groupedPlayers.active)}
-        emptyText="Сейчас нет активных игроков."
-        renderPlayer={player => (
-          <PlayerCard
-            key={player.id}
-            player={player}
-            onUpdatePlayerField={onUpdatePlayerField}
-            onSetPlayerArrival={onSetPlayerArrival}
-            onMarkPlayerOut={onMarkPlayerOut}
-            onRestorePlayer={onRestorePlayer}
-            onRemoveManualPlayer={onRemoveManualPlayer}
-            onSetPlayerPlace={onSetPlayerPlace}
-          />
-        )}
-      />
+      <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <div className="text-white font-bold text-sm">Игроки</div>
+            <div className="text-[#666] text-xs mt-1">
+              Одна строка = один игрок. Статус, оплата, rebuy, addon, bounty и место меняются прямо здесь.
+            </div>
+          </div>
+        </div>
 
-      <PlayerSection
-        title="Зарегистрированы, но не пришли"
-        note="Есть в составе турнира, но еще не отмечены на месте"
-        players={filterPlayers(groupedPlayers.pending)}
-        emptyText="Все зарегистрированные уже отмечены или перемещены."
-        renderPlayer={player => (
-          <PlayerCard
-            key={player.id}
-            player={player}
-            onUpdatePlayerField={onUpdatePlayerField}
-            onSetPlayerArrival={onSetPlayerArrival}
-            onMarkPlayerOut={onMarkPlayerOut}
-            onRestorePlayer={onRestorePlayer}
-            onRemoveManualPlayer={onRemoveManualPlayer}
-            onSetPlayerPlace={onSetPlayerPlace}
-          />
+        {allPlayers.length === 0 ? (
+          <div className="rounded-xl bg-[#0A0A0A] border border-[#1D1D1D] px-4 py-5 text-[#555] text-sm">
+            По текущему фильтру игроков нет.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-[1360px] w-full border-separate border-spacing-y-2">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-widest text-[#666]">
+                  <th className="text-left font-normal px-3 py-2">Игрок</th>
+                  <th className="text-left font-normal px-3 py-2">В игре</th>
+                  <th className="text-left font-normal px-3 py-2">Оплата</th>
+                  <th className="text-left font-normal px-3 py-2">Rebuy</th>
+                  <th className="text-left font-normal px-3 py-2">Addon</th>
+                  <th className="text-left font-normal px-3 py-2">Bounty</th>
+                  <th className="text-left font-normal px-3 py-2">Место</th>
+                  <th className="text-left font-normal px-3 py-2">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allPlayers.map(player => (
+                  <PlayerRow
+                    key={player.id}
+                    player={player}
+                    onUpdatePlayerField={onUpdatePlayerField}
+                    onSetPlayerArrival={onSetPlayerArrival}
+                    onMarkPlayerOut={onMarkPlayerOut}
+                    onRestorePlayer={onRestorePlayer}
+                    onRemoveManualPlayer={onRemoveManualPlayer}
+                    onSetPlayerPlace={onSetPlayerPlace}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      />
-
-      <PlayerSection
-        title="Лист ожидания"
-        note="Записались, но пока без посадки"
-        players={filterPlayers(groupedPlayers.waitlist)}
-        emptyText="Лист ожидания пуст."
-        renderPlayer={player => (
-          <PlayerCard
-            key={player.id}
-            player={player}
-            onUpdatePlayerField={onUpdatePlayerField}
-            onSetPlayerArrival={onSetPlayerArrival}
-            onMarkPlayerOut={onMarkPlayerOut}
-            onRestorePlayer={onRestorePlayer}
-            onRemoveManualPlayer={onRemoveManualPlayer}
-            onSetPlayerPlace={onSetPlayerPlace}
-          />
-        )}
-      />
-
-      <PlayerSection
-        title="Выбывшие"
-        note="Место проставляется автоматически, но можно исправить вручную"
-        players={filterPlayers(groupedPlayers.out)}
-        emptyText="Пока никто не выбыл."
-        renderPlayer={player => (
-          <PlayerCard
-            key={player.id}
-            player={player}
-            onUpdatePlayerField={onUpdatePlayerField}
-            onSetPlayerArrival={onSetPlayerArrival}
-            onMarkPlayerOut={onMarkPlayerOut}
-            onRestorePlayer={onRestorePlayer}
-            onRemoveManualPlayer={onRemoveManualPlayer}
-            onSetPlayerPlace={onSetPlayerPlace}
-          />
-        )}
-      />
-    </div>
-  );
-}
-
-function SummaryCard({
-  label,
-  value,
-  accent,
-  suffix,
-}: {
-  label: string;
-  value: string | number;
-  accent: string;
-  suffix?: string;
-}) {
-  return (
-    <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
-      <div className="text-[#666] text-[11px] uppercase tracking-widest">{label}</div>
-      <div className={`mt-2 font-black text-3xl leading-none ${accent}`}>
-        {value}
-        {suffix ? <span className="text-base text-[#666] ml-1">{suffix}</span> : null}
       </div>
     </div>
   );
 }
 
-function PlayerSection({
-  title,
-  note,
-  players,
-  emptyText,
-  renderPlayer,
-}: {
-  title: string;
-  note: string;
-  players: LiveTournamentPlayer[];
-  emptyText: string;
-  renderPlayer: (player: LiveTournamentPlayer) => ReactNode;
-}) {
-  return (
-    <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-3">
-      <div>
-        <div className="text-white font-bold text-sm">{title}</div>
-        <div className="text-[#666] text-xs mt-1">{note}</div>
-      </div>
-
-      {players.length === 0 ? (
-        <div className="rounded-xl bg-[#0A0A0A] border border-[#1D1D1D] px-4 py-5 text-[#555] text-sm">
-          {emptyText}
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {players.map(renderPlayer)}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PlayerCard({
+function PlayerRow({
   player,
   onUpdatePlayerField,
   onSetPlayerArrival,
@@ -527,149 +413,153 @@ function PlayerCard({
       : 'Не оплачено';
 
   return (
-    <div className="rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] p-4 flex flex-col gap-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
+    <tr className="rounded-2xl bg-[#0A0A0A]">
+      <td className="px-3 py-3 align-top rounded-l-2xl border-y border-l border-[#2D2D2D]">
+        <div className="min-w-[240px]">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="text-white font-black text-lg truncate">{player.name}</div>
+            <div className="text-white font-black text-sm truncate">{player.name}</div>
             <Badge tone={player.source === 'manual' ? 'amber' : 'neutral'}>
               {player.source === 'manual' ? 'ручной' : 'бот'}
             </Badge>
             <Badge tone={player.registrationSource === 'waitlist' ? 'blue' : 'neutral'}>
-              {player.registrationSource === 'waitlist' ? 'waitlist' : 'основной список'}
+              {player.registrationSource === 'waitlist' ? 'waitlist' : 'основной'}
             </Badge>
             <Badge tone={isOut ? 'red' : player.arrivalStatus === 'absent' ? 'amber' : 'blue'}>
               {liveStateLabel}
             </Badge>
-            <Badge tone={player.paymentMethod === 'unpaid' ? 'amber' : 'neutral'}>
-              {paymentLabel}
-            </Badge>
-            {isOut && player.place !== null && (
-              <Badge tone="red">место {player.place}</Badge>
-            )}
           </div>
 
           {player.username && (
-            <div className="text-[#666] text-xs mt-1 truncate">@{player.username.replace(/^@/, '')}</div>
+            <div className="text-[#666] text-[11px] mt-1 truncate">@{player.username.replace(/^@/, '')}</div>
           )}
         </div>
+      </td>
 
-        <div className="flex flex-wrap gap-2">
-          {isOut ? (
-            <button type="button" onClick={() => void onRestorePlayer(player.id)} className="admin-btn-secondary px-3 py-2 text-xs">
-              Вернуть в игру
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void onMarkPlayerOut(player.id)}
-              disabled={!canEditCounters}
-              className="admin-btn-danger px-3 py-2 text-xs"
-            >
-              Отметить выбывшим
-            </button>
-          )}
-
-          {player.source === 'manual' && (
-            <button type="button" onClick={() => void onRemoveManualPlayer(player.id)} className="admin-btn-secondary px-3 py-2 text-xs">
-              Удалить
-            </button>
-          )}
+      <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
+        <div className="grid min-w-[260px] grid-cols-3 gap-1">
+          <MiniChoice active={player.arrivalStatus === 'absent'} onClick={() => void onSetPlayerArrival(player.id, 'absent')}>
+            Не в игре
+          </MiniChoice>
+          <MiniChoice active={player.arrivalStatus === 'paid'} onClick={() => void onSetPlayerArrival(player.id, 'paid')}>
+            Платно
+          </MiniChoice>
+          <MiniChoice active={player.arrivalStatus === 'free'} onClick={() => void onSetPlayerArrival(player.id, 'free')}>
+            Бесплатно
+          </MiniChoice>
         </div>
-      </div>
+      </td>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="flex flex-col gap-2">
-          <div className="text-[#666] text-[11px] uppercase tracking-widest">Участие</div>
-          <div className="grid grid-cols-3 gap-2">
-            <ChoiceButton active={player.arrivalStatus === 'absent'} onClick={() => void onSetPlayerArrival(player.id, 'absent')}>
-              Не в игре
-            </ChoiceButton>
-            <ChoiceButton active={player.arrivalStatus === 'paid'} onClick={() => void onSetPlayerArrival(player.id, 'paid')}>
-              В игре платно
-            </ChoiceButton>
-            <ChoiceButton active={player.arrivalStatus === 'free'} onClick={() => void onSetPlayerArrival(player.id, 'free')}>
-              В игре бесплатно
-            </ChoiceButton>
+      <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
+        <div className="grid min-w-[220px] grid-cols-3 gap-1">
+          <MiniChoice active={player.paymentMethod === 'unpaid'} onClick={() => void onUpdatePlayerField(player.id, { paymentMethod: 'unpaid' })}>
+            Не опл.
+          </MiniChoice>
+          <MiniChoice active={player.paymentMethod === 'cash'} onClick={() => void onUpdatePlayerField(player.id, { paymentMethod: 'cash' })}>
+            Нал.
+          </MiniChoice>
+          <MiniChoice active={player.paymentMethod === 'card'} onClick={() => void onUpdatePlayerField(player.id, { paymentMethod: 'card' })}>
+            Карта
+          </MiniChoice>
+        </div>
+      </td>
+
+      <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
+        <CompactCounter
+          value={player.rebuyCount}
+          disabled={!canEditCounters}
+          onDecrement={() => void onUpdatePlayerField(player.id, { rebuyCount: Math.max(0, player.rebuyCount - 1) })}
+          onIncrement={() => void onUpdatePlayerField(player.id, { rebuyCount: player.rebuyCount + 1 })}
+        />
+      </td>
+
+      <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
+        <CompactCounter
+          value={player.addonCount}
+          disabled={!canEditCounters}
+          onDecrement={() => void onUpdatePlayerField(player.id, { addonCount: Math.max(0, player.addonCount - 1) })}
+          onIncrement={() => void onUpdatePlayerField(player.id, { addonCount: player.addonCount + 1 })}
+        />
+      </td>
+
+      <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
+        <input
+          key={`bounty-${player.id}-${player.updatedAt}`}
+          type="number"
+          defaultValue={player.bounty || ''}
+          onBlur={event => void onUpdatePlayerField(player.id, { bounty: Math.max(0, Number(event.currentTarget.value) || 0) })}
+          className="admin-input !py-2 !text-sm !w-28"
+          placeholder="0"
+          inputMode="numeric"
+        />
+      </td>
+
+      <td className="px-3 py-3 align-top border-y border-[#2D2D2D]">
+        <input
+          key={`place-${player.id}-${player.updatedAt}`}
+          type="number"
+          defaultValue={player.place ?? ''}
+          onBlur={event => void onSetPlayerPlace(player.id, event.currentTarget.value)}
+          className="admin-input !py-2 !text-sm !w-24"
+          placeholder="—"
+          inputMode="numeric"
+          disabled={!isOut}
+        />
+      </td>
+
+      <td className="px-3 py-3 align-top rounded-r-2xl border-y border-r border-[#2D2D2D]">
+        <div className="flex flex-col gap-2 min-w-[200px]">
+          <div className="flex flex-wrap gap-2">
+            {isOut ? (
+              <button type="button" onClick={() => void onRestorePlayer(player.id)} className="admin-btn-secondary px-3 py-2 text-[11px]">
+                Вернуть
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void onMarkPlayerOut(player.id)}
+                disabled={!canEditCounters}
+                className="admin-btn-danger px-3 py-2 text-[11px]"
+              >
+                Выбыл
+              </button>
+            )}
+
+            {player.source === 'manual' && (
+              <button type="button" onClick={() => void onRemoveManualPlayer(player.id)} className="admin-btn-secondary px-3 py-2 text-[11px]">
+                Удалить
+              </button>
+            )}
+          </div>
+          <div className="text-[11px] text-[#666]">
+            {player.arrivalStatus === 'absent' ? 'Не отмечен на месте' : `Оплата: ${paymentLabel}`}
           </div>
         </div>
+      </td>
+    </tr>
+  );
+}
 
-        <div className="flex flex-col gap-2">
-          <div className="text-[#666] text-[11px] uppercase tracking-widest">Повторы входа</div>
-          <div className="grid grid-cols-2 gap-2">
-            <TinyCounter
-              label="Rebuy"
-              value={player.rebuyCount}
-              disabled={!canEditCounters}
-              onDecrement={() => void onUpdatePlayerField(player.id, { rebuyCount: Math.max(0, player.rebuyCount - 1) })}
-              onIncrement={() => void onUpdatePlayerField(player.id, { rebuyCount: player.rebuyCount + 1 })}
-            />
-            <TinyCounter
-              label="Addon"
-              value={player.addonCount}
-              disabled={!canEditCounters}
-              onDecrement={() => void onUpdatePlayerField(player.id, { addonCount: Math.max(0, player.addonCount - 1) })}
-              onIncrement={() => void onUpdatePlayerField(player.id, { addonCount: player.addonCount + 1 })}
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <div className="text-[#666] text-[11px] uppercase tracking-widest">Bounty и место</div>
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              key={`bounty-${player.id}-${player.updatedAt}`}
-              type="number"
-              defaultValue={player.bounty || ''}
-              onBlur={event => void onUpdatePlayerField(player.id, { bounty: Math.max(0, Number(event.currentTarget.value) || 0) })}
-              className="admin-input"
-              placeholder="Bounty"
-              inputMode="numeric"
-            />
-            <input
-              key={`place-${player.id}-${player.updatedAt}`}
-              type="number"
-              defaultValue={player.place ?? ''}
-              onBlur={event => void onSetPlayerPlace(player.id, event.currentTarget.value)}
-              className="admin-input"
-              placeholder="Место"
-              inputMode="numeric"
-              disabled={!isOut}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4">
-        <div className="flex flex-col gap-2">
-          <div className="text-[#666] text-[11px] uppercase tracking-widest">Сумма к оплате</div>
-          <input
-            key={`payment-${player.id}-${player.updatedAt}`}
-            type="number"
-            defaultValue={player.paymentDue || ''}
-            onBlur={event => void onUpdatePlayerField(player.id, { paymentDue: Math.max(0, Number(event.currentTarget.value) || 0) })}
-            className="admin-input"
-            placeholder="Сумма"
-            inputMode="numeric"
-          />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <div className="text-[#666] text-[11px] uppercase tracking-widest">Способ оплаты</div>
-          <div className="grid grid-cols-3 gap-2">
-            <ChoiceButton active={player.paymentMethod === 'unpaid'} onClick={() => void onUpdatePlayerField(player.id, { paymentMethod: 'unpaid' })}>
-              Не оплачено
-            </ChoiceButton>
-            <ChoiceButton active={player.paymentMethod === 'cash'} onClick={() => void onUpdatePlayerField(player.id, { paymentMethod: 'cash' })}>
-              Нал.
-            </ChoiceButton>
-            <ChoiceButton active={player.paymentMethod === 'card'} onClick={() => void onUpdatePlayerField(player.id, { paymentMethod: 'card' })}>
-              Карта
-            </ChoiceButton>
-          </div>
-        </div>
-      </div>
-    </div>
+function MiniChoice({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md border px-2 py-2 text-[11px] leading-none font-bold transition-colors ${
+        active
+          ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
+          : 'border-[#2D2D2D] bg-[#141414] text-[#888] hover:border-[#555] hover:text-white'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -718,65 +608,36 @@ function Badge({
   );
 }
 
-function ChoiceButton({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean;
-  children: ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${
-        active
-          ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
-          : 'border-[#2D2D2D] bg-[#141414] text-[#888] hover:border-[#555] hover:text-white'
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function TinyCounter({
-  label,
+function CompactCounter({
   value,
   disabled,
   onDecrement,
   onIncrement,
 }: {
-  label: string;
   value: number;
   disabled: boolean;
   onDecrement: () => void;
   onIncrement: () => void;
 }) {
   return (
-    <div className="rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2">
-      <div className="text-[#666] text-[10px] uppercase tracking-widest">{label}</div>
-      <div className="mt-2 flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={onDecrement}
-          disabled={disabled}
-          className="h-9 w-9 rounded-lg bg-[#2D2D2D] text-[#AAA] font-bold disabled:opacity-30"
-        >
-          −
-        </button>
-        <div className="text-white font-black text-2xl leading-none min-w-[24px] text-center">{value}</div>
-        <button
-          type="button"
-          onClick={onIncrement}
-          disabled={disabled}
-          className="h-9 w-9 rounded-lg bg-[#C0392B] text-white font-bold disabled:opacity-30"
-        >
-          +
-        </button>
-      </div>
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={onDecrement}
+        disabled={disabled}
+        className="h-8 w-8 rounded-lg bg-[#2D2D2D] text-[#AAA] font-bold disabled:opacity-30"
+      >
+        −
+      </button>
+      <div className="min-w-[24px] text-center text-white font-black text-xl leading-none">{value}</div>
+      <button
+        type="button"
+        onClick={onIncrement}
+        disabled={disabled}
+        className="h-8 w-8 rounded-lg bg-[#C0392B] text-white font-bold disabled:opacity-30"
+      >
+        +
+      </button>
     </div>
   );
 }

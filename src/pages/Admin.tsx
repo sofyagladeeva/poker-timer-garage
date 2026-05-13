@@ -310,7 +310,7 @@ export function Admin() {
   const [authed, setAuthed] = useState(false);
   const [pwInput, setPwInput] = useState('');
   const [pwError, setPwError] = useState(false);
-  const [activeTab, setActiveTab] = useState<'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings'>('control');
+  const [activeTab, setActiveTab] = useState<'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings'>('players');
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
   const [customGameOpen, setCustomGameOpen] = useState(false);
   const [customGameTitle, setCustomGameTitle] = useState('');
