@@ -248,7 +248,7 @@ export function Display() {
           <img
             src={`${import.meta.env.BASE_URL}logo.png`}
             alt="Garage Game Club"
-            style={{ height: '44px', width: 'auto', backgroundColor: '#0A0A0A' }}
+            style={{ height: '44px', width: 'auto' }}
             className="opacity-90 select-none pointer-events-none"
           />
           {gameState.tournamentTitle && (
