@@ -428,7 +428,7 @@ export function Display() {
                         <div className="text-[#E31E24] font-black text-xl leading-tight">{pts.toFixed(1)}</div>
                       </div>
                     ))
-                  : <span className="text-[#252525] text-sm col-span-3">Укажите кол-во игроков</span>
+                  : <span className="text-[#252525] text-sm col-span-3">Очки начисляются от 9 игроков</span>
                 }
               </div>
             </div>
