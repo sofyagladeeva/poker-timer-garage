@@ -67,6 +67,13 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatFallbackNextGameLines(raw: string) {
+  return raw
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean);
+}
+
 const MEDAL_URLS = [medal1Url, medal2Url, medal3Url];
 const SIDEBAR_LEADERBOARD_ROTATION_MS = 20_000;
 
@@ -181,6 +188,7 @@ export function Display() {
   const activeCombos = combinations.filter(c => c.enabled);
   const sidebarLeaderboardTitle = sidebarLeaderboardMode === 'rating' ? 'Топ-3 месяца' : 'Топ-3 баунти';
   const sidebarLeaderboardPlayers = sidebarLeaderboardMode === 'rating' ? top3 : top3Bounty;
+  const fallbackNextGameLines = formatFallbackNextGameLines(gameState.nextGameInfo);
 
   // Сколько секунд до следующего перерыва (живой отсчёт)
   const nextBreakIdx = !isBreak
@@ -484,6 +492,16 @@ export function Display() {
                     {nextGame.seats_left > 0 &&
                       <span className="text-green-500 text-sm ml-auto">● есть места</span>}
                   </div>
+                </div>
+              ) : fallbackNextGameLines.length > 0 ? (
+                <div className="mt-2 bg-[#111] border border-[#1A1A1A] rounded-xl p-3">
+                  <div className="text-white font-black text-xl uppercase leading-tight">{fallbackNextGameLines[0]}</div>
+                  {fallbackNextGameLines[1] && (
+                    <div className="text-[#555] text-sm mt-1">{fallbackNextGameLines[1]}</div>
+                  )}
+                  {fallbackNextGameLines[2] && (
+                    <div className="text-[#E31E24] font-bold text-base mt-2">{fallbackNextGameLines[2]}</div>
+                  )}
                 </div>
               ) : (
                 <div className="text-[#252525] text-sm mt-2">Нет данных</div>

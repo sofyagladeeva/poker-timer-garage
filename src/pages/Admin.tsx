@@ -66,6 +66,13 @@ const MAX_BACKGROUND_ITEMS = 24;
 const SHARED_LIBRARY_TIMEOUT_MS = 20_000;
 const SHARED_LIBRARY_RETRY_COUNT = 2;
 
+function formatNextGameFallback(game: { title: string; date: string; confirmed: number; max_players: number }) {
+  const d = new Date(game.date);
+  const dateStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+  const timeStr = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return `${game.title}\n${dateStr} · ${timeStr}\n${game.confirmed} / ${game.max_players} мест`;
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -1116,7 +1123,10 @@ export function Admin() {
                         <button
                           key={g.id}
                           onClick={() => {
-                            updateGameState({ nextGameBotId: isSelected ? null : g.id });
+                            updateGameState({
+                              nextGameBotId: isSelected ? null : g.id,
+                              nextGameInfo: isSelected ? gameState.nextGameInfo : formatNextGameFallback(g),
+                            });
                             setNextGamePickerOpen(false);
                           }}
                           className={`flex items-center justify-between px-4 py-3 rounded-xl border text-left transition-all ${
@@ -1794,7 +1804,7 @@ export function Admin() {
                 value={gameState.nextGameInfo}
                 onChange={e => updateGameState({ nextGameInfo: e.target.value })}
               />
-              <div className="text-[#555] text-xs mt-1">Отображается внизу экрана</div>
+              <div className="text-[#555] text-xs mt-1">Резервный текст для блока следующего турнира, если бот временно недоступен</div>
             </div>
 
             {/* Background */}
