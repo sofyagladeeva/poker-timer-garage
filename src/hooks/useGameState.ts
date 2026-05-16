@@ -136,10 +136,8 @@ export function useGameState(readOnly = false) {
 
   // ─── Refs to avoid stale closures in stable callbacks ───────────────────
   const gameStateRef = useRef(gameState);
-  gameStateRef.current = gameState;
-
   const blindLevelsRef = useRef(blindLevels);
-  blindLevelsRef.current = blindLevels;
+  const clientId = useRef('');
 
   // Skip realtime blind_levels updates for a short window after we write
   const skipBlindRealtime = useRef(false);
@@ -160,8 +158,6 @@ export function useGameState(readOnly = false) {
 
   // Broadcast channel ref — for low-latency state push (<100ms)
   const broadcastChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  // Unique client ID to filter out own broadcasts
-  const clientId = useRef(Math.random().toString(36).slice(2));
 
   // Time-based timer: all devices compute timeLeft from the same anchor point.
   // On remote displays we compensate for local clock drift when a fresh anchor
@@ -169,7 +165,7 @@ export function useGameState(readOnly = false) {
   // baseTimeLeft = canonical seconds remaining at the moment of last sync
   // baseTimestamp = wall-clock time when that sync happened
   const baseTimeLeft  = useRef(gameState.timeLeft);
-  const baseTimestamp = useRef(gameState.lastTickAt ?? Date.now());
+  const baseTimestamp = useRef(gameState.lastTickAt ?? 0);
   // Remote clients can have clocks that drift by minutes (smart TVs do this).
   // Calibrate once per incoming anchor so displays tick from their local receipt
   // time instead of trusting another device's wall clock.
@@ -182,7 +178,7 @@ export function useGameState(readOnly = false) {
   const hasFreshLocalWrite = useCallback(() => {
     return Date.now() - lastLocalWriteAt.current < LOCAL_WRITE_SYNC_GRACE_MS;
   }, []);
-  const lastServerSyncAt = useRef(isSupabaseConfigured ? 0 : Date.now());
+  const lastServerSyncAt = useRef(0);
 
   // Guard: don't allow auto-advance until authoritative state is loaded from
   // Supabase. Prevents stale localStorage from writing wrong level to the DB
@@ -190,6 +186,20 @@ export function useGameState(readOnly = false) {
   const serverLoaded = useRef(!isSupabaseConfigured);
   const foregroundSyncRequired = useRef(false);
   const foregroundSyncPromise = useRef<Promise<boolean> | null>(null);
+
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
+  useEffect(() => {
+    blindLevelsRef.current = blindLevels;
+  }, [blindLevels]);
+
+  useEffect(() => {
+    if (!clientId.current) {
+      clientId.current = crypto.randomUUID();
+    }
+  }, []);
 
   // ─── Shared sync helper (stable ref, usable in any effect) ─────────────
   const hydrateSyncedState = useCallback((raw: Record<string, unknown>) => {
@@ -311,9 +321,7 @@ export function useGameState(readOnly = false) {
     if (!isSupabaseConfigured) return Promise.resolve(true);
     if (foregroundSyncPromise.current) return foregroundSyncPromise.current;
 
-    let syncPromise: Promise<boolean>;
-
-    syncPromise = (async () => {
+    const syncPromise = (async () => {
       const gameStateSynced = await syncGameStateFromServer(source);
       await Promise.allSettled([
         syncBlindLevelsFromServer(),
@@ -374,13 +382,15 @@ export function useGameState(readOnly = false) {
       }
 
       if (hasMissingNextGameBotId(error)) {
-        const { nextGameBotId: _nextGameBotId, ...noNextGameBotId } = payload;
+        const { nextGameBotId, ...noNextGameBotId } = payload;
+        void nextGameBotId;
         payload = noNextGameBotId;
         continue;
       }
 
       if (hasMissingResetAt(error)) {
-        const { resetAt: _resetAt, ...noReset } = payload;
+        const { resetAt, ...noReset } = payload;
+        void resetAt;
         payload = noReset;
         continue;
       }
@@ -392,7 +402,8 @@ export function useGameState(readOnly = false) {
       console.error('Failed to persist game_state', error, payload);
       return false;
     }
-  }, [applySync]);
+    return true;
+  }, [applyAuthoritativeGameState]);
 
   // ─── Supabase real-time subscriptions ───────────────────────────────────
   useEffect(() => {
@@ -842,6 +853,8 @@ export function useGameState(readOnly = false) {
     let { error } = await supabase.from('tournaments').insert(record);
     if (error && hasMissingBonusColumns(error)) {
       const { bonus_count, bonus_stack, ...legacyRecord } = record;
+      void bonus_count;
+      void bonus_stack;
       ({ error } = await supabase.from('tournaments').insert(legacyRecord));
     }
   }, [isSupabaseConfigured]);

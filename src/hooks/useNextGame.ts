@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 
-const BOT_API = import.meta.env.VITE_BOT_API_URL || 'https://web-production-6035.up.railway.app';
-const NEXT_GAMES_CACHE_KEY = 'poker_next_games_cache';
+const BOT_API = (import.meta as ImportMeta & { env?: { VITE_BOT_API_URL?: string } }).env?.VITE_BOT_API_URL
+  || 'https://web-production-6035.up.railway.app';
+export const NEXT_GAMES_CACHE_KEY = 'poker_next_games_cache';
 
 export interface NextGame {
   id: number;
@@ -15,9 +16,11 @@ export interface NextGame {
   status: string;
 }
 
-function loadCachedGames(): NextGame[] {
+type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
+
+export function loadCachedGames(storage: Pick<StorageLike, 'getItem'> = localStorage): NextGame[] {
   try {
-    const raw = localStorage.getItem(NEXT_GAMES_CACHE_KEY);
+    const raw = storage.getItem(NEXT_GAMES_CACHE_KEY);
     if (!raw) return [];
 
     const parsed = JSON.parse(raw);
@@ -27,12 +30,20 @@ function loadCachedGames(): NextGame[] {
   }
 }
 
-function saveCachedGames(games: NextGame[]) {
+export function saveCachedGames(games: NextGame[], storage: Pick<StorageLike, 'setItem'> = localStorage) {
   try {
-    localStorage.setItem(NEXT_GAMES_CACHE_KEY, JSON.stringify(games));
+    storage.setItem(NEXT_GAMES_CACHE_KEY, JSON.stringify(games));
   } catch {
     // Smart TV browsers can fail localStorage writes under quota pressure.
   }
+}
+
+export function selectNextGame(games: NextGame[], nextGameBotId: number | null) {
+  if (nextGameBotId != null) {
+    return games.find(g => g.id === nextGameBotId) ?? null;
+  }
+
+  return games.find(g => g.status === 'upcoming') ?? null;
 }
 
 export function useNextGame(nextGameBotId: number | null) {
@@ -59,9 +70,5 @@ export function useNextGame(nextGameBotId: number | null) {
     return () => clearInterval(interval);
   }, []);
 
-  if (nextGameBotId != null) {
-    return games.find(g => g.id === nextGameBotId) ?? null;
-  }
-  // fallback: первая upcoming игра
-  return games.find(g => g.status === 'upcoming') ?? null;
+  return selectNextGame(games, nextGameBotId);
 }

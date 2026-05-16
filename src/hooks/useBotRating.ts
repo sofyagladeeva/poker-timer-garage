@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
-const BOT_API = import.meta.env.VITE_BOT_API_URL || 'https://web-production-6035.up.railway.app';
+const BOT_API = (import.meta as ImportMeta & { env?: { VITE_BOT_API_URL?: string } }).env?.VITE_BOT_API_URL
+  || 'https://web-production-6035.up.railway.app';
 
 export interface BotPlayer {
   rank: number;
@@ -29,17 +30,28 @@ function currentMonth() {
 
 export function useBotRating(): UseBotRatingResult {
   const [players, setPlayers] = useState<BotPlayer[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [month, setMonth] = useState<string>(currentMonth());
+  const [month, setMonthState] = useState<string>(currentMonth());
   const [tick, setTick] = useState(0);
 
-  const refetch = useCallback(() => setTick(t => t + 1), []);
+  const beginFetch = useCallback(() => {
+    setLoading(true);
+    setError(null);
+  }, []);
+
+  const setMonth = useCallback((nextMonth: string) => {
+    beginFetch();
+    setMonthState(nextMonth);
+  }, [beginFetch]);
+
+  const refetch = useCallback(() => {
+    beginFetch();
+    setTick(t => t + 1);
+  }, [beginFetch]);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
     const url = month === 'all'
       ? `${BOT_API}/api/rating/rank?month=all`

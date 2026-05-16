@@ -10,10 +10,19 @@ import medal1Url from '../assets/medal-1.png';
 import medal2Url from '../assets/medal-2.png';
 import medal3Url from '../assets/medal-3.png';
 
+type AudioContextConstructor = typeof AudioContext;
+type AudioWindow = Window & typeof globalThis & {
+  webkitAudioContext?: AudioContextConstructor;
+};
+
 // ─── Audio ─────────────────────────────────────────────────────────────────
 let _audioCtx: AudioContext | null = null;
 function getCtx() {
-  if (!_audioCtx) _audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const AudioCtor = window.AudioContext || (window as AudioWindow).webkitAudioContext;
+  if (!AudioCtor) {
+    throw new Error('AudioContext is not available in this browser');
+  }
+  if (!_audioCtx) _audioCtx = new AudioCtor();
   if (_audioCtx.state === 'suspended') _audioCtx.resume();
   return _audioCtx;
 }
@@ -36,15 +45,19 @@ function playTimerEnd() {
       osc.start(now + t);
       osc.stop(now + t + 0.3);
     });
-  } catch {}
+  } catch {
+    return;
+  }
 }
 
 /** Гонг — сигнал смены уровня блайндов */
 function playBlindIncrease() {
   try {
     const audio = new Audio(import.meta.env.BASE_URL + 'gong.mp3');
-    audio.play().catch(() => {});
-  } catch {}
+    void audio.play().catch(() => undefined);
+  } catch {
+    return;
+  }
 }
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
@@ -125,15 +138,29 @@ function useScale() {
 
 export function Display() {
   const { gameState, blindLevels, combinations } = useGameState(true);
-  const { players: ratingPlayers } = useBotRating();
-  const { players: bountyPlayers } = useBotBounty();
+  const {
+    players: ratingPlayers,
+    loading: ratingLoading,
+    error: ratingError,
+  } = useBotRating();
+  const {
+    players: bountyPlayers,
+    loading: bountyLoading,
+    error: bountyError,
+  } = useBotBounty();
   const nextGame = useNextGame(gameState.nextGameBotId ?? null);
   const { k, x, y } = useScale();
   const [sidebarLeaderboardMode, setSidebarLeaderboardMode] = useState<'rating' | 'bounty'>('rating');
 
   // Активируем AudioContext при первом взаимодействии (политика браузера)
   useEffect(() => {
-    const resume = () => { try { getCtx(); } catch {} };
+    const resume = () => {
+      try {
+        getCtx();
+      } catch {
+        return;
+      }
+    };
     document.addEventListener('click', resume, { once: true });
     document.addEventListener('keydown', resume, { once: true });
     return () => {
@@ -188,6 +215,8 @@ export function Display() {
   const activeCombos = combinations.filter(c => c.enabled);
   const sidebarLeaderboardTitle = sidebarLeaderboardMode === 'rating' ? 'Топ-3 месяца' : 'Топ-3 баунти';
   const sidebarLeaderboardPlayers = sidebarLeaderboardMode === 'rating' ? top3 : top3Bounty;
+  const sidebarLeaderboardError = sidebarLeaderboardMode === 'rating' ? ratingError : bountyError;
+  const sidebarLeaderboardLoading = sidebarLeaderboardMode === 'rating' ? ratingLoading : bountyLoading;
   const fallbackNextGameLines = formatFallbackNextGameLines(gameState.nextGameInfo);
 
   // Сколько секунд до следующего перерыва (живой отсчёт)
@@ -450,8 +479,12 @@ export function Display() {
             {/* Top-3 */}
             <div className="flex flex-col gap-2">
               <ColLabel>{sidebarLeaderboardTitle}</ColLabel>
-              {sidebarLeaderboardPlayers.length === 0
+              {sidebarLeaderboardError
+                ? <div className="text-[#444] text-sm">Нет связи с рейтингом</div>
+                : sidebarLeaderboardPlayers.length === 0 && sidebarLeaderboardLoading
                 ? <div className="text-[#252525] text-sm">Загрузка...</div>
+                : sidebarLeaderboardPlayers.length === 0
+                ? <div className="text-[#444] text-sm">Нет данных</div>
                 : sidebarLeaderboardPlayers.map((player, i) => {
                     const value = sidebarLeaderboardMode === 'rating'
                       ? (player as { points: number }).points.toFixed(1)

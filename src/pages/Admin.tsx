@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, Component } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Component } from 'react';
 import type { ChangeEvent, ReactNode } from 'react';
 import { useGameState } from '../hooks/useGameState';
 import { supabase } from '../supabase';
@@ -171,15 +171,6 @@ function BlindRow({
   const [bbDraft, setBbDraft] = useState(String(level.bb));
   const [minutesDraft, setMinutesDraft] = useState(String(Math.round(level.duration / 60)));
 
-  useEffect(() => {
-    setMinutesDraft(String(Math.round(level.duration / 60)));
-
-    if (!level.isBreak) {
-      setSbDraft(String(level.sb));
-      setBbDraft(String(level.bb));
-    }
-  }, [level.id, level.isBreak, level.sb, level.bb, level.duration]);
-
   const parseDraftNumber = (value: string) => {
     const trimmed = value.trim();
     if (trimmed === '') return null;
@@ -300,7 +291,7 @@ function BlindRow({
 export function Admin() {
   const sharedBackgroundLibraryEnabled = isSharedBackgroundLibraryEnabled();
   const sharedBlindTemplateLibraryEnabled = isSharedBlindTemplateLibraryEnabled();
-  const [authed, setAuthed] = useState(false);
+  const [authed, setAuthed] = useState(() => sessionStorage.getItem('admin_authed') === '1');
   const [pwInput, setPwInput] = useState('');
   const [pwError, setPwError] = useState(false);
   const [activeTab, setActiveTab] = useState<'control' | 'blinds' | 'combos' | 'archive' | 'settings'>('control');
@@ -382,21 +373,20 @@ export function Admin() {
     }
   };
 
-  useEffect(() => {
-    if (sessionStorage.getItem('admin_authed') === '1') setAuthed(true);
-  }, []);
-
   // ── Load archive when tab opens — MUST be before any early return ──────
   useEffect(() => {
     if (activeTab !== 'archive') return;
-    setArchiveLoading(true);
-    fetchTournaments().then(data => {
+
+    const loadArchive = async () => {
+      const data = await fetchTournaments();
       setTournaments(data);
       setArchiveLoading(false);
-    });
+    };
+
+    void loadArchive();
   }, [activeTab, fetchTournaments]);
 
-  const syncBlindTemplateState = (next: BlindTemplate[]) => {
+  const syncBlindTemplateState = useCallback((next: BlindTemplate[]) => {
     const result = saveBlindTemplates(next);
     if (!result.ok && !sharedBlindTemplateLibraryEnabled) {
       return result;
@@ -404,7 +394,7 @@ export function Admin() {
 
     setBlindTemplates(next);
     return { ok: true as const };
-  };
+  }, [sharedBlindTemplateLibraryEnabled]);
 
   useEffect(() => {
     if (!authed) return;
@@ -459,7 +449,7 @@ export function Admin() {
     return () => {
       cancelled = true;
     };
-  }, [authed, sharedBlindTemplateLibraryEnabled]);
+  }, [authed, sharedBlindTemplateLibraryEnabled, syncBlindTemplateState]);
 
   // ── Realtime sync: шаблоны обновляются на всех устройствах сразу ──────────
   useEffect(() => {
@@ -509,7 +499,7 @@ export function Admin() {
     return true;
   };
 
-  const syncBackgroundLibraryState = (next: StoredBackground[]) => {
+  const syncBackgroundLibraryState = useCallback((next: StoredBackground[]) => {
     const result = saveBackgroundLibrary(next);
     // Если Supabase настроен — localStorage лишь кеш, его переполнение не критично
     if (!result.ok && !sharedBackgroundLibraryEnabled) {
@@ -518,7 +508,7 @@ export function Admin() {
 
     setBackgroundLibrary(next);
     return { ok: true as const };
-  };
+  }, [sharedBackgroundLibraryEnabled]);
 
   useEffect(() => {
     if (!authed || !sharedBackgroundLibraryEnabled) return;
@@ -576,7 +566,7 @@ export function Admin() {
     return () => {
       cancelled = true;
     };
-  }, [authed, sharedBackgroundLibraryEnabled]);
+  }, [authed, sharedBackgroundLibraryEnabled, syncBackgroundLibraryState]);
 
   const persistBackgroundLibrary = async (next: StoredBackground[], removedIds: string[] = []) => {
     if (!sharedBackgroundLibraryEnabled) {
@@ -797,6 +787,13 @@ export function Admin() {
     updateGameState({ ...patch, totalStack: calcTotalStack(nextState) });
   };
 
+  const selectTab = (tabId: 'control' | 'blinds' | 'combos' | 'archive' | 'settings') => {
+    if (tabId === 'archive') {
+      setArchiveLoading(true);
+    }
+    setActiveTab(tabId);
+  };
+
   const applyAnteStartLevel = (startLevel: number) => {
     updateBlindLevels(
       blindLevels.map(level => {
@@ -960,7 +957,7 @@ export function Admin() {
         {tabs.map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => selectTab(tab.id)}
             className={`px-3 py-2 text-xs sm:text-sm rounded-t-lg transition-colors whitespace-nowrap flex-shrink-0 ${
               activeTab === tab.id
                 ? 'bg-[#1A1A1A] text-white border border-b-0 border-[#2D2D2D]'
@@ -1578,7 +1575,7 @@ export function Admin() {
 
             {blindLevels.map((level, idx) => (
               <div
-                key={level.id}
+                key={`${level.id}:${level.sb}:${level.bb}:${level.ante}:${level.duration}:${level.breakLabel || ''}:${level.isBreak ? 'break' : 'level'}`}
                 ref={el => { rowEls.current[idx] = el; }}
                 className="relative"
               >

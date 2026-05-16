@@ -107,5 +107,7 @@ export function hasMissingBonusColumns(error: unknown) {
 
 export function toLegacyGameState(state: GameState) {
   const { bonusCount, bonusStack, ...legacy } = state;
+  void bonusCount;
+  void bonusStack;
   return legacy;
 }
