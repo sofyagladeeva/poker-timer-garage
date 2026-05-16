@@ -81,6 +81,14 @@ function normalizeBlindNumber(value: number) {
   return Math.max(0, Math.round(value));
 }
 
+function createClientId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function normalizeBlindLevels(levels: BlindLevel[]) {
   let currentLevelNumber = 1;
 
@@ -197,7 +205,7 @@ export function useGameState(readOnly = false) {
 
   useEffect(() => {
     if (!clientId.current) {
-      clientId.current = crypto.randomUUID();
+      clientId.current = createClientId();
     }
   }, []);
 
