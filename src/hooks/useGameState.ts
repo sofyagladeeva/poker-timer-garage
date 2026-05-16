@@ -15,6 +15,7 @@ const AUX_SYNC_POLL_MS = 5_000;
 const DISPLAY_STALE_RELOAD_MS = 45_000;
 const DISPLAY_WATCHDOG_MS = 5_000;
 const AUTO_ADVANCE_SERVER_CHECK_MS = 350;
+const FOREGROUND_SYNC_TIMEOUT_MS = 5_000;
 
 // ─── Local storage fallback (when Supabase not configured) ─────────────────
 function loadLocal<T>(key: string, defaultValue: T): T {
@@ -187,6 +188,8 @@ export function useGameState(readOnly = false) {
   // Supabase. Prevents stale localStorage from writing wrong level to the DB
   // when a second device opens the admin panel mid-tournament.
   const serverLoaded = useRef(!isSupabaseConfigured);
+  const foregroundSyncRequired = useRef(false);
+  const foregroundSyncPromise = useRef<Promise<boolean> | null>(null);
 
   // ─── Shared sync helper (stable ref, usable in any effect) ─────────────
   const hydrateSyncedState = useCallback((raw: Record<string, unknown>) => {
@@ -270,14 +273,23 @@ export function useGameState(readOnly = false) {
 
   const syncGameStateFromServer = useCallback(async (source = 'sync') => {
     if (!isSupabaseConfigured || skipGameStateRealtime.current) return false;
-    const { data } = await supabase.from('game_state').select('*').single();
+    const { data, error } = await supabase.from('game_state').select('*').single();
+    if (error) {
+      console.error(`game_state sync failed (${source})`, error);
+      return false;
+    }
     if (!data || skipGameStateRealtime.current) return false;
-    return applyIfNewerGameState(data as Record<string, unknown>, source);
+    applyIfNewerGameState(data as Record<string, unknown>, source);
+    return true;
   }, [applyIfNewerGameState, isSupabaseConfigured]);
 
   const syncBlindLevelsFromServer = useCallback(async () => {
     if (!isSupabaseConfigured || skipBlindRealtime.current) return false;
-    const { data } = await supabase.from('blind_levels').select('*').order('id');
+    const { data, error } = await supabase.from('blind_levels').select('*').order('id');
+    if (error) {
+      console.error('blind_levels sync failed', error);
+      return false;
+    }
     if (!data || skipBlindRealtime.current) return false;
     applyBlindLevelsSync(data);
     return true;
@@ -285,11 +297,48 @@ export function useGameState(readOnly = false) {
 
   const syncCombinationsFromServer = useCallback(async () => {
     if (!isSupabaseConfigured || skipCombinationsRealtime.current) return false;
-    const { data } = await supabase.from('combinations').select('*').order('created_at');
+    const { data, error } = await supabase.from('combinations').select('*').order('created_at');
+    if (error) {
+      console.error('combinations sync failed', error);
+      return false;
+    }
     if (!data || skipCombinationsRealtime.current) return false;
     applyCombinationsSync(data);
     return true;
   }, [applyCombinationsSync, isSupabaseConfigured]);
+
+  const queueForegroundSync = useCallback((source = 'visibility') => {
+    if (!isSupabaseConfigured) return Promise.resolve(true);
+    if (foregroundSyncPromise.current) return foregroundSyncPromise.current;
+
+    let syncPromise: Promise<boolean>;
+
+    syncPromise = (async () => {
+      const gameStateSynced = await syncGameStateFromServer(source);
+      await Promise.allSettled([
+        syncBlindLevelsFromServer(),
+        syncCombinationsFromServer(),
+      ]);
+
+      if (gameStateSynced) {
+        foregroundSyncRequired.current = false;
+      }
+
+      return gameStateSynced;
+    })()
+      .catch(error => {
+        console.error(`Foreground sync failed (${source})`, error);
+        return false;
+      })
+      .finally(() => {
+        if (foregroundSyncPromise.current === syncPromise) {
+          foregroundSyncPromise.current = null;
+        }
+      });
+
+    foregroundSyncPromise.current = syncPromise;
+    return syncPromise;
+  }, [isSupabaseConfigured, syncBlindLevelsFromServer, syncCombinationsFromServer, syncGameStateFromServer]);
 
   const persistGameState = useCallback(async (stateToSave: GameState, immediate = false) => {
     skipGameStateRealtime.current = true;
@@ -484,10 +533,12 @@ export function useGameState(readOnly = false) {
     if (!isSupabaseConfigured) return;
 
     const syncNow = () => {
-      if (document.visibilityState !== 'visible') return;
-      void syncGameStateFromServer('visibility');
-      void syncBlindLevelsFromServer();
-      void syncCombinationsFromServer();
+      if (document.visibilityState !== 'visible') {
+        foregroundSyncRequired.current = true;
+        return;
+      }
+
+      void queueForegroundSync('visibility');
     };
 
     document.addEventListener('visibilitychange', syncNow);
@@ -507,7 +558,7 @@ export function useGameState(readOnly = false) {
       clearInterval(gameStatePollInterval);
       clearInterval(auxiliaryPollInterval);
     };
-  }, [isSupabaseConfigured, syncBlindLevelsFromServer, syncCombinationsFromServer, syncGameStateFromServer]);
+  }, [isSupabaseConfigured, queueForegroundSync, syncBlindLevelsFromServer, syncCombinationsFromServer, syncGameStateFromServer]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !readOnly || !syncReady) return;
@@ -556,7 +607,7 @@ export function useGameState(readOnly = false) {
 
   // ─── Admin actions (stable — don't depend on gameState/blindLevels) ─────
   // immediate=true skips debounce — used for pause/start/level changes
-  const updateGameState = useCallback((patch: Partial<GameState>, immediate = false) => {
+  const applyGameStatePatch = useCallback((patch: Partial<GameState>, immediate = false) => {
     if (isSupabaseConfigured && !serverLoaded.current) return Promise.resolve(false);
 
     const nextPatch: Partial<GameState> = { ...patch };
@@ -619,6 +670,27 @@ export function useGameState(readOnly = false) {
 
     return Promise.resolve(true);
   }, [isSupabaseConfigured, persistGameState]);
+
+  const updateGameState = useCallback(async (patch: Partial<GameState>, immediate = false) => {
+    if (isSupabaseConfigured && !serverLoaded.current) return false;
+
+    if (isSupabaseConfigured && (foregroundSyncRequired.current || foregroundSyncPromise.current)) {
+      const wakeSync = foregroundSyncPromise.current ?? queueForegroundSync('foreground-write');
+
+      try {
+        await withTimeout(wakeSync, FOREGROUND_SYNC_TIMEOUT_MS, 'Foreground sync before write');
+      } catch (error) {
+        console.error('Foreground sync before write timed out', error);
+      }
+
+      if (foregroundSyncRequired.current) {
+        console.warn('Blocking stale write until foreground sync succeeds');
+        return false;
+      }
+    }
+
+    return applyGameStatePatch(patch, immediate);
+  }, [applyGameStatePatch, isSupabaseConfigured, queueForegroundSync]);
 
   const startTimer = useCallback(() => {
     updateGameState({ status: 'running', lastTickAt: Date.now() }, true);
