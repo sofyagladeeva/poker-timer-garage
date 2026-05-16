@@ -5,6 +5,10 @@ import { useBotBounty } from '../hooks/useBotBounty';
 import { useNextGame } from '../hooks/useNextGame';
 import { getRankPoints, RED_SUITS, SUIT_SYMBOLS } from '../types';
 import type { Card } from '../types';
+import logoUrl from '../assets/logo.png';
+import medal1Url from '../assets/medal-1.png';
+import medal2Url from '../assets/medal-2.png';
+import medal3Url from '../assets/medal-3.png';
 
 // ─── Audio ─────────────────────────────────────────────────────────────────
 let _audioCtx: AudioContext | null = null;
@@ -63,7 +67,7 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
-const MEDAL_IMGS = [1, 2, 3];
+const MEDAL_URLS = [medal1Url, medal2Url, medal3Url];
 const SIDEBAR_LEADERBOARD_ROTATION_MS = 20_000;
 
 function FullscreenButton() {
@@ -246,7 +250,7 @@ export function Display() {
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className="flex items-center justify-center gap-5 px-8 py-2 border-b border-[#181818] flex-shrink-0">
           <img
-            src={`${import.meta.env.BASE_URL}logo.png`}
+            src={logoUrl}
             alt="Garage Game Club"
             style={{ height: '44px', width: 'auto' }}
             className="opacity-90 select-none pointer-events-none"
@@ -453,7 +457,7 @@ export function Display() {
                                ? 'bg-[#160800] border border-[#E31E24]/25'
                                : 'bg-[#111] border border-[#1A1A1A]'
                            }`}>
-                        <img src={`${import.meta.env.BASE_URL}medal-${MEDAL_IMGS[i]}.png`} style={{ width: 28, height: 28, objectFit: 'contain' }} alt="" />
+                        <img src={MEDAL_URLS[i]} style={{ width: 28, height: 28, objectFit: 'contain' }} alt="" />
                         <span className="text-white font-bold text-base flex-1 truncate">{player.name}</span>
                         <span className={`font-black text-2xl ${i === 0 ? 'text-[#E31E24]' : 'text-[#555]'}`}>
                           {value}
@@ -570,7 +574,7 @@ function RatingCard({ player, medal, big }: {
       className={`flex-1 bg-[#141414] rounded-2xl p-6 text-center ${big ? 'border-2 border-[#E31E24]' : 'border border-[#222]'}`}
       style={big ? { boxShadow: '0 0 40px rgba(227,30,36,0.2)' } : {}}
     >
-      <img src={`${import.meta.env.BASE_URL}medal-${medal}.png`} style={{ width: big ? 80 : 60, height: big ? 80 : 60, objectFit: 'contain', margin: '0 auto' }} alt="" />
+      <img src={MEDAL_URLS[medal - 1]} style={{ width: big ? 80 : 60, height: big ? 80 : 60, objectFit: 'contain', margin: '0 auto' }} alt="" />
       <div className={`text-white font-black mt-2 ${big ? 'text-3xl' : 'text-xl'}`}>{player.name}</div>
       <div className={`text-[#E31E24] font-black mt-1 ${big ? 'text-5xl' : 'text-3xl'}`}>{player.points.toFixed(1)}</div>
       <div className="text-[#383838] text-sm mt-1">{player.games} игр</div>
