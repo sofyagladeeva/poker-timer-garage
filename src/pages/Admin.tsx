@@ -317,7 +317,7 @@ export function Admin() {
   const backgroundLibraryRef = useRef(backgroundLibrary);
 
   const {
-    gameState, blindLevels, combinations, syncReady,
+    gameState, blindLevels, combinations, syncReady, authoritativeReady, syncError, retrySync,
     updateGameState, startTimer, pauseTimer, nextLevel, prevLevel, resetTournament,
     updateBlindLevels, updateCombinations, saveTournament, fetchTournaments, deleteTournament,
   } = useGameState();
@@ -766,6 +766,28 @@ export function Admin() {
           <div className="text-[#888] text-sm">
             Загружаю текущее состояние турнира из Supabase. Управление откроется, как только админка получит актуальную игру.
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authoritativeReady) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center px-4">
+        <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-8 w-full max-w-md text-center">
+          <div className="text-[#C0392B] text-2xl font-bold mb-4">Нет связи с турниром</div>
+          <div className="text-[#AAA] text-sm leading-relaxed">
+            {syncError ?? 'Админка не получила текущее состояние игры из Supabase.'}
+          </div>
+          <div className="text-[#666] text-xs mt-3">
+            Пока синхронизация не восстановится, управление заблокировано, чтобы не перезаписать живой турнир дефолтными данными.
+          </div>
+          <button
+            onClick={() => { void retrySync(); }}
+            className="admin-btn-primary w-full py-3 mt-5"
+          >
+            Повторить синхронизацию
+          </button>
         </div>
       </div>
     );

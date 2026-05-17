@@ -54,6 +54,19 @@ function wait(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) {
+    return `${fallback} ${error.message.trim()}`;
+  }
+
+  if (typeof error === 'object' && error && 'message' in error) {
+    const message = String((error as { message?: unknown }).message ?? '').trim();
+    if (message) return `${fallback} ${message}`;
+  }
+
+  return fallback;
+}
+
 async function withRetries<T>(
   run: () => Promise<T>,
   timeoutMs: number,
@@ -141,6 +154,8 @@ export function useGameState(readOnly = false) {
     import.meta.env.VITE_SUPABASE_URL &&
     import.meta.env.VITE_SUPABASE_ANON_KEY;
   const [syncReady, setSyncReady] = useState(!isSupabaseConfigured);
+  const [authoritativeReady, setAuthoritativeReady] = useState(!isSupabaseConfigured);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   // ─── Refs to avoid stale closures in stable callbacks ───────────────────
   const gameStateRef = useRef(gameState);
@@ -209,6 +224,12 @@ export function useGameState(readOnly = false) {
     }
   }, []);
 
+  const markAuthoritativeReady = useCallback(() => {
+    serverLoaded.current = true;
+    setAuthoritativeReady(true);
+    setSyncError(null);
+  }, []);
+
   // ─── Shared sync helper (stable ref, usable in any effect) ─────────────
   const hydrateSyncedState = useCallback((raw: Record<string, unknown>) => {
     const normalized = normalizeGameState(raw as unknown as GameState, gameStateRef.current);
@@ -246,9 +267,10 @@ export function useGameState(readOnly = false) {
       baseTimeLeft.current = persistedTimeLeft;
       baseTimestamp.current = persistedLastTickAt + clockOffsetMs.current;
     }
+    markAuthoritativeReady();
     setGameState(liveState);
     saveLocal(STATE_KEY, persistedState);
-  }, [hydrateSyncedState]);
+  }, [hydrateSyncedState, markAuthoritativeReady]);
 
   const markServerSync = useCallback(() => {
     lastServerSyncAt.current = Date.now();
@@ -294,9 +316,17 @@ export function useGameState(readOnly = false) {
     const { data, error } = await supabase.from('game_state').select('*').single();
     if (error) {
       console.error(`game_state sync failed (${source})`, error);
+      if (!serverLoaded.current) {
+        setSyncError(getErrorMessage(error, 'Не удалось загрузить текущее состояние турнира из Supabase.'));
+      }
       return false;
     }
-    if (!data || skipGameStateRealtime.current) return false;
+    if (!data || skipGameStateRealtime.current) {
+      if (!data && !serverLoaded.current) {
+        setSyncError('Supabase не вернул текущее состояние турнира.');
+      }
+      return false;
+    }
     applyIfNewerGameState(data as Record<string, unknown>, source);
     return true;
   }, [applyIfNewerGameState, isSupabaseConfigured]);
@@ -442,12 +472,14 @@ export function useGameState(readOnly = false) {
       ]);
 
       if (cancelled) return;
-      serverLoaded.current = true;
 
       if (gs.status === 'fulfilled' && gs.value.data) {
         applyAuthoritativeGameState(gs.value.data as Record<string, unknown>, 'init');
       } else if (gs.status === 'rejected') {
         console.error('Initial game_state sync failed', gs.reason);
+        setSyncError(getErrorMessage(gs.reason, 'Не удалось загрузить текущее состояние турнира из Supabase.'));
+      } else {
+        setSyncError('Supabase не вернул текущее состояние турнира.');
       }
 
       if (bl.status === 'fulfilled') {
@@ -480,8 +512,8 @@ export function useGameState(readOnly = false) {
     void loadInitialState()
       .catch(error => {
         if (!cancelled) {
-          serverLoaded.current = true;
           console.error('Initial Supabase sync crashed', error);
+          setSyncError(getErrorMessage(error, 'Первичная синхронизация с Supabase завершилась ошибкой.'));
         }
       })
       .finally(() => {
@@ -901,11 +933,30 @@ export function useGameState(readOnly = false) {
     if (combs.length > 0) await supabase.from('combinations').insert(combs);
   }, [isSupabaseConfigured]);
 
+  const retrySync = useCallback(async () => {
+    if (!isSupabaseConfigured) return true;
+
+    setSyncError(null);
+    setSyncReady(false);
+
+    try {
+      return await queueForegroundSync('manual-retry');
+    } catch (error) {
+      setSyncError(getErrorMessage(error, 'Повторная синхронизация с Supabase завершилась ошибкой.'));
+      return false;
+    } finally {
+      setSyncReady(true);
+    }
+  }, [isSupabaseConfigured, queueForegroundSync]);
+
   return {
     gameState,
     blindLevels,
     combinations,
     syncReady,
+    authoritativeReady,
+    syncError,
+    retrySync,
     updateGameState,
     startTimer,
     pauseTimer,
