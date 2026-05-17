@@ -7,6 +7,7 @@ const STATE_KEY = 'poker_game_state';
 const BLINDS_KEY = 'poker_blind_levels';
 const COMBINATIONS_KEY = 'poker_combinations';
 const TOURNAMENTS_KEY = 'poker_tournaments';
+const CLOCK_OFFSET_KEY = 'poker_server_clock_offset_ms';
 const LOCAL_WRITE_SYNC_GRACE_MS = 20_000;
 const INITIAL_SYNC_TIMEOUT_MS = 20_000;
 const INITIAL_SYNC_RETRY_COUNT = 2;
@@ -187,6 +188,8 @@ export function useGameState(readOnly = false) {
   // baseTimestamp = wall-clock time when that sync happened
   const baseTimeLeft  = useRef(gameState.timeLeft);
   const baseTimestamp = useRef(gameState.lastTickAt ?? 0);
+  // local clock minus authoritative shared clock
+  const serverClockOffsetMs = useRef<number | null>(loadLocal<number | null>(CLOCK_OFFSET_KEY, null));
 
   // Track when WE last wrote to Supabase — polling won't override local state
   // for 20 seconds after any local write, breaking the multi-device fight cycle
@@ -223,6 +226,19 @@ export function useGameState(readOnly = false) {
     setSyncError(null);
   }, []);
 
+  const getAuthoritativeNow = useCallback(() => {
+    return Date.now() - (serverClockOffsetMs.current ?? 0);
+  }, []);
+
+  const syncAuthoritativeClock = useCallback((authoritativeNowMs: number, source?: string) => {
+    if (!Number.isFinite(authoritativeNowMs) || authoritativeNowMs <= 0) return;
+
+    void source;
+    const nextOffset = Date.now() - authoritativeNowMs;
+    serverClockOffsetMs.current = nextOffset;
+    saveLocal(CLOCK_OFFSET_KEY, nextOffset);
+  }, []);
+
   // ─── Shared sync helper (stable ref, usable in any effect) ─────────────
   const hydrateSyncedState = useCallback((raw: Record<string, unknown>) => {
     const normalized = normalizeGameState(raw as unknown as GameState, gameStateRef.current);
@@ -235,7 +251,7 @@ export function useGameState(readOnly = false) {
       persistedLastTickAt &&
       (normalized.status === 'running' || normalized.status === 'break')
     ) {
-      const elapsed = Math.floor((Date.now() - persistedLastTickAt) / 1000);
+      const elapsed = Math.floor((getAuthoritativeNow() - persistedLastTickAt) / 1000);
       normalized.timeLeft = Math.max(0, persistedTimeLeft - elapsed);
     }
 
@@ -245,7 +261,7 @@ export function useGameState(readOnly = false) {
       persistedState: { ...normalized, timeLeft: persistedTimeLeft },
       liveState: normalized,
     };
-  }, []);
+  }, [getAuthoritativeNow]);
 
   const applySync = useCallback((raw: Record<string, unknown>, source?: string) => {
     void source;
@@ -372,6 +388,19 @@ export function useGameState(readOnly = false) {
     foregroundSyncPromise.current = syncPromise;
     return syncPromise;
   }, [isSupabaseConfigured, syncBlindLevelsFromServer, syncCombinationsFromServer, syncGameStateFromServer]);
+
+  const requestPeerTimeSync = useCallback((source = 'request') => {
+    if (!broadcastChannelRef.current) return;
+
+    broadcastChannelRef.current.send({
+      type: 'broadcast',
+      event: 'time_sync_request',
+      payload: {
+        _cid: clientId.current,
+        source,
+      },
+    });
+  }, []);
 
   const persistGameState = useCallback(async (stateToSave: GameState, immediate = false) => {
     skipGameStateRealtime.current = true;
@@ -512,6 +541,12 @@ export function useGameState(readOnly = false) {
       .on('broadcast', { event: 'game_state' }, (msg) => {
         if (!msg.payload || msg.payload._cid === clientId.current) return;
         const incoming = msg.payload as Record<string, unknown>;
+        const peerAuthoritativeNow = typeof incoming._serverNow === 'number'
+          ? incoming._serverNow
+          : null;
+        if (peerAuthoritativeNow !== null) {
+          syncAuthoritativeClock(peerAuthoritativeNow, 'broadcast');
+        }
         // Tournament generation check: if resetAt differs, a stale admin may be
         // broadcasting old tournament data. Handle based on which is newer.
         const incomingResetAt = typeof incoming.resetAt === 'number' ? incoming.resetAt : null;
@@ -529,13 +564,44 @@ export function useGameState(readOnly = false) {
         }
         applyIfNewerGameState(incoming, 'broadcast');
       })
-      .subscribe();
+      .on('broadcast', { event: 'time_sync_request' }, (msg) => {
+        const requesterCid = typeof msg.payload?._cid === 'string' ? msg.payload._cid : null;
+        if (!requesterCid || requesterCid === clientId.current) return;
+        if (!broadcastChannelRef.current) return;
+        if (serverClockOffsetMs.current === null) return;
+
+        broadcastChannelRef.current.send({
+          type: 'broadcast',
+          event: 'time_sync_response',
+          payload: {
+            _cid: clientId.current,
+            targetCid: requesterCid,
+            serverNow: getAuthoritativeNow(),
+          },
+        });
+      })
+      .on('broadcast', { event: 'time_sync_response' }, (msg) => {
+        const targetCid = typeof msg.payload?.targetCid === 'string' ? msg.payload.targetCid : null;
+        const peerServerNow = typeof msg.payload?.serverNow === 'number' ? msg.payload.serverNow : null;
+        if (targetCid !== clientId.current || peerServerNow === null) return;
+
+        syncAuthoritativeClock(peerServerNow, 'peer-sync');
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          requestPeerTimeSync('subscribe');
+        }
+      });
     broadcastChannelRef.current = bc;
 
     // Real-time (postgres_changes) — for persistence sync on connect/reconnect
     const channel = supabase
       .channel('poker-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, (payload) => {
+        const commitTimestampMs = Date.parse(payload.commit_timestamp);
+        if (Number.isFinite(commitTimestampMs)) {
+          syncAuthoritativeClock(commitTimestampMs, 'realtime');
+        }
         if (skipGameStateRealtime.current) return;
         if (!payload.new) return;
         applyIfNewerGameState(payload.new as Record<string, unknown>, 'realtime');
@@ -562,6 +628,9 @@ export function useGameState(readOnly = false) {
     applyBlindLevelsSync,
     applyCombinationsSync,
     applyIfNewerGameState,
+    getAuthoritativeNow,
+    requestPeerTimeSync,
+    syncAuthoritativeClock,
     syncBlindLevelsFromServer,
     syncCombinationsFromServer,
   ]);
@@ -576,6 +645,7 @@ export function useGameState(readOnly = false) {
         return;
       }
 
+      requestPeerTimeSync('visibility');
       void queueForegroundSync('visibility');
     };
 
@@ -596,7 +666,7 @@ export function useGameState(readOnly = false) {
       clearInterval(gameStatePollInterval);
       clearInterval(auxiliaryPollInterval);
     };
-  }, [isSupabaseConfigured, queueForegroundSync, syncBlindLevelsFromServer, syncCombinationsFromServer, syncGameStateFromServer]);
+  }, [isSupabaseConfigured, queueForegroundSync, requestPeerTimeSync, syncBlindLevelsFromServer, syncCombinationsFromServer, syncGameStateFromServer]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !readOnly || !syncReady) return;
@@ -631,7 +701,7 @@ export function useGameState(readOnly = false) {
     const interval = setInterval(() => {
       setGameState(prev => {
         if (prev.status !== 'running' && prev.status !== 'break') return prev;
-        const elapsed = Math.floor((Date.now() - baseTimestamp.current) / 1000);
+        const elapsed = Math.floor((getAuthoritativeNow() - baseTimestamp.current) / 1000);
         const newTimeLeft = Math.max(0, baseTimeLeft.current - elapsed);
         if (prev.timeLeft === newTimeLeft) return prev;
         const updated = { ...prev, timeLeft: newTimeLeft };
@@ -641,7 +711,7 @@ export function useGameState(readOnly = false) {
     }, 500);
 
     return () => clearInterval(interval);
-  }, [gameState.status, isSupabaseConfigured]);
+  }, [gameState.status, getAuthoritativeNow, isSupabaseConfigured]);
 
   // ─── Admin actions (stable — don't depend on gameState/blindLevels) ─────
   // immediate=true skips debounce — used for pause/start/level changes
@@ -653,7 +723,7 @@ export function useGameState(readOnly = false) {
     const nextStatus = nextPatch.status ?? gameStateRef.current.status;
 
     if (nextStatus === 'running' || nextStatus === 'break') {
-      const now = Date.now();
+      const now = getAuthoritativeNow();
       const timerWasAdvancing = currentStatus === 'running' || currentStatus === 'break';
       const liveTimeLeft = timerWasAdvancing
         ? Math.max(0, baseTimeLeft.current - Math.floor((now - baseTimestamp.current) / 1000))
@@ -685,7 +755,11 @@ export function useGameState(readOnly = false) {
       broadcastChannelRef.current.send({
         type: 'broadcast',
         event: 'game_state',
-        payload: { ...updated, _cid: clientId.current },
+        payload: {
+          ...updated,
+          _cid: clientId.current,
+          _serverNow: serverClockOffsetMs.current === null ? undefined : getAuthoritativeNow(),
+        },
       });
     }
 
@@ -702,7 +776,7 @@ export function useGameState(readOnly = false) {
     }, 300);
 
     return Promise.resolve(true);
-  }, [isSupabaseConfigured, persistGameState]);
+  }, [getAuthoritativeNow, isSupabaseConfigured, persistGameState]);
 
   const updateGameState = useCallback(async (patch: Partial<GameState>, immediate = false) => {
     if (isSupabaseConfigured && !serverLoaded.current) return false;
@@ -726,15 +800,15 @@ export function useGameState(readOnly = false) {
   }, [applyGameStatePatch, isSupabaseConfigured, queueForegroundSync]);
 
   const startTimer = useCallback(() => {
-    updateGameState({ status: 'running', lastTickAt: Date.now() }, true);
-  }, [updateGameState]);
+    updateGameState({ status: 'running', lastTickAt: getAuthoritativeNow() }, true);
+  }, [getAuthoritativeNow, updateGameState]);
 
   const pauseTimer = useCallback(() => {
     // Capture the actual live time before pausing
-    const elapsed = Math.floor((Date.now() - baseTimestamp.current) / 1000);
+    const elapsed = Math.floor((getAuthoritativeNow() - baseTimestamp.current) / 1000);
     const liveTimeLeft = Math.max(0, baseTimeLeft.current - elapsed);
     updateGameState({ status: 'paused', timeLeft: liveTimeLeft }, true);
-  }, [updateGameState]);
+  }, [getAuthoritativeNow, updateGameState]);
 
   const nextLevel = useCallback(() => {
     const gs = gameStateRef.current;
@@ -749,9 +823,9 @@ export function useGameState(readOnly = false) {
       currentLevelIndex: nextIndex,
       timeLeft: nextLvl.duration,
       status: nextLvl.isBreak ? 'break' : 'running',
-      lastTickAt: Date.now(),
+      lastTickAt: getAuthoritativeNow(),
     }, true);
-  }, [updateGameState]);
+  }, [getAuthoritativeNow, updateGameState]);
 
   // ─── Авто-переход: таймер дошёл до 0 → следующий уровень ──────────────
   // Any live client may advance the level if the timer reaches 0.
@@ -824,7 +898,7 @@ export function useGameState(readOnly = false) {
   const resetTournament = useCallback(() => {
     const bl = blindLevelsRef.current;
     const first = bl[0];
-    const now = Date.now();
+    const now = getAuthoritativeNow();
     const { nextGameBotId, nextGameInfo } = gameStateRef.current;
     // immediate=true: broadcast instantly to all devices so their timers stop.
     // resetAt = now: tournament generation marker — stale devices that missed
@@ -837,7 +911,7 @@ export function useGameState(readOnly = false) {
       lastTickAt: now,
       resetAt: now,
     }, true);
-  }, [updateGameState]);
+  }, [getAuthoritativeNow, updateGameState]);
 
   const updateBlindLevels = useCallback(async (levels: BlindLevel[]) => {
     const ordered = normalizeBlindLevels(levels);
