@@ -183,17 +183,10 @@ export function useGameState(readOnly = false) {
   const broadcastChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   // Time-based timer: all devices compute timeLeft from the same anchor point.
-  // On remote displays we compensate for local clock drift when a fresh anchor
-  // arrives, so TVs do not lose minutes if their system time is wrong.
   // baseTimeLeft = canonical seconds remaining at the moment of last sync
   // baseTimestamp = wall-clock time when that sync happened
   const baseTimeLeft  = useRef(gameState.timeLeft);
   const baseTimestamp = useRef(gameState.lastTickAt ?? 0);
-  // Remote clients can have clocks that drift by minutes (smart TVs do this).
-  // Calibrate once per incoming anchor so displays tick from their local receipt
-  // time instead of trusting another device's wall clock.
-  const clockOffsetMs = useRef(0);
-  const clockOffsetTick = useRef<number | null>(null);
 
   // Track when WE last wrote to Supabase — polling won't override local state
   // for 20 seconds after any local write, breaking the multi-device fight cycle
@@ -238,17 +231,11 @@ export function useGameState(readOnly = false) {
       ? raw.lastTickAt
       : normalized.lastTickAt;
 
-    if (persistedLastTickAt && clockOffsetTick.current !== persistedLastTickAt) {
-      clockOffsetMs.current = Date.now() - persistedLastTickAt;
-      clockOffsetTick.current = persistedLastTickAt;
-    }
-
     if (
       persistedLastTickAt &&
       (normalized.status === 'running' || normalized.status === 'break')
     ) {
-      const adjustedAnchor = persistedLastTickAt + clockOffsetMs.current;
-      const elapsed = Math.floor((Date.now() - adjustedAnchor) / 1000);
+      const elapsed = Math.floor((Date.now() - persistedLastTickAt) / 1000);
       normalized.timeLeft = Math.max(0, persistedTimeLeft - elapsed);
     }
 
@@ -265,7 +252,7 @@ export function useGameState(readOnly = false) {
     const { persistedLastTickAt, persistedTimeLeft, persistedState, liveState } = hydrateSyncedState(raw);
     if (persistedLastTickAt) {
       baseTimeLeft.current = persistedTimeLeft;
-      baseTimestamp.current = persistedLastTickAt + clockOffsetMs.current;
+      baseTimestamp.current = persistedLastTickAt;
     }
     markAuthoritativeReady();
     setGameState(liveState);
@@ -688,11 +675,6 @@ export function useGameState(readOnly = false) {
 
     // Debounce Supabase writes to avoid a DB call on every counter click
     // Update local time anchor so this device also uses the new base
-    if (updated.lastTickAt && updated.lastTickAt !== gameStateRef.current.lastTickAt) {
-      clockOffsetMs.current = 0;
-      clockOffsetTick.current = updated.lastTickAt;
-    }
-
     if (updated.lastTickAt) {
       baseTimeLeft.current  = updated.timeLeft;
       baseTimestamp.current = updated.lastTickAt;
