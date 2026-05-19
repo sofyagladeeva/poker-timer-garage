@@ -15,6 +15,8 @@ type Props = {
   playerSyncState: {
     loading: boolean;
     error: string | null;
+    lastSyncedAt: string | null;
+    shared: boolean;
   };
   botSyncState: {
     loading: boolean;
@@ -95,13 +97,18 @@ export function TournamentPlayersTab({
       : viewFilter === 'waitlist'
         ? filterPlayers(groupedPlayers.waitlist)
         : viewFilter === 'out'
-          ? filterPlayers(groupedPlayers.out)
-          : [
-              ...filterPlayers(groupedPlayers.active),
-              ...filterPlayers(groupedPlayers.pending),
-              ...filterPlayers(groupedPlayers.waitlist),
-              ...filterPlayers(groupedPlayers.out),
-            ];
+      ? filterPlayers(groupedPlayers.out)
+      : [
+          ...filterPlayers(groupedPlayers.active),
+          ...filterPlayers(groupedPlayers.pending),
+          ...filterPlayers(groupedPlayers.waitlist),
+          ...filterPlayers(groupedPlayers.out),
+        ];
+  const sharedStateLabel = playerSyncState.loading
+    ? 'Синхронизация списка игроков...'
+    : playerSyncState.shared
+      ? `Общий список: ${formatSyncMoment(playerSyncState.lastSyncedAt)}`
+      : 'Общий список пока не подтвержден';
 
   return (
     <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-4">
@@ -139,7 +146,7 @@ export function TournamentPlayersTab({
 
         <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
           <div className="text-[#666] text-xs">
-            Показано: {allPlayers.length} из {totalPlayers}. Это локальный режим: сайт и прод не меняются.
+            Показано: {allPlayers.length} из {totalPlayers}. {sharedStateLabel}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -187,7 +194,9 @@ export function TournamentPlayersTab({
 
         <div className="text-[11px] text-[#666] flex flex-wrap gap-x-3 gap-y-1">
           <span>{tournamentBotId == null ? 'Для авто-импорта нужно выбрать игру из бота.' : `Последний sync: ${formatSyncMoment(botSyncState.lastSyncedAt)}`}</span>
-          {playerSyncState.loading && !playerSyncState.error && <span>Синхронизация списка игроков...</span>}
+          {!playerSyncState.loading && playerSyncState.shared && playerSyncState.lastSyncedAt && (
+            <span>Игроки сохранены для всех админок.</span>
+          )}
         </div>
       </div>
 

@@ -1,4 +1,5 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { supabase } from '../supabase';
 import { calcTotalStack } from '../gameStateMath';
 import { fetchBotTournamentRoster, type ImportedTournamentPlayer } from '../tournamentBotApi';
 import type {
@@ -11,6 +12,9 @@ import type {
 } from '../types';
 
 const PLAYERS_LOCAL_PREFIX = 'poker_live_tournament_players';
+const SHARED_PLAYERS_PREFIX = '__live_players__';
+const SHARED_PLAYERS_NAME_PREFIX = 'live_tournament_players';
+const SHARED_PLAYERS_TABLE = 'blind_templates';
 const BOT_ROSTER_POLL_MS = 15_000;
 const TOURNAMENT_UNIT_PRICE = 1000;
 const PROMO_DISCOUNT_FACTOR = 0.5;
@@ -22,12 +26,60 @@ type UseTournamentPlayersOptions = {
   updateGameState: UpdateGameState;
 };
 
+type PlayerSyncState = {
+  loading: boolean;
+  error: string | null;
+  lastSyncedAt: string | null;
+  shared: boolean;
+};
+
+type SharedPlayersRow = {
+  id: string;
+  name: string;
+  levels: unknown;
+  created_at: string;
+};
+
+type StoredPlayersPayload = {
+  version: 1;
+  sessionId: number;
+  tournamentBotId: number | null;
+  tournamentTitle: string;
+  updatedAt: string;
+  players: unknown;
+};
+
+type LoadedPlayersSnapshot = {
+  players: LiveTournamentPlayer[];
+  updatedAt: string | null;
+  structured: boolean;
+};
+
+function hasSharedPlayersStorage() {
+  return Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
+}
+
 function normalizeSessionId(resetAt: number) {
   return Math.max(1, Math.round(resetAt || 0));
 }
 
 function playersLocalKey(sessionId: number, tournamentBotId: number | null) {
   return `${PLAYERS_LOCAL_PREFIX}:${sessionId}:${tournamentBotId ?? 'manual'}`;
+}
+
+function playersSharedKey(sessionId: number, tournamentBotId: number | null) {
+  return `${SHARED_PLAYERS_PREFIX}:${sessionId}:${tournamentBotId ?? 'manual'}`;
+}
+
+function buildSharedPlayersName(updatedAt = new Date().toISOString()) {
+  return `${SHARED_PLAYERS_NAME_PREFIX}:${updatedAt}`;
+}
+
+function parseSharedPlayersUpdatedAt(name: string | null | undefined, fallback: string | null) {
+  if (!name?.startsWith(`${SHARED_PLAYERS_NAME_PREFIX}:`)) return fallback;
+
+  const value = name.slice(SHARED_PLAYERS_NAME_PREFIX.length + 1).trim();
+  return value || fallback;
 }
 
 function loadLocal<T>(key: string, fallback: T): T {
@@ -50,6 +102,12 @@ function saveLocal<T>(key: string, value: T) {
 function clampWhole(value: number | null | undefined) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
   return Math.max(0, Math.round(value));
+}
+
+function normalizeTournamentTitle(value: string | null | undefined) {
+  return typeof value === 'string'
+    ? value.trim().replace(/\s+/g, ' ').toLowerCase()
+    : '';
 }
 
 function nowIso() {
@@ -195,6 +253,18 @@ function recalculatePlayers(players: LiveTournamentPlayer[]) {
       };
     })
     .sort(playerSort);
+}
+
+function normalizePlayersPayload(
+  raw: unknown,
+  sessionId: number,
+  tournamentBotId: number | null
+) {
+  if (!Array.isArray(raw)) return [];
+
+  return recalculatePlayers(
+    raw.map(player => normalizePlayer(player as Partial<LiveTournamentPlayer>, sessionId, tournamentBotId))
+  );
 }
 
 function playersEqual(a: LiveTournamentPlayer | undefined, b: LiveTournamentPlayer) {
@@ -355,10 +425,148 @@ function summarizePlayers(players: LiveTournamentPlayer[]): TournamentPlayersSum
   });
 }
 
+function hasPlayerCounters(gameState: GameState) {
+  return (
+    gameState.players > 0 ||
+    gameState.outs > 0 ||
+    gameState.rebuys > 0 ||
+    gameState.addonCount > 0 ||
+    gameState.bonusCount > 0
+  );
+}
+
+function matchesGameStateCounters(players: LiveTournamentPlayer[], gameState: GameState) {
+  const summary = summarizePlayers(players);
+  return (
+    summary.entrants === gameState.players &&
+    summary.bustouts === gameState.outs &&
+    summary.rebuys === gameState.rebuys &&
+    summary.addons === gameState.addonCount &&
+    summary.bonuses === gameState.bonusCount
+  );
+}
+
+function buildStoredPlayersPayload(
+  players: LiveTournamentPlayer[],
+  sessionId: number,
+  tournamentBotId: number | null,
+  tournamentTitle: string,
+  updatedAt = nowIso()
+): StoredPlayersPayload {
+  return {
+    version: 1,
+    sessionId,
+    tournamentBotId,
+    tournamentTitle,
+    updatedAt,
+    players: recalculatePlayers(players),
+  };
+}
+
+function parseStoredPlayersPayload(
+  raw: unknown,
+  sessionId: number,
+  tournamentBotId: number | null,
+  tournamentTitle: string
+): LoadedPlayersSnapshot | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+
+  const payload = raw as Partial<StoredPlayersPayload>;
+  if (payload.version !== 1 || !Array.isArray(payload.players)) return null;
+
+  const payloadSessionId = typeof payload.sessionId === 'number' ? Math.max(1, Math.round(payload.sessionId)) : null;
+  const payloadTournamentBotId = payload.tournamentBotId == null
+    ? null
+    : typeof payload.tournamentBotId === 'number' && Number.isFinite(payload.tournamentBotId)
+      ? Math.round(payload.tournamentBotId)
+      : null;
+  const currentTitle = normalizeTournamentTitle(tournamentTitle);
+  const payloadTitle = normalizeTournamentTitle(payload.tournamentTitle);
+
+  if (payloadSessionId !== sessionId) return null;
+  if (payloadTournamentBotId !== tournamentBotId) return null;
+  if (tournamentBotId == null && currentTitle && payloadTitle && currentTitle !== payloadTitle) return null;
+
+  return {
+    players: normalizePlayersPayload(payload.players, sessionId, tournamentBotId),
+    updatedAt: typeof payload.updatedAt === 'string' && payload.updatedAt ? payload.updatedAt : null,
+    structured: true,
+  };
+}
+
+function parseLegacyPlayersSnapshot(
+  raw: unknown,
+  sessionId: number,
+  tournamentBotId: number | null
+): LoadedPlayersSnapshot | null {
+  if (!Array.isArray(raw)) return null;
+
+  const inferredSessionIds = new Set(
+    raw
+      .map(item => (item && typeof item === 'object' && typeof (item as { sessionId?: unknown }).sessionId === 'number')
+        ? Math.max(1, Math.round((item as { sessionId: number }).sessionId))
+        : null)
+      .filter((value): value is number => value !== null)
+  );
+  const inferredTournamentBotIds = new Set(
+    raw
+      .map(item => {
+        if (!item || typeof item !== 'object') return undefined;
+        const value = (item as { tournamentBotId?: unknown }).tournamentBotId;
+        if (value === null) return null;
+        return typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : undefined;
+      })
+      .filter((value): value is number | null => value !== undefined)
+  );
+
+  if (inferredSessionIds.size > 1 || inferredTournamentBotIds.size > 1) return null;
+
+  const inferredSessionId = inferredSessionIds.size === 1 ? Array.from(inferredSessionIds)[0] : sessionId;
+  const inferredTournamentBotId = inferredTournamentBotIds.size === 1
+    ? Array.from(inferredTournamentBotIds)[0]
+    : tournamentBotId;
+
+  if (inferredSessionId !== sessionId) return null;
+  if (inferredTournamentBotId !== tournamentBotId) return null;
+
+  return {
+    players: normalizePlayersPayload(raw, sessionId, tournamentBotId),
+    updatedAt: null,
+    structured: false,
+  };
+}
+
+function trustLoadedPlayersSnapshot(snapshot: LoadedPlayersSnapshot | null, gameState: GameState) {
+  if (!snapshot) return null;
+  if (snapshot.players.length === 0) return snapshot;
+
+  if (!hasPlayerCounters(gameState)) {
+    return snapshot.structured ? snapshot : null;
+  }
+
+  return matchesGameStateCounters(snapshot.players, gameState) ? snapshot : null;
+}
+
+function formatSharedPlayersError(action: string, error: unknown) {
+  const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code ?? '') : '';
+  if (code === '42P01') {
+    return `Общий список игроков недоступен: в Supabase нет таблицы ${SHARED_PLAYERS_TABLE}.`;
+  }
+
+  if (code === '42501') {
+    return `Supabase не разрешает ${action} общий список игроков.`;
+  }
+
+  return `Не удалось ${action} общий список игроков.`;
+}
+
 export function useTournamentPlayers({ gameState, updateGameState }: UseTournamentPlayersOptions) {
+  const sharedEnabled = hasSharedPlayersStorage();
   const sessionId = normalizeSessionId(gameState.resetAt);
   const tournamentBotId = gameState.tournamentBotId;
+  const tournamentTitle = gameState.tournamentTitle;
   const storageKey = playersLocalKey(sessionId, tournamentBotId);
+  const sharedStorageId = playersSharedKey(sessionId, tournamentBotId);
 
   const [players, setPlayers] = useState<LiveTournamentPlayer[]>([]);
   const [botSyncState, setBotSyncState] = useState({
@@ -367,12 +575,20 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     lastSyncedAt: null as string | null,
     disabled: false,
   });
+  const [playerSyncState, setPlayerSyncState] = useState<PlayerSyncState>({
+    loading: sharedEnabled,
+    error: null,
+    lastSyncedAt: null,
+    shared: false,
+  });
 
   const playersRef = useRef(players);
   const sessionIdRef = useRef(sessionId);
   const tournamentBotIdRef = useRef(tournamentBotId);
   const storageKeyRef = useRef(storageKey);
+  const sharedStorageIdRef = useRef(sharedStorageId);
   const botSyncUnsupported = useRef(false);
+  const playersHydratedRef = useRef(!sharedEnabled);
 
   const summary = useMemo(() => summarizePlayers(players), [players]);
 
@@ -388,12 +604,114 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     }),
   }), [players]);
 
-  const replacePlayersState = useCallback((nextPlayers: LiveTournamentPlayer[]) => {
+  const applyPlayersSnapshot = useCallback((nextPlayers: LiveTournamentPlayer[]) => {
     const normalized = recalculatePlayers(nextPlayers);
     playersRef.current = normalized;
     setPlayers(normalized);
-    saveLocal(storageKeyRef.current, normalized);
-  }, []);
+    saveLocal(
+      storageKeyRef.current,
+      buildStoredPlayersPayload(
+        normalized,
+        sessionIdRef.current,
+        tournamentBotIdRef.current,
+        gameState.tournamentTitle
+      )
+    );
+    return normalized;
+  }, [gameState.tournamentTitle]);
+
+  const loadSharedPlayersSnapshot = useCallback(async () => {
+    if (!sharedEnabled) return null;
+
+    const { data, error } = await supabase
+      .from(SHARED_PLAYERS_TABLE)
+      .select('id, name, levels, created_at')
+      .eq('id', sharedStorageIdRef.current)
+      .maybeSingle();
+
+    if (error) {
+      setPlayerSyncState(prev => ({
+        ...prev,
+        loading: false,
+        error: formatSharedPlayersError('загрузить', error),
+        shared: false,
+      }));
+      return null;
+    }
+
+    if (!data) {
+      return {
+        found: false as const,
+        players: [] as LiveTournamentPlayer[],
+        lastSyncedAt: null as string | null,
+      };
+    }
+
+    const row = data as SharedPlayersRow;
+    const parsedSnapshot = parseStoredPlayersPayload(
+      row.levels,
+      sessionIdRef.current,
+      tournamentBotIdRef.current,
+      gameState.tournamentTitle
+    );
+
+    if (!parsedSnapshot) {
+      return {
+        found: false as const,
+        players: [] as LiveTournamentPlayer[],
+        lastSyncedAt: null as string | null,
+      };
+    }
+
+    return {
+      found: true as const,
+      players: parsedSnapshot.players,
+      lastSyncedAt: parsedSnapshot.updatedAt ?? parseSharedPlayersUpdatedAt(row.name, row.created_at),
+    };
+  }, [gameState.tournamentTitle, sharedEnabled]);
+
+  const persistSharedPlayersSnapshot = useCallback(async (nextPlayers: LiveTournamentPlayer[]) => {
+    if (!sharedEnabled) return false;
+
+    const updatedAt = nowIso();
+    const payload = {
+      id: sharedStorageIdRef.current,
+      name: buildSharedPlayersName(updatedAt),
+      levels: buildStoredPlayersPayload(
+        nextPlayers,
+        sessionIdRef.current,
+        tournamentBotIdRef.current,
+        gameState.tournamentTitle,
+        updatedAt
+      ),
+    };
+
+    const { error } = await supabase.from(SHARED_PLAYERS_TABLE).upsert(payload);
+    if (error) {
+      setPlayerSyncState(prev => ({
+        ...prev,
+        loading: false,
+        error: formatSharedPlayersError('сохранить', error),
+        shared: false,
+      }));
+      return false;
+    }
+
+    setPlayerSyncState(prev => ({
+      ...prev,
+      loading: false,
+      error: null,
+      lastSyncedAt: updatedAt,
+      shared: true,
+    }));
+    return true;
+  }, [gameState.tournamentTitle, sharedEnabled]);
+
+  const commitPlayersSnapshot = useCallback(async (nextPlayers: LiveTournamentPlayer[]) => {
+    const normalized = applyPlayersSnapshot(nextPlayers);
+    void persistSharedPlayersSnapshot(normalized);
+    return normalized;
+  }, [applyPlayersSnapshot, persistSharedPlayersSnapshot]);
 
   useEffect(() => {
     sessionIdRef.current = sessionId;
@@ -404,26 +722,146 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
   }, [tournamentBotId]);
 
   useEffect(() => {
+    sharedStorageIdRef.current = sharedStorageId;
+  }, [sharedStorageId]);
+
+  useEffect(() => {
     storageKeyRef.current = storageKey;
-    const localPlayers = loadLocal(storageKey, [] as LiveTournamentPlayer[])
-      .map(player => normalizePlayer(player, sessionId, tournamentBotId));
-    const normalizedPlayers = recalculatePlayers(localPlayers);
-    playersRef.current = normalizedPlayers;
+    playersHydratedRef.current = !sharedEnabled;
+
+    const parsedLocalSnapshot = parseStoredPlayersPayload(
+      loadLocal<unknown>(storageKey, null),
+      sessionId,
+      tournamentBotId,
+      tournamentTitle
+    );
+    const legacyLocalSnapshot = parsedLocalSnapshot
+      ? null
+      : parseLegacyPlayersSnapshot(loadLocal<unknown>(storageKey, null), sessionId, tournamentBotId);
+    const trustedLocalSnapshot = trustLoadedPlayersSnapshot(parsedLocalSnapshot ?? legacyLocalSnapshot, gameState);
+    const trustedLocalPlayers = trustedLocalSnapshot?.players ?? [];
+    const ignoredStaleLocal = Boolean((parsedLocalSnapshot ?? legacyLocalSnapshot)?.players.length) && trustedLocalPlayers.length === 0;
+
+    playersRef.current = trustedLocalPlayers;
     botSyncUnsupported.current = false;
+
     startTransition(() => {
-      setPlayers(normalizedPlayers);
+      setPlayers(trustedLocalPlayers);
       setBotSyncState({
         loading: false,
         error: null,
         lastSyncedAt: null,
         disabled: false,
       });
+      setPlayerSyncState({
+        loading: sharedEnabled,
+        error: ignoredStaleLocal
+          ? 'На этом устройстве был старый локальный список игроков. Он не совпал с текущим турниром и был скрыт.'
+          : null,
+        lastSyncedAt: trustedLocalSnapshot?.updatedAt ?? null,
+        shared: false,
+      });
     });
-  }, [replacePlayersState, sessionId, storageKey, tournamentBotId]);
+
+    let cancelled = false;
+
+    if (!sharedEnabled) return () => { cancelled = true; };
+
+    const hydrateSharedPlayers = async () => {
+      const sharedSnapshot = await loadSharedPlayersSnapshot();
+      if (cancelled || !sharedSnapshot) return;
+
+      if (sharedSnapshot.found) {
+        const trustedSharedSnapshot = trustLoadedPlayersSnapshot({
+          players: sharedSnapshot.players,
+          updatedAt: sharedSnapshot.lastSyncedAt,
+          structured: true,
+        }, gameState);
+
+        if (trustedSharedSnapshot) {
+          applyPlayersSnapshot(trustedSharedSnapshot.players);
+          setPlayerSyncState(prev => ({
+            ...prev,
+            loading: false,
+            error: null,
+            lastSyncedAt: trustedSharedSnapshot.updatedAt,
+            shared: true,
+          }));
+          playersHydratedRef.current = true;
+          return;
+        }
+      }
+
+      if (trustedLocalPlayers.length > 0) {
+        await persistSharedPlayersSnapshot(trustedLocalPlayers);
+      } else if (!cancelled) {
+        setPlayerSyncState(prev => ({
+          ...prev,
+          loading: false,
+        }));
+      }
+
+      if (!cancelled) {
+        playersHydratedRef.current = true;
+      }
+    };
+
+    void hydrateSharedPlayers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    applyPlayersSnapshot,
+    gameState,
+    loadSharedPlayersSnapshot,
+    persistSharedPlayersSnapshot,
+    sessionId,
+    sharedEnabled,
+    storageKey,
+    tournamentTitle,
+    tournamentBotId,
+  ]);
 
   useEffect(() => {
     playersRef.current = players;
   }, [players]);
+
+  useEffect(() => {
+    if (!sharedEnabled) return;
+
+    const channel = supabase
+      .channel(`live-players-sync:${sharedStorageId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: SHARED_PLAYERS_TABLE }, (payload) => {
+        const nextRow = payload.new as { id?: unknown } | null;
+        const prevRow = payload.old as { id?: unknown } | null;
+        const payloadId = typeof nextRow?.id === 'string'
+          ? nextRow.id
+          : typeof prevRow?.id === 'string'
+            ? prevRow.id
+            : null;
+
+        if (payloadId !== sharedStorageIdRef.current) return;
+
+        void loadSharedPlayersSnapshot().then(sharedSnapshot => {
+          if (!sharedSnapshot?.found) return;
+
+          applyPlayersSnapshot(sharedSnapshot.players);
+          setPlayerSyncState(prev => ({
+            ...prev,
+            loading: false,
+            error: null,
+            lastSyncedAt: sharedSnapshot.lastSyncedAt,
+            shared: true,
+          }));
+        });
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [applyPlayersSnapshot, loadSharedPlayersSnapshot, sharedEnabled, sharedStorageId]);
 
   const applyPlayerMutation = useCallback(async (
     mutate: (current: LiveTournamentPlayer[]) => LiveTournamentPlayer[]
@@ -432,12 +870,13 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       ...player,
       updatedAt: player.updatedAt || nowIso(),
     })));
-    replacePlayersState(mutated);
+    await commitPlayersSnapshot(mutated);
     return mutated;
-  }, [replacePlayersState]);
+  }, [commitPlayersSnapshot]);
 
   const refreshFromBot = useCallback(async (force = false) => {
     if (tournamentBotId == null) return false;
+    if (!playersHydratedRef.current) return false;
     if (force) {
       botSyncUnsupported.current = false;
       setBotSyncState(prev => ({ ...prev, disabled: false }));
@@ -465,7 +904,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       ...result.waitlist.map(player => ({ ...player, registrationSource: 'waitlist' as const })),
     ];
     const merged = mergeImportedRoster(playersRef.current, imported, sessionIdRef.current, tournamentBotIdRef.current);
-    replacePlayersState(merged.players);
+    await commitPlayersSnapshot(merged.players);
     setBotSyncState({
       loading: false,
       error: null,
@@ -473,10 +912,11 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       disabled: false,
     });
     return true;
-  }, [replacePlayersState, tournamentBotId]);
+  }, [commitPlayersSnapshot, tournamentBotId]);
 
   useEffect(() => {
     if (tournamentBotId == null) return;
+    if (sharedEnabled && playerSyncState.loading) return;
 
     const initialTimer = setTimeout(() => {
       void refreshFromBot();
@@ -489,7 +929,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       clearTimeout(initialTimer);
       clearInterval(interval);
     };
-  }, [refreshFromBot, tournamentBotId]);
+  }, [playerSyncState.loading, refreshFromBot, sharedEnabled, tournamentBotId]);
 
   useEffect(() => {
     const hasPlayers = players.length > 0;
@@ -650,10 +1090,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     players,
     groupedPlayers,
     summary,
-    playerSyncState: {
-      loading: false,
-      error: null,
-    },
+    playerSyncState,
     botSyncState,
     managedCountersEnabled: players.length > 0,
     refreshFromBot,
