@@ -1012,6 +1012,7 @@ export function useGameState(readOnly = false) {
     syncReady,
     authoritativeReady,
     syncError,
+    getAuthoritativeNow,
     retrySync,
     updateGameState,
     startTimer,

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, Component } from 'react';
 import type { ChangeEvent, ReactNode } from 'react';
 import { useGameState } from '../hooks/useGameState';
+import { useTournamentBotLiveSync } from '../hooks/useTournamentBotLiveSync';
 import { useTournamentPlayers } from '../hooks/useTournamentPlayers';
 import { supabase } from '../supabase';
 import { getNextGarageBlindPair } from '../blindStructure';
@@ -364,7 +365,7 @@ export function Admin() {
   const backgroundLibraryRef = useRef(backgroundLibrary);
 
   const {
-    gameState, blindLevels, combinations, syncReady, authoritativeReady, syncError, retrySync,
+    gameState, blindLevels, combinations, syncReady, authoritativeReady, syncError, getAuthoritativeNow, retrySync,
     updateGameState, startTimer, pauseTimer, nextLevel, prevLevel, resetTournament,
     updateBlindLevels, updateCombinations, saveTournament, fetchTournaments, deleteTournament,
   } = useGameState();
@@ -386,6 +387,7 @@ export function Admin() {
   const {
     players: tournamentPlayers,
     groupedPlayers,
+    summary: tournamentPlayersSummary,
     playerSyncState,
     botSyncState,
     refreshFromBot,
@@ -398,6 +400,26 @@ export function Admin() {
     updateGameState,
   });
   const managedPlayerCountsActive = tournamentPlayers.length > 0;
+  const playersInGame = managedPlayerCountsActive
+    ? tournamentPlayersSummary.active
+    : Math.max(0, gameState.players - gameState.outs);
+  const playersRegistered = managedPlayerCountsActive
+    ? tournamentPlayersSummary.entrants
+    : Math.max(0, gameState.players);
+
+  useTournamentBotLiveSync({
+    enabled: authed && authoritativeReady && gameState.tournamentBotId != null,
+    tournamentBotId: gameState.tournamentBotId,
+    tournamentTitle: gameState.tournamentTitle,
+    status: gameState.status,
+    currentLevelIndex: gameState.currentLevelIndex,
+    currentTimeLeft: gameState.timeLeft,
+    playersInGame,
+    playersRegistered,
+    playersOut: Math.max(0, gameState.outs),
+    blindLevels,
+    getAuthoritativeNow,
+  });
 
   useEffect(() => {
     blindTemplatesRef.current = blindTemplates;
