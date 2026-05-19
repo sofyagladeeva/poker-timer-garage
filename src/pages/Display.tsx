@@ -463,7 +463,22 @@ export function Display() {
 
             {/* Живой отсчёт до перерыва — внизу */}
             {!isBreak && ((secondsUntilBreak !== null && levelsUntilBreak !== null && levelsUntilBreak > 1) || (nextKnockout && !nextKnockout.startsNow && nextKnockoutTime)) && (
-              <div className="pb-4 flex flex-row items-end justify-center gap-16 text-center">
+              <div className="pb-4 flex flex-row items-start justify-center gap-16 text-center">
+                {secondsUntilBreak !== null && levelsUntilBreak !== null && levelsUntilBreak > 1 && (
+                  <div className="min-w-[260px]">
+                    <div className="uppercase tracking-[0.25em] mb-1 font-light" style={{ color: '#E31E24', fontSize: '13px' }}>до перерыва</div>
+                    <div
+                      className="tabular-nums"
+                      style={{
+                        fontFamily: "'JetBrains Mono', monospace",
+                        fontSize: '44px',
+                        color: '#666',
+                      }}
+                    >
+                      {fmtCountdown(secondsUntilBreak)}
+                    </div>
+                  </div>
+                )}
                 {nextKnockout && !nextKnockout.startsNow && nextKnockoutTime && (
                   <div className="min-w-[260px]">
                     <div className="uppercase tracking-[0.25em] mb-1 font-light" style={{ color: '#E31E24', fontSize: '13px' }}>
@@ -481,21 +496,6 @@ export function Display() {
                     </div>
                     <div className="text-[#666] text-sm mt-1 uppercase tracking-[0.2em]">
                       примерно в {nextKnockoutTime}
-                    </div>
-                  </div>
-                )}
-                {secondsUntilBreak !== null && levelsUntilBreak !== null && levelsUntilBreak > 1 && (
-                  <div className="min-w-[260px]">
-                    <div className="uppercase tracking-[0.25em] mb-1 font-light" style={{ color: '#E31E24', fontSize: '13px' }}>до перерыва</div>
-                    <div
-                      className="tabular-nums"
-                      style={{
-                        fontFamily: "'JetBrains Mono', monospace",
-                        fontSize: '44px',
-                        color: '#666',
-                      }}
-                    >
-                      {fmtCountdown(secondsUntilBreak)}
                     </div>
                   </div>
                 )}
