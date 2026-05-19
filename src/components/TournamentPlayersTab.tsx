@@ -32,12 +32,6 @@ type Props = {
   onMarkPlayerOut: (playerId: string) => Promise<void>;
 };
 
-function formatSyncMoment(value: string | null) {
-  if (!value) return 'еще не синхронизировалось';
-  const date = new Date(value);
-  return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
 export function TournamentPlayersTab({
   groupedPlayers,
   playerSyncState,
@@ -104,11 +98,6 @@ export function TournamentPlayersTab({
           ...filterPlayers(groupedPlayers.waitlist),
           ...filterPlayers(groupedPlayers.out),
         ];
-  const sharedStateLabel = playerSyncState.loading
-    ? 'Синхронизация списка игроков...'
-    : playerSyncState.shared
-      ? `Общий список: ${formatSyncMoment(playerSyncState.lastSyncedAt)}`
-      : 'Общий список пока не подтвержден';
 
   return (
     <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-4">
@@ -146,7 +135,7 @@ export function TournamentPlayersTab({
 
         <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
           <div className="text-[#666] text-xs">
-            Показано: {allPlayers.length} из {totalPlayers}. {sharedStateLabel}
+            Показано: {allPlayers.length} из {totalPlayers}. Список обновляется в фоне.
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -175,7 +164,7 @@ export function TournamentPlayersTab({
               disabled={tournamentBotId == null || botSyncState.loading}
               className="admin-btn-secondary px-3 py-2 text-xs"
             >
-              {botSyncState.loading ? 'Синхронизация...' : '↻ Из приложения'}
+              ↻ Синхронизировать
             </button>
           </div>
         </div>
@@ -193,10 +182,11 @@ export function TournamentPlayersTab({
         )}
 
         <div className="text-[11px] text-[#666] flex flex-wrap gap-x-3 gap-y-1">
-          <span>{tournamentBotId == null ? 'Для авто-импорта нужно выбрать игру из бота.' : `Последний sync: ${formatSyncMoment(botSyncState.lastSyncedAt)}`}</span>
-          {!playerSyncState.loading && playerSyncState.shared && playerSyncState.lastSyncedAt && (
-            <span>Игроки сохранены для всех админок.</span>
-          )}
+          <span>
+            {tournamentBotId == null
+              ? 'Для авто-импорта нужно выбрать игру из бота.'
+              : 'Список из приложения подтягивается автоматически. Кнопка справа запускает ручную синхронизацию.'}
+          </span>
         </div>
       </div>
 
