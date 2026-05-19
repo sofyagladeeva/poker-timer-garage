@@ -199,33 +199,175 @@ export function TournamentPlayersTab({
           </div>
         ) : (
           <div className="max-h-[72vh] overflow-y-auto overflow-x-hidden">
-            <table className="w-full table-fixed border-separate border-spacing-y-1">
-              <thead>
-                <tr className="text-[8px] sm:text-[11px] uppercase tracking-[0.12em] sm:tracking-[0.18em] text-[#666]">
-                  <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[26%]">Игрок</th>
-                  <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Rebuy</th>
-                  <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Addon</th>
-                  <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Бонус</th>
-                  <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[13%]">Статус</th>
-                  <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[8%]">Bounty</th>
-                  <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[7%]">Место</th>
-                  <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[16%]">Оплата</th>
-                </tr>
-              </thead>
-              <tbody>
-                {allPlayers.map(player => (
-                  <PlayerRow
-                    key={player.id}
-                    player={player}
-                    onUpdatePlayerField={onUpdatePlayerField}
-                    onSetPlayerArrival={onSetPlayerArrival}
-                    onMarkPlayerOut={onMarkPlayerOut}
-                  />
-                ))}
-              </tbody>
-            </table>
+            <div className="flex flex-col gap-3 sm:hidden">
+              {allPlayers.map(player => (
+                <MobilePlayerCard
+                  key={player.id}
+                  player={player}
+                  onUpdatePlayerField={onUpdatePlayerField}
+                  onSetPlayerArrival={onSetPlayerArrival}
+                  onMarkPlayerOut={onMarkPlayerOut}
+                />
+              ))}
+            </div>
+
+            <div className="hidden sm:block">
+              <table className="w-full table-fixed border-separate border-spacing-y-1">
+                <thead>
+                  <tr className="text-[8px] sm:text-[11px] uppercase tracking-[0.12em] sm:tracking-[0.18em] text-[#666]">
+                    <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[26%]">Игрок</th>
+                    <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Rebuy</th>
+                    <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Addon</th>
+                    <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Бонус</th>
+                    <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[13%]">Статус</th>
+                    <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[8%]">Bounty</th>
+                    <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[7%]">Место</th>
+                    <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[16%]">Оплата</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allPlayers.map(player => (
+                    <PlayerRow
+                      key={player.id}
+                      player={player}
+                      onUpdatePlayerField={onUpdatePlayerField}
+                      onSetPlayerArrival={onSetPlayerArrival}
+                      onMarkPlayerOut={onMarkPlayerOut}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function MobilePlayerCard({
+  player,
+  onUpdatePlayerField,
+  onSetPlayerArrival,
+  onMarkPlayerOut,
+}: {
+  player: LiveTournamentPlayer;
+  onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<void>;
+  onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
+  onMarkPlayerOut: (playerId: string) => Promise<void>;
+}) {
+  const canEditCounters = player.arrivalStatus !== 'absent';
+  const isOut = player.status === 'out';
+  const placeLabel = isOut && player.place !== null ? String(player.place) : '—';
+  const paymentDueLabel = player.paymentDue > 0 ? `${player.paymentDue} ₽` : '0 ₽';
+  const nameBadgeLabel = isOut ? 'Выбыл' : player.arrivalStatus === 'absent' ? 'Не в игре' : 'В игре';
+  const nameBadgeTone = isOut
+    ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
+    : player.arrivalStatus === 'absent'
+      ? 'border-[#4A4A4A] bg-[#161616] text-[#C2C2C2]'
+      : 'border-blue-700/70 bg-blue-950/40 text-blue-200';
+  const statusValue = isOut ? 'out' : player.arrivalStatus;
+
+  const handleStatusChange = async (nextValue: string) => {
+    if (nextValue === 'out') {
+      await onMarkPlayerOut(player.id);
+      return;
+    }
+
+    if (nextValue === 'absent' || nextValue === 'paid' || nextValue === 'free' || nextValue === 'promo') {
+      await onSetPlayerArrival(player.id, nextValue);
+    }
+  };
+
+  const handlePaymentChange = async (nextValue: string) => {
+    if (nextValue === 'unpaid' || nextValue === 'cash' || nextValue === 'card') {
+      await onUpdatePlayerField(player.id, { paymentMethod: nextValue });
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-white font-black text-base leading-tight break-words">{player.name}</div>
+          <div className={`mt-1 inline-flex items-center rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.12em] ${nameBadgeTone}`}>
+            {nameBadgeLabel}
+          </div>
+        </div>
+
+        <div className="shrink-0 rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-center min-w-[64px]">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Место</div>
+          <div className={`mt-1 text-lg font-black ${isOut ? 'text-white' : 'text-[#777]'}`}>{placeLabel}</div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <MobileCounter
+          label="Rebuy"
+          value={player.rebuyCount}
+          disabled={!canEditCounters}
+          onDecrease={() => void onUpdatePlayerField(player.id, { rebuyCount: Math.max(0, player.rebuyCount - 1) })}
+          onIncrease={() => void onUpdatePlayerField(player.id, { rebuyCount: player.rebuyCount + 1 })}
+        />
+        <MobileCounter
+          label="Addon"
+          value={player.addonCount}
+          disabled={!canEditCounters}
+          onDecrease={() => void onUpdatePlayerField(player.id, { addonCount: Math.max(0, player.addonCount - 1) })}
+          onIncrease={() => void onUpdatePlayerField(player.id, { addonCount: player.addonCount + 1 })}
+        />
+        <MobileCounter
+          label="Бонус"
+          value={player.bonusCount}
+          disabled={!canEditCounters}
+          onDecrease={() => void onUpdatePlayerField(player.id, { bonusCount: Math.max(0, player.bonusCount - 1) })}
+          onIncrease={() => void onUpdatePlayerField(player.id, { bonusCount: player.bonusCount + 1 })}
+        />
+      </div>
+
+      <div className="mt-3 grid gap-2">
+        <MobileSelect
+          label="Статус"
+          value={statusValue}
+          onChange={value => { void handleStatusChange(value); }}
+          options={[
+            { value: 'absent', label: 'Не в игре' },
+            { value: 'paid', label: 'Платно' },
+            { value: 'free', label: 'Бесплатно' },
+            { value: 'promo', label: 'Промокод' },
+            { value: 'out', label: 'Выбыл' },
+          ]}
+        />
+        <MobileSelect
+          label="Оплата"
+          value={player.paymentMethod}
+          onChange={value => { void handlePaymentChange(value); }}
+          options={[
+            { value: 'unpaid', label: 'Не оплачено' },
+            { value: 'cash', label: 'Наличные' },
+            { value: 'card', label: 'Карта' },
+          ]}
+        />
+      </div>
+
+      <div className="mt-3 grid grid-cols-[minmax(0,1fr)_96px] gap-2">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1">Bounty</div>
+          <input
+            key={`mobile-bounty-${player.id}-${player.updatedAt}`}
+            type="number"
+            defaultValue={player.bounty || ''}
+            onBlur={event => void onUpdatePlayerField(player.id, { bounty: Math.max(0, Number(event.currentTarget.value) || 0) })}
+            className="admin-input !w-full !py-2 !px-3 !text-sm text-center"
+            placeholder="0"
+            inputMode="numeric"
+          />
+        </div>
+
+        <div className="rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-right">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">К оплате</div>
+          <div className="mt-2 text-base font-black text-white whitespace-nowrap">{paymentDueLabel}</div>
+        </div>
       </div>
     </div>
   );
@@ -455,6 +597,74 @@ function PlayerRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+function MobileCounter({
+  label,
+  value,
+  disabled,
+  onDecrease,
+  onIncrease,
+}: {
+  label: string;
+  value: number;
+  disabled: boolean;
+  onDecrease: () => void;
+  onIncrease: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-[#2D2D2D] bg-[#141414] px-2 py-2">
+      <div className="text-[10px] uppercase tracking-[0.12em] text-[#666] text-center">{label}</div>
+      <div className="mt-2 flex items-center justify-between gap-1">
+        <button
+          type="button"
+          onClick={onDecrease}
+          disabled={disabled}
+          className="h-8 w-8 rounded-lg bg-[#2D2D2D] text-[#AAA] text-sm font-bold disabled:opacity-30"
+        >
+          −
+        </button>
+        <div className="min-w-[24px] text-center text-white font-black text-base leading-none">{value}</div>
+        <button
+          type="button"
+          onClick={onIncrease}
+          disabled={disabled}
+          className="h-8 w-8 rounded-lg bg-[#C0392B] text-white text-sm font-bold disabled:opacity-30"
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MobileSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block">
+      <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1">{label}</div>
+      <select
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        className="admin-input !w-full !py-2 !px-3 !text-sm"
+      >
+        {options.map(option => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
