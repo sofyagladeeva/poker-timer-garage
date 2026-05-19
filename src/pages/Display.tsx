@@ -463,9 +463,9 @@ export function Display() {
 
             {/* Живой отсчёт до перерыва — внизу */}
             {!isBreak && ((secondsUntilBreak !== null && levelsUntilBreak !== null && levelsUntilBreak > 1) || (nextKnockout && !nextKnockout.startsNow && nextKnockoutTime)) && (
-              <div className="pb-4 flex flex-col items-center gap-4 text-center">
+              <div className="pb-4 flex flex-row items-end justify-center gap-16 text-center">
                 {nextKnockout && !nextKnockout.startsNow && nextKnockoutTime && (
-                  <div>
+                  <div className="min-w-[260px]">
                     <div className="uppercase tracking-[0.25em] mb-1 font-light" style={{ color: '#E31E24', fontSize: '13px' }}>
                       игра на вылет
                     </div>
@@ -485,7 +485,7 @@ export function Display() {
                   </div>
                 )}
                 {secondsUntilBreak !== null && levelsUntilBreak !== null && levelsUntilBreak > 1 && (
-                  <div>
+                  <div className="min-w-[260px]">
                     <div className="uppercase tracking-[0.25em] mb-1 font-light" style={{ color: '#E31E24', fontSize: '13px' }}>до перерыва</div>
                     <div
                       className="tabular-nums"
