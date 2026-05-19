@@ -198,7 +198,7 @@ export function TournamentPlayersTab({
             По текущему фильтру игроков нет.
           </div>
         ) : (
-          <div className="max-h-[72vh] overflow-y-auto overflow-x-hidden">
+          <div className="overflow-x-hidden sm:max-h-[72vh] sm:overflow-y-auto">
             <div className="flex flex-col gap-3 sm:hidden">
               {allPlayers.map(player => (
                 <MobilePlayerCard
