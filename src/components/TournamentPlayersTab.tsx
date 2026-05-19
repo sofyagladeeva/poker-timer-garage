@@ -256,6 +256,7 @@ function MobilePlayerCard({
   onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
   onMarkPlayerOut: (playerId: string) => Promise<void>;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const canEditCounters = player.arrivalStatus !== 'absent';
   const isOut = player.status === 'out';
   const placeLabel = isOut && player.place !== null ? String(player.place) : '—';
@@ -325,50 +326,68 @@ function MobilePlayerCard({
         />
       </div>
 
-      <div className="mt-3 grid gap-2">
-        <MobileSelect
-          label="Статус"
-          value={statusValue}
-          onChange={value => { void handleStatusChange(value); }}
-          options={[
-            { value: 'absent', label: 'Не в игре' },
-            { value: 'paid', label: 'Платно' },
-            { value: 'free', label: 'Бесплатно' },
-            { value: 'promo', label: 'Промокод' },
-            { value: 'out', label: 'Выбыл' },
-          ]}
-        />
-        <MobileSelect
-          label="Оплата"
-          value={player.paymentMethod}
-          onChange={value => { void handlePaymentChange(value); }}
-          options={[
-            { value: 'unpaid', label: 'Не оплачено' },
-            { value: 'cash', label: 'Наличные' },
-            { value: 'card', label: 'Карта' },
-          ]}
-        />
-      </div>
-
-      <div className="mt-3 grid grid-cols-[minmax(0,1fr)_96px] gap-2">
+      <button
+        type="button"
+        onClick={() => setDetailsOpen(current => !current)}
+        className="mt-3 inline-flex w-full items-center justify-between rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-left transition-colors hover:border-[#555]"
+      >
         <div>
-          <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1">Bounty</div>
-          <input
-            key={`mobile-bounty-${player.id}-${player.updatedAt}`}
-            type="number"
-            defaultValue={player.bounty || ''}
-            onBlur={event => void onUpdatePlayerField(player.id, { bounty: Math.max(0, Number(event.currentTarget.value) || 0) })}
-            className="admin-input !w-full !py-2 !px-3 !text-sm text-center"
-            placeholder="0"
-            inputMode="numeric"
-          />
+          <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Детали</div>
+          <div className="text-sm font-bold text-white">Статус, оплата и bounty</div>
         </div>
+        <div className="text-xs font-bold uppercase tracking-[0.12em] text-[#888]">
+          {detailsOpen ? 'Скрыть' : 'Открыть'}
+        </div>
+      </button>
 
-        <div className="rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-right">
-          <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">К оплате</div>
-          <div className="mt-2 text-base font-black text-white whitespace-nowrap">{paymentDueLabel}</div>
-        </div>
-      </div>
+      {detailsOpen && (
+        <>
+          <div className="mt-3 grid gap-2">
+            <MobileSelect
+              label="Статус"
+              value={statusValue}
+              onChange={value => { void handleStatusChange(value); }}
+              options={[
+                { value: 'absent', label: 'Не в игре' },
+                { value: 'paid', label: 'Платно' },
+                { value: 'free', label: 'Бесплатно' },
+                { value: 'promo', label: 'Промокод' },
+                { value: 'out', label: 'Выбыл' },
+              ]}
+            />
+            <MobileSelect
+              label="Оплата"
+              value={player.paymentMethod}
+              onChange={value => { void handlePaymentChange(value); }}
+              options={[
+                { value: 'unpaid', label: 'Не оплачено' },
+                { value: 'cash', label: 'Наличные' },
+                { value: 'card', label: 'Карта' },
+              ]}
+            />
+          </div>
+
+          <div className="mt-3 grid grid-cols-[minmax(0,1fr)_96px] gap-2">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1">Bounty</div>
+              <input
+                key={`mobile-bounty-${player.id}-${player.updatedAt}`}
+                type="number"
+                defaultValue={player.bounty || ''}
+                onBlur={event => void onUpdatePlayerField(player.id, { bounty: Math.max(0, Number(event.currentTarget.value) || 0) })}
+                className="admin-input !w-full !py-2 !px-3 !text-sm text-center"
+                placeholder="0"
+                inputMode="numeric"
+              />
+            </div>
+
+            <div className="rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-right">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">К оплате</div>
+              <div className="mt-2 text-base font-black text-white whitespace-nowrap">{paymentDueLabel}</div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
