@@ -73,10 +73,10 @@ export function TournamentPlayersTab({
 
   const filterPlayers = (players: LiveTournamentPlayer[]) => players.filter(player => matchesSearch(player) && matchesViewFilter(player));
   const filteredCounts = {
-    active: filterPlayers(groupedPlayers.active).length,
-    pending: filterPlayers(groupedPlayers.pending).length,
-    waitlist: filterPlayers(groupedPlayers.waitlist).length,
-    out: filterPlayers(groupedPlayers.out).length,
+    active: groupedPlayers.active.filter(matchesSearch).length,
+    pending: groupedPlayers.pending.filter(matchesSearch).length,
+    waitlist: groupedPlayers.waitlist.filter(matchesSearch).length,
+    out: groupedPlayers.out.filter(matchesSearch).length,
   };
 
   const handleAddManualPlayer = async () => {
