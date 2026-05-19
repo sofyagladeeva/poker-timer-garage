@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback, Component } from 'react';
 import type { ChangeEvent, ReactNode } from 'react';
 import { useGameState } from '../hooks/useGameState';
+import { useTournamentPlayers } from '../hooks/useTournamentPlayers';
 import { supabase } from '../supabase';
 import { getNextGarageBlindPair } from '../blindStructure';
+import { getKnockoutLabel, getNextKnockoutInfo, setKnockoutMarker } from '../blindLevelMarkers';
 import { calcTotalStack } from '../gameStateMath';
 import type { BlindLevel, BlindTemplate, Combination, Card, Suit, Rank, TournamentRecord, GameState } from '../types';
 import { SUIT_SYMBOLS } from '../types';
 import { PokerCard } from '../components/PokerCard';
+import { TournamentPlayersTab } from '../components/TournamentPlayersTab';
 import {
   buildBlindTemplate,
   deleteSharedBlindTemplates,
@@ -66,11 +69,29 @@ const MAX_BACKGROUND_ITEMS = 24;
 const SHARED_LIBRARY_TIMEOUT_MS = 20_000;
 const SHARED_LIBRARY_RETRY_COUNT = 2;
 
+type BotGameSummary = {
+  id: number;
+  title: string;
+  date: string;
+  format?: string;
+  buy_in?: number;
+  confirmed: number;
+  max_players: number;
+  status?: string;
+};
+
 function formatNextGameFallback(game: { title: string; date: string; confirmed: number; max_players: number }) {
   const d = new Date(game.date);
   const dateStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
   const timeStr = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   return `${game.title}\n${dateStr} · ${timeStr}\n${game.confirmed} / ${game.max_players} мест`;
+}
+
+function formatApproxTimeFromNow(secondsFromNow: number) {
+  return new Date(Date.now() + Math.max(0, secondsFromNow) * 1000).toLocaleTimeString('ru-RU', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
@@ -170,6 +191,8 @@ function BlindRow({
   const [sbDraft, setSbDraft] = useState(String(level.sb));
   const [bbDraft, setBbDraft] = useState(String(level.bb));
   const [minutesDraft, setMinutesDraft] = useState(String(Math.round(level.duration / 60)));
+  const knockoutLabel = getKnockoutLabel(level);
+  const knockoutEnabled = Boolean(knockoutLabel);
 
   const parseDraftNumber = (value: string) => {
     const trimmed = value.trim();
@@ -224,7 +247,14 @@ function BlindRow({
   return (
     <div className="bg-[#111] border border-[#2D2D2D] rounded-xl p-3 flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="text-[#666] text-xs">Ур. {level.level}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[#666] text-xs">Ур. {level.level}</span>
+          {knockoutEnabled && (
+            <span className="rounded-full border border-[#C0392B]/40 bg-[#1a0a00] px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-[#E31E24]">
+              Игра на вылет
+            </span>
+          )}
+        </div>
         <button onClick={onDelete} className="admin-btn-danger px-3 py-2 text-sm">✕</button>
       </div>
       <div className="grid grid-cols-3 gap-2">
@@ -283,6 +313,23 @@ function BlindRow({
           />
         </div>
       </div>
+      <div className="mt-1 flex items-center justify-between rounded-xl border border-[#1F1F1F] bg-[#0A0A0A] px-3 py-2">
+        <div>
+          <div className="text-white text-sm font-medium">Игра на вылет</div>
+          <div className="text-[#666] text-xs">С этого уровня начинается игра на вылет.</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onChange(setKnockoutMarker(level, !knockoutEnabled, knockoutLabel || 'Игра на вылет'))}
+          className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide transition-colors ${
+            knockoutEnabled
+              ? 'bg-[#C0392B] text-white'
+              : 'bg-[#1E1E1E] text-[#777] hover:text-white'
+          }`}
+        >
+          {knockoutEnabled ? 'Вкл' : 'Выкл'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -294,7 +341,7 @@ export function Admin() {
   const [authed, setAuthed] = useState(() => sessionStorage.getItem('admin_authed') === '1');
   const [pwInput, setPwInput] = useState('');
   const [pwError, setPwError] = useState(false);
-  const [activeTab, setActiveTab] = useState<'control' | 'blinds' | 'combos' | 'archive' | 'settings'>('control');
+  const [activeTab, setActiveTab] = useState<'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings'>('control');
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
   const [customGameOpen, setCustomGameOpen] = useState(false);
   const [customGameTitle, setCustomGameTitle] = useState('');
@@ -328,13 +375,29 @@ export function Admin() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   // ── Bot games list ─────────────────────────────────────────────────────
-  const [botGames, setBotGames] = useState<{ id: number; title: string; date: string; confirmed: number; max_players: number }[]>([]);
+  const [botGames, setBotGames] = useState<BotGameSummary[]>([]);
   useEffect(() => {
     fetch(`${BOT_API}/api/games`)
       .then(r => r.json())
       .then(setBotGames)
       .catch(() => {});
   }, []);
+
+  const {
+    players: tournamentPlayers,
+    groupedPlayers,
+    playerSyncState,
+    botSyncState,
+    refreshFromBot,
+    addManualPlayer,
+    updatePlayerField,
+    setPlayerArrival,
+    markPlayerOut,
+  } = useTournamentPlayers({
+    gameState,
+    updateGameState,
+  });
+  const managedPlayerCountsActive = tournamentPlayers.length > 0;
 
   useEffect(() => {
     blindTemplatesRef.current = blindTemplates;
@@ -801,6 +864,11 @@ export function Admin() {
   const currentLevel = blindLevels[gameState.currentLevelIndex];
   const regularBlindLevels = blindLevels.filter(level => !level.isBreak);
   const anteStartLevel = regularBlindLevels.find(level => level.ante > 0)?.level ?? 0;
+  const currentKnockoutLabel = getKnockoutLabel(currentLevel);
+  const nextKnockout = getNextKnockoutInfo(blindLevels, gameState.currentLevelIndex, gameState.timeLeft);
+  const nextKnockoutTime = nextKnockout && !nextKnockout.startsNow
+    ? formatApproxTimeFromNow(nextKnockout.secondsUntil)
+    : null;
 
   const updateStackState = (
     patch: Partial<Pick<GameState, 'players' | 'rebuys' | 'addonCount' | 'bonusCount' | 'startStack' | 'addonStack' | 'bonusStack'>>
@@ -809,7 +877,7 @@ export function Admin() {
     updateGameState({ ...patch, totalStack: calcTotalStack(nextState) });
   };
 
-  const selectTab = (tabId: 'control' | 'blinds' | 'combos' | 'archive' | 'settings') => {
+  const selectTab = (tabId: 'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings') => {
     if (tabId === 'archive') {
       setArchiveLoading(true);
     }
@@ -941,6 +1009,7 @@ export function Admin() {
   // ── Tabs ──────────────────────────────────────────────────────────────
   const tabs = [
     { id: 'control', label: '▶ Управление' },
+    { id: 'players', label: '👥 Игроки' },
     { id: 'blinds',  label: '💰 Блайнды' },
     { id: 'combos',  label: '🃏 Комбо' },
     { id: 'archive', label: '📋 Архив' },
@@ -1234,6 +1303,8 @@ export function Admin() {
                           <span>
                             {currentLevel?.isBreak
                               ? (currentLevel.breakLabel || 'ПЕРЕРЫВ')
+                              : currentKnockoutLabel
+                              ? `${currentKnockoutLabel} · ур. ${currentLevel?.level ?? '—'}`
                               : `Уровень ${currentLevel?.level ?? '—'}`}
                           </span>
                           <span>{cur + 1} / {total}</span>
@@ -1271,6 +1342,28 @@ export function Admin() {
                       )}
                     </div>
                   </div>
+                  {(currentKnockoutLabel || nextKnockout) && (
+                    <div className="mt-4 rounded-xl border border-[#1F1F1F] bg-[#0A0A0A] px-3 py-3">
+                      <div className="text-[#E31E24] text-[11px] font-bold uppercase tracking-[0.2em]">
+                        Игра на вылет
+                      </div>
+                      {currentKnockoutLabel ? (
+                        <div className="mt-1 text-white text-sm font-medium">
+                          {currentKnockoutLabel} уже идёт на текущем уровне.
+                        </div>
+                      ) : nextKnockout && nextKnockoutTime ? (
+                        <>
+                          <div className="mt-1 text-white text-sm font-medium">
+                            Через {Math.floor(nextKnockout.secondsUntil / 60)} мин
+                            {nextKnockout.levelsUntil > 1 ? ` · через ${nextKnockout.levelsUntil - 1} уров.` : ''}
+                          </div>
+                          <div className="text-[#666] text-xs mt-1">
+                            Примерно в {nextKnockoutTime}
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
 
                 {/* Play/Pause — большая кнопка */}
@@ -1344,6 +1437,11 @@ export function Admin() {
             {/* Player / Stack */}
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-4">
               <div className="text-[#888] text-xs uppercase tracking-widest">Участники и стеки</div>
+              {managedPlayerCountsActive && (
+                <div className="rounded-xl border border-blue-900/40 bg-blue-950/20 px-3 py-2 text-blue-200 text-xs">
+                  Игроки, ауты, rebuy, addon и бонусы сейчас считаются по вкладке `Игроки`. Здесь вручную остаются только размеры стеков.
+                </div>
+              )}
 
               {/* Стартовый стек */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1393,24 +1491,28 @@ export function Admin() {
                 <CounterBlock
                   label="Игроки"
                   value={gameState.players ?? 0}
+                  disabled={managedPlayerCountsActive}
                   onAdd={() => updateStackState({ players: (gameState.players ?? 0) + 1 })}
                   onRemove={() => updateStackState({ players: Math.max(0, (gameState.players ?? 0) - 1) })}
                 />
                 <CounterBlock
                   label="Ребаи"
                   value={gameState.rebuys ?? 0}
+                  disabled={managedPlayerCountsActive}
                   onAdd={() => updateStackState({ rebuys: (gameState.rebuys ?? 0) + 1 })}
                   onRemove={() => updateStackState({ rebuys: Math.max(0, (gameState.rebuys ?? 0) - 1) })}
                 />
                 <CounterBlock
                   label="Аддоны"
                   value={gameState.addonCount ?? 0}
+                  disabled={managedPlayerCountsActive}
                   onAdd={() => updateStackState({ addonCount: (gameState.addonCount ?? 0) + 1 })}
                   onRemove={() => updateStackState({ addonCount: Math.max(0, (gameState.addonCount ?? 0) - 1) })}
                 />
                 <CounterBlock
                   label="Бонусы"
                   value={gameState.bonusCount ?? 0}
+                  disabled={managedPlayerCountsActive}
                   onAdd={() => updateStackState({ bonusCount: (gameState.bonusCount ?? 0) + 1 })}
                   onRemove={() => updateStackState({ bonusCount: Math.max(0, (gameState.bonusCount ?? 0) - 1) })}
                 />
@@ -1435,6 +1537,7 @@ export function Admin() {
                   <CounterBlock
                     label="Ауты"
                     value={gameState.outs ?? 0}
+                    disabled={managedPlayerCountsActive}
                     onAdd={() => updateGameState({ outs: Math.min((gameState.players ?? 0), (gameState.outs ?? 0) + 1) })}
                     onRemove={() => updateGameState({ outs: Math.max(0, (gameState.outs ?? 0) - 1) })}
                   />
@@ -1474,6 +1577,20 @@ export function Admin() {
             </div>
 
           </div>
+        )}
+
+        {activeTab === 'players' && (
+          <TournamentPlayersTab
+            groupedPlayers={groupedPlayers}
+            playerSyncState={playerSyncState}
+            botSyncState={botSyncState}
+            tournamentBotId={gameState.tournamentBotId}
+            onRefreshFromBot={refreshFromBot}
+            onAddManualPlayer={addManualPlayer}
+            onUpdatePlayerField={updatePlayerField}
+            onSetPlayerArrival={setPlayerArrival}
+            onMarkPlayerOut={markPlayerOut}
+          />
         )}
 
         {/* ─── BLINDS TAB ──────────────────────────────────────────────── */}
@@ -2015,12 +2132,14 @@ const CounterBlock = React.memo(function CounterBlock({
   label,
   sublabel,
   value,
+  disabled = false,
   onAdd,
   onRemove,
 }: {
   label: string;
   sublabel?: string;
   value: number;
+  disabled?: boolean;
   onAdd: () => void;
   onRemove: () => void;
 }) {
@@ -2034,13 +2153,15 @@ const CounterBlock = React.memo(function CounterBlock({
       <div className="flex gap-1 w-full">
         <button
           onClick={onRemove}
-          className="flex-1 py-3 rounded-lg bg-[#2D2D2D] text-[#888] hover:bg-[#3D3D3D] font-bold text-lg transition-colors"
+          disabled={disabled}
+          className="flex-1 py-3 rounded-lg bg-[#2D2D2D] text-[#888] hover:bg-[#3D3D3D] font-bold text-lg transition-colors disabled:opacity-30 disabled:hover:bg-[#2D2D2D]"
         >
           −
         </button>
         <button
           onClick={onAdd}
-          className="flex-1 py-3 rounded-lg bg-[#C0392B] text-white hover:bg-[#E31E24] font-bold text-base transition-colors"
+          disabled={disabled}
+          className="flex-1 py-3 rounded-lg bg-[#C0392B] text-white hover:bg-[#E31E24] font-bold text-base transition-colors disabled:opacity-30 disabled:hover:bg-[#C0392B]"
         >
           +1
         </button>

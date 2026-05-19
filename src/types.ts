@@ -58,6 +58,53 @@ export interface GameState {
   resetAt: number; // unix ms timestamp of last resetTournament() — used to detect stale admin devices
 }
 
+export type LiveTournamentPlayerSource = 'bot' | 'manual';
+export type LiveTournamentRegistrationSource = 'registered' | 'waitlist';
+export type LiveTournamentPlayerStatus = 'registered' | 'waitlist' | 'active' | 'out';
+export type LiveTournamentArrivalStatus = 'absent' | 'paid' | 'free' | 'promo';
+export type LiveTournamentPaymentMethod = 'unpaid' | 'cash' | 'card';
+
+export interface LiveTournamentPlayer {
+  id: string;
+  sessionId: number;
+  tournamentBotId: number | null;
+  botRegistrationId: string | null;
+  telegramId: number | null;
+  name: string;
+  username: string | null;
+  source: LiveTournamentPlayerSource;
+  registrationSource: LiveTournamentRegistrationSource;
+  status: LiveTournamentPlayerStatus;
+  arrivalStatus: LiveTournamentArrivalStatus;
+  rebuyCount: number;
+  addonCount: number;
+  bonusCount: number;
+  bounty: number;
+  paymentDue: number;
+  paymentMethod: LiveTournamentPaymentMethod;
+  place: number | null;
+  placeOverride: boolean;
+  bustoutOrder: number | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TournamentPlayersSummary {
+  entrants: number;
+  active: number;
+  bustouts: number;
+  pending: number;
+  waitlist: number;
+  rebuys: number;
+  addons: number;
+  bonuses: number;
+  bountyTotal: number;
+  paidEntries: number;
+  freeEntries: number;
+  totalDue: number;
+}
+
 export interface RatingPlayer {
   id: string;
   name: string;

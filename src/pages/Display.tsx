@@ -3,6 +3,7 @@ import { useGameState } from '../hooks/useGameState';
 import { useBotRating } from '../hooks/useBotRating';
 import { useBotBounty } from '../hooks/useBotBounty';
 import { useNextGame } from '../hooks/useNextGame';
+import { getKnockoutLabel, getNextKnockoutInfo, isKnockoutLevel } from '../blindLevelMarkers';
 import { getRankPoints, RED_SUITS, SUIT_SYMBOLS } from '../types';
 import type { Card } from '../types';
 import logoUrl from '../assets/logo.png';
@@ -78,6 +79,12 @@ function fmtDate(iso: string) {
 }
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+function fmtApproxTimeFromNow(secs: number) {
+  return new Date(Date.now() + Math.max(0, secs) * 1000).toLocaleTimeString('ru-RU', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function formatFallbackNextGameLines(raw: string) {
@@ -197,6 +204,11 @@ export function Display() {
 
   const currentLevel = blindLevels[gameState.currentLevelIndex] ?? null;
   const nextLevel    = blindLevels[gameState.currentLevelIndex + 1] ?? null;
+  const currentKnockoutLabel = getKnockoutLabel(currentLevel);
+  const nextKnockout = getNextKnockoutInfo(blindLevels, gameState.currentLevelIndex, gameState.timeLeft);
+  const nextKnockoutTime = nextKnockout && !nextKnockout.startsNow
+    ? fmtApproxTimeFromNow(nextKnockout.secondsUntil)
+    : null;
 
   const isBreak   = gameState.status === 'break' || currentLevel?.isBreak;
   const isWarning = gameState.timeLeft <= 60 && gameState.status === 'running';
@@ -364,11 +376,18 @@ export function Display() {
           <div className="flex flex-col items-center justify-center flex-1 gap-6">
             {/* Номер уровня — над таймером */}
             {!isBreak && currentLevel && !currentLevel.isBreak && (
-              <div
-                className="uppercase tracking-[0.4em] text-center"
-                style={{ color: '#444', fontSize: '18px' }}
-              >
-                Уровень {currentLevel.level}
+              <div className="flex flex-col items-center gap-2">
+                <div
+                  className="uppercase tracking-[0.4em] text-center"
+                  style={{ color: '#444', fontSize: '18px' }}
+                >
+                  Уровень {currentLevel.level}
+                </div>
+                {currentKnockoutLabel && (
+                  <div className="rounded-full border border-[#E31E24]/35 bg-[#1a0a00] px-4 py-1 text-[#E31E24] text-sm font-black uppercase tracking-[0.25em]">
+                    {currentKnockoutLabel}
+                  </div>
+                )}
               </div>
             )}
 
@@ -430,6 +449,11 @@ export function Display() {
                       {nextLevel.ante > 0 && (
                         <span className="text-[#E31E24]"> + {fmt(nextLevel.ante)}</span>
                       )}
+                      {isKnockoutLevel(nextLevel) && (
+                        <span className="ml-3 rounded-full border border-[#E31E24]/35 bg-[#1a0a00] px-3 py-1 text-xs uppercase tracking-[0.22em] text-[#E31E24] align-middle">
+                          Игра на вылет
+                        </span>
+                      )}
                     </span>
                 }
               </div>
@@ -438,19 +462,43 @@ export function Display() {
           </div>
 
             {/* Живой отсчёт до перерыва — внизу */}
-            {!isBreak && secondsUntilBreak !== null && levelsUntilBreak !== null && levelsUntilBreak > 1 && (
-              <div className="pb-4 text-center">
-                <div className="uppercase tracking-[0.25em] mb-1 font-light" style={{ color: '#E31E24', fontSize: '13px' }}>до перерыва</div>
-                <div
-                  className="tabular-nums"
-                  style={{
-                    fontFamily: "'JetBrains Mono', monospace",
-                    fontSize: '44px',
-                    color: '#666',
-                  }}
-                >
-                  {fmtCountdown(secondsUntilBreak)}
-                </div>
+            {!isBreak && ((secondsUntilBreak !== null && levelsUntilBreak !== null && levelsUntilBreak > 1) || (nextKnockout && !nextKnockout.startsNow && nextKnockoutTime)) && (
+              <div className="pb-4 flex flex-col items-center gap-4 text-center">
+                {nextKnockout && !nextKnockout.startsNow && nextKnockoutTime && (
+                  <div>
+                    <div className="uppercase tracking-[0.25em] mb-1 font-light" style={{ color: '#E31E24', fontSize: '13px' }}>
+                      игра на вылет
+                    </div>
+                    <div
+                      className="tabular-nums"
+                      style={{
+                        fontFamily: "'JetBrains Mono', monospace",
+                        fontSize: '40px',
+                        color: '#FFFFFF',
+                      }}
+                    >
+                      {fmtCountdown(nextKnockout.secondsUntil)}
+                    </div>
+                    <div className="text-[#666] text-sm mt-1 uppercase tracking-[0.2em]">
+                      примерно в {nextKnockoutTime}
+                    </div>
+                  </div>
+                )}
+                {secondsUntilBreak !== null && levelsUntilBreak !== null && levelsUntilBreak > 1 && (
+                  <div>
+                    <div className="uppercase tracking-[0.25em] mb-1 font-light" style={{ color: '#E31E24', fontSize: '13px' }}>до перерыва</div>
+                    <div
+                      className="tabular-nums"
+                      style={{
+                        fontFamily: "'JetBrains Mono', monospace",
+                        fontSize: '44px',
+                        color: '#666',
+                      }}
+                    >
+                      {fmtCountdown(secondsUntilBreak)}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
