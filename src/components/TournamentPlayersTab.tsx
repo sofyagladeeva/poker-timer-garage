@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type {
   LiveTournamentArrivalStatus,
@@ -370,14 +370,10 @@ function MobilePlayerCard({
           <div className="mt-3 grid grid-cols-[minmax(0,1fr)_96px] gap-2">
             <div>
               <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1">Bounty</div>
-              <input
-                key={`mobile-bounty-${player.id}-${player.updatedAt}`}
-                type="number"
-                defaultValue={player.bounty || ''}
-                onBlur={event => void onUpdatePlayerField(player.id, { bounty: Math.max(0, Number(event.currentTarget.value) || 0) })}
+              <BountyInput
+                value={player.bounty}
                 className="admin-input !w-full !py-2 !px-3 !text-sm text-center"
-                placeholder="0"
-                inputMode="numeric"
+                onCommit={value => onUpdatePlayerField(player.id, { bounty: value })}
               />
             </div>
 
@@ -562,14 +558,10 @@ function PlayerRow({
       </td>
 
       <td className="px-1 py-1 sm:px-1.5 sm:py-1.5 align-top border-y border-[#2D2D2D]">
-        <input
-          key={`bounty-${player.id}-${player.updatedAt}`}
-          type="number"
-          defaultValue={player.bounty || ''}
-          onBlur={event => void onUpdatePlayerField(player.id, { bounty: Math.max(0, Number(event.currentTarget.value) || 0) })}
+        <BountyInput
+          value={player.bounty}
           className="admin-input !w-full !py-1 !px-1 !text-[10px] sm:!text-[11px] text-center"
-          placeholder="0"
-          inputMode="numeric"
+          onCommit={value => onUpdatePlayerField(player.id, { bounty: value })}
         />
       </td>
 
@@ -616,6 +608,44 @@ function PlayerRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+function BountyInput({
+  value,
+  className,
+  onCommit,
+}: {
+  value: number;
+  className: string;
+  onCommit: (value: number) => Promise<void>;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (focusedRef.current || !inputRef.current) return;
+    inputRef.current.value = value > 0 ? String(value) : '';
+  }, [value]);
+
+  return (
+    <input
+      ref={inputRef}
+      type="number"
+      defaultValue={value > 0 ? String(value) : ''}
+      onFocus={() => {
+        focusedRef.current = true;
+      }}
+      onBlur={event => {
+        focusedRef.current = false;
+        const nextValue = Math.max(0, Number(event.currentTarget.value) || 0);
+        event.currentTarget.value = nextValue > 0 ? String(nextValue) : '';
+        void onCommit(nextValue);
+      }}
+      className={className}
+      placeholder="0"
+      inputMode="numeric"
+    />
   );
 }
 

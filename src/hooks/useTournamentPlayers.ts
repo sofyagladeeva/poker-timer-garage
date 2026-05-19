@@ -334,12 +334,27 @@ function mergeImportedRoster(
         : existing.arrivalStatus === 'absent'
           ? baseStatus
           : 'active';
+      const nextBotRegistrationId = imported.botRegistrationId ?? existing.botRegistrationId;
+      const nextTelegramId = imported.telegramId ?? existing.telegramId;
+      const hasChanges =
+        existing.tournamentBotId !== tournamentBotId ||
+        existing.botRegistrationId !== nextBotRegistrationId ||
+        existing.telegramId !== nextTelegramId ||
+        existing.name !== imported.name ||
+        existing.username !== imported.username ||
+        existing.source !== 'bot' ||
+        existing.registrationSource !== imported.registrationSource ||
+        existing.status !== nextStatus;
+
+      if (!hasChanges) {
+        continue;
+      }
 
       Object.assign(existing, {
         ...existing,
         tournamentBotId,
-        botRegistrationId: imported.botRegistrationId ?? existing.botRegistrationId,
-        telegramId: imported.telegramId ?? existing.telegramId,
+        botRegistrationId: nextBotRegistrationId,
+        telegramId: nextTelegramId,
         name: imported.name,
         username: imported.username,
         source: 'bot',
@@ -904,7 +919,9 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       ...result.waitlist.map(player => ({ ...player, registrationSource: 'waitlist' as const })),
     ];
     const merged = mergeImportedRoster(playersRef.current, imported, sessionIdRef.current, tournamentBotIdRef.current);
-    await commitPlayersSnapshot(merged.players);
+    if (merged.changedRows.length > 0 || merged.players.length !== playersRef.current.length) {
+      await commitPlayersSnapshot(merged.players);
+    }
     setBotSyncState({
       loading: false,
       error: null,
