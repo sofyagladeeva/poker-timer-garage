@@ -9,6 +9,7 @@ import { getKnockoutLabel, getNextKnockoutInfo, setKnockoutMarker } from '../bli
 import { calcTotalStack } from '../gameStateMath';
 import type { BlindLevel, BlindTemplate, Combination, Card, Suit, Rank, TournamentRecord, GameState } from '../types';
 import { SUIT_SYMBOLS } from '../types';
+import { deriveTournamentResultsUiState, getTournamentResultsButtonLabel } from '../tournamentResultsFlow';
 import { PokerCard } from '../components/PokerCard';
 import { TournamentPlayersTab } from '../components/TournamentPlayersTab';
 import {
@@ -79,6 +80,19 @@ type BotGameSummary = {
   confirmed: number;
   max_players: number;
   status?: string;
+};
+
+type TournamentResultsNotice = {
+  tone: 'success' | 'error';
+  text: string;
+} | null;
+
+type TournamentResultsDispatchOutcome = {
+  ok: boolean;
+  skipped: boolean;
+  cancelled: boolean;
+  error: string | null;
+  resent: boolean;
 };
 
 function formatNextGameFallback(game: { title: string; date: string; confirmed: number; max_players: number }) {
@@ -374,6 +388,11 @@ export function Admin() {
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([]);
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [finishReviewOpen, setFinishReviewOpen] = useState(false);
+  const [finishBusy, setFinishBusy] = useState(false);
+  const [resultsBusy, setResultsBusy] = useState(false);
+  const [newTournamentBusy, setNewTournamentBusy] = useState(false);
+  const [resultsNotice, setResultsNotice] = useState<TournamentResultsNotice>(null);
 
   // ── Bot games list ─────────────────────────────────────────────────────
   const [botGames, setBotGames] = useState<BotGameSummary[]>([]);
@@ -390,16 +409,249 @@ export function Admin() {
     summary: tournamentPlayersSummary,
     playerSyncState,
     botSyncState,
+    resultsSubmission,
+    currentResultsSignature,
     refreshFromBot,
     addManualPlayer,
     updatePlayerField,
     setPlayerArrival,
     markPlayerOut,
+    exportTournamentResults,
   } = useTournamentPlayers({
     gameState,
     updateGameState,
   });
   const managedPlayerCountsActive = tournamentPlayers.length > 0;
+
+  const finishReviewPlayers = [...tournamentPlayers].sort((a, b) => {
+    if (a.place !== null && b.place !== null) return a.place - b.place;
+    if (a.place !== null) return -1;
+    if (b.place !== null) return 1;
+    return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'ru');
+  });
+  const levelsPlayed = gameState.currentLevelIndex + 1;
+  const playersMissingFinalPlace = finishReviewPlayers.filter(player => (
+    player.arrivalStatus !== 'absent' && player.status !== 'out'
+  )).length;
+  const hasBotResultsTarget = tournamentPlayers.length > 0 && gameState.tournamentBotId != null;
+  const requiresBotResults = gameState.tournamentBotId != null;
+  const {
+    resultsAlreadyCurrent,
+    resultsNeedResubmit,
+    canSubmitTournamentResults,
+  } = deriveTournamentResultsUiState({
+    hasBotResultsTarget,
+    playersMissingFinalPlace,
+    resultsSubmissionSignature: resultsSubmission.signature,
+    currentResultsSignature,
+  });
+  const resultsSentLabel = resultsSubmission.sentAt
+    ? new Date(resultsSubmission.sentAt).toLocaleString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null;
+  const visibleResultsNotice =
+    resultsNotice?.tone === 'success' &&
+    !resultsAlreadyCurrent &&
+    Boolean(resultsSubmission.signature)
+      ? null
+      : resultsNotice;
+  const missingBotRosterForFinish = requiresBotResults && tournamentPlayers.length === 0 && !resultsAlreadyCurrent;
+  const canFinishTournamentFromReview = !finishBusy && !resultsBusy && (
+    !requiresBotResults ||
+    (
+      playersMissingFinalPlace === 0 &&
+      !missingBotRosterForFinish &&
+      (resultsAlreadyCurrent || canSubmitTournamentResults)
+    )
+  );
+  const finishReviewPrimaryLabel = resultsBusy
+    ? 'Отправка...'
+    : finishBusy
+      ? 'Завершение...'
+      : !requiresBotResults || resultsAlreadyCurrent
+        ? 'Завершить турнир'
+        : resultsNeedResubmit
+          ? 'Завершить и отправить обновление'
+          : 'Завершить и отправить в бот';
+  const sendResultsButtonLabel = getTournamentResultsButtonLabel({
+    resultsBusy,
+    resultsAlreadyCurrent,
+    resultsNeedResubmit,
+  });
+
+  const finishTournamentFlow = async () => {
+    const endOk = await updateGameState({ status: 'ended' }, true);
+    return endOk !== false;
+  };
+
+  const dispatchTournamentResults = async (): Promise<TournamentResultsDispatchOutcome> => {
+    if (resultsNeedResubmit && resultsSubmission.sentAt) {
+      const confirmed = confirm('Итоги уже отправлялись. Отправить в бот обновлённую версию результатов?');
+      if (!confirmed) {
+        return {
+          ok: false,
+          skipped: false,
+          cancelled: true,
+          error: null,
+          resent: true,
+        };
+      }
+    }
+
+    setResultsBusy(true);
+    try {
+      const exportResult = await exportTournamentResults(levelsPlayed);
+      if (!exportResult.ok) {
+        return {
+          ok: false,
+          skipped: exportResult.skipped,
+          cancelled: false,
+          error: exportResult.error ?? 'Не удалось отправить итоги турнира в бот.',
+          resent: resultsNeedResubmit,
+        };
+      }
+
+      return {
+        ok: true,
+        skipped: false,
+        cancelled: false,
+        error: null,
+        resent: resultsNeedResubmit,
+      };
+    } finally {
+      setResultsBusy(false);
+    }
+  };
+
+  const submitTournamentResults = async () => {
+    setResultsNotice(null);
+    const dispatchResult = await dispatchTournamentResults();
+    if (dispatchResult.cancelled) return false;
+
+    if (!dispatchResult.ok) {
+      if (!dispatchResult.skipped) {
+        setResultsNotice({
+          tone: 'error',
+          text: dispatchResult.error ?? 'Не удалось отправить итоги турнира в бот.',
+        });
+        return false;
+      }
+
+      setResultsNotice({
+        tone: 'success',
+        text: 'Для этого турнира сейчас нечего отправлять в бот.',
+      });
+      return true;
+    }
+
+    setResultsNotice({
+      tone: 'success',
+      text: dispatchResult.resent
+        ? 'Обновлённые итоги турнира отправлены в бот.'
+        : 'Итоги турнира отправлены в бот. Теперь можно запускать новый турнир.',
+    });
+    return true;
+  };
+
+  const finishAndSubmitTournament = async () => {
+    if (requiresBotResults && missingBotRosterForFinish) {
+      setResultsNotice({
+        tone: 'error',
+        text: 'Для турнира из бота перед завершением нужен список игроков. Синхронизируйте состав из бота или добавьте игроков вручную.',
+      });
+      return false;
+    }
+
+    if (requiresBotResults && playersMissingFinalPlace > 0) {
+      setResultsNotice({
+        tone: 'error',
+        text: 'Перед завершением переведите всех оставшихся игроков в `Выбыл` и проверьте финальные места.',
+      });
+      return false;
+    }
+
+    setFinishBusy(true);
+    setResultsNotice(null);
+    try {
+      let dispatchedResults = false;
+      let resentResults = false;
+
+      if (requiresBotResults && !resultsAlreadyCurrent) {
+        const dispatchResult = await dispatchTournamentResults();
+        if (dispatchResult.cancelled) return false;
+        if (!dispatchResult.ok) {
+          setResultsNotice({
+            tone: 'error',
+            text: dispatchResult.skipped
+              ? 'Для завершения турнира сначала подготовьте результаты для отправки в бот.'
+              : dispatchResult.error ?? 'Не удалось отправить итоги турнира в бот.',
+          });
+          return false;
+        }
+
+        dispatchedResults = true;
+        resentResults = dispatchResult.resent;
+      }
+
+      const endedOk = await finishTournamentFlow();
+      if (!endedOk) {
+        setResultsNotice({
+          tone: 'error',
+          text: requiresBotResults
+            ? 'Итоги уже отправлены в бот, но турнир не удалось перевести в завершённый статус. Повторите завершение ещё раз.'
+            : 'Не удалось завершить турнир. Не закрывайте страницу и попробуйте ещё раз.',
+        });
+        return false;
+      }
+
+      setResultsNotice({
+        tone: 'success',
+        text: !requiresBotResults
+          ? 'Турнир завершён.'
+          : resultsAlreadyCurrent && !dispatchedResults
+            ? 'Турнир завершён. Актуальные итоги уже были отправлены в бот.'
+            : resentResults
+              ? 'Обновлённые итоги отправлены в бот, турнир завершён.'
+              : 'Итоги отправлены в бот, турнир завершён.',
+      });
+      return true;
+    } finally {
+      setFinishBusy(false);
+    }
+  };
+
+  const startNewTournamentFlow = async () => {
+    setNewTournamentBusy(true);
+    try {
+      await saveTournament(gameState, levelsPlayed);
+
+      const resetOk = await resetTournament();
+      if (!resetOk) {
+        alert('Не удалось сохранить завершение турнира в Supabase. Не закрывайте страницу и попробуйте ещё раз.');
+        return;
+      }
+
+      setFinishReviewOpen(false);
+      setResultsNotice(null);
+      setActiveTab('control');
+    } finally {
+      setNewTournamentBusy(false);
+    }
+  };
+
+  const confirmStartNewTournament = async () => {
+    const message = hasBotResultsTarget && !resultsAlreadyCurrent
+      ? 'Начать новый турнир? Если итоги ещё не отправлены в бот, сделайте это сначала. Данные текущего турнира сохранятся в архив.'
+      : 'Завершить текущий турнир и начать новый? Данные сохранятся в архив.';
+
+    if (!confirm(message)) return;
+    await startNewTournamentFlow();
+  };
+
   const playersInGame = managedPlayerCountsActive
     ? tournamentPlayersSummary.active
     : Math.max(0, gameState.players - gameState.outs);
@@ -1296,20 +1548,29 @@ export function Admin() {
                   <div className="text-[#555] text-xs uppercase mb-1">Всего фишек в игре</div>
                   <div className="text-[#C0392B] font-black text-3xl">{(gameState.totalStack ?? 0).toLocaleString('ru-RU')}</div>
                 </div>
-                <button
-                  onClick={async () => {
-                    if (confirm('Завершить и начать новый турнир? Данные сохранятся в архив.')) {
-                      await saveTournament(gameState, gameState.currentLevelIndex + 1);
-                      const resetOk = await resetTournament();
-                      if (!resetOk) {
-                        alert('Не удалось сохранить новый турнир в Supabase. Не закрывайте страницу и попробуйте еще раз.');
-                      }
-                    }
-                  }}
-                  className="admin-btn-primary py-4 text-base font-bold"
-                >
-                  ↺ Новый турнир
-                </button>
+                {playersMissingFinalPlace > 0 && (
+                  <div className="rounded-xl border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
+                    Итоги ещё не готовы к отправке: без финального места осталось {playersMissingFinalPlace}. Откройте окно `Итоги и отправка`, проверьте результаты и довыставьте выбывших.
+                  </div>
+                )}
+                {resultsAlreadyCurrent && (
+                  <div className="rounded-xl border border-green-900/60 bg-green-950/30 px-4 py-3 text-sm text-green-200">
+                    Итоги уже отправлены в бот{resultsSentLabel ? ` · ${resultsSentLabel}` : ''}. Все дальнейшие действия доступны только через окно `Итоги и отправка`.
+                  </div>
+                )}
+                {resultsNeedResubmit && (
+                  <div className="rounded-xl border border-blue-900/60 bg-blue-950/30 px-4 py-3 text-sm text-blue-200">
+                    После прошлой отправки результаты были изменены. Откройте окно `Итоги и отправка`, чтобы отправить обновлённую версию.
+                  </div>
+                )}
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    onClick={() => setFinishReviewOpen(true)}
+                    className="admin-btn-secondary py-4 text-sm font-bold"
+                  >
+                    {resultsAlreadyCurrent ? '🧾 Итоги отправлены' : '🧾 Итоги и отправка'}
+                  </button>
+                </div>
               </div>
             ) : (
               <>
@@ -1414,15 +1675,7 @@ export function Admin() {
                     ↺ Сбросить время
                   </button>
                   <button
-                    onClick={async () => {
-                      if (confirm('Завершить турнир? Данные будут сохранены в архив.')) {
-                        await saveTournament(gameState, gameState.currentLevelIndex + 1);
-                        const resetOk = await resetTournament();
-                        if (!resetOk) {
-                          alert('Не удалось сохранить завершение турнира в Supabase. Не закрывайте страницу и попробуйте еще раз.');
-                        }
-                      }
-                    }}
+                    onClick={() => setFinishReviewOpen(true)}
                     className="admin-btn-danger py-4 text-sm"
                   >
                     ✕ Завершить
@@ -1607,6 +1860,9 @@ export function Admin() {
             playerSyncState={playerSyncState}
             botSyncState={botSyncState}
             tournamentBotId={gameState.tournamentBotId}
+            isTournamentEnded={false}
+            reviewPlayers={[]}
+            onOpenControlTab={() => {}}
             onRefreshFromBot={refreshFromBot}
             onAddManualPlayer={addManualPlayer}
             onUpdatePlayerField={updatePlayerField}
@@ -2067,6 +2323,141 @@ export function Admin() {
         )}
 
       </div>
+
+      {finishReviewOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-3 sm:items-center sm:p-6">
+          <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-[#2D2D2D] bg-[#111] shadow-2xl">
+            <div className="border-b border-[#2D2D2D] px-5 py-4">
+              <div className="text-white font-black text-lg uppercase tracking-[0.14em]">
+                {gameState.status === 'ended' ? 'Итоги турнира' : 'Завершить турнир'}
+              </div>
+              <div className="text-[#888] text-sm mt-1">
+                {gameState.status === 'ended'
+                  ? 'Проверьте результаты прямо в этом окне, внесите правки если нужно и отправьте итог в бот отсюда же.'
+                  : requiresBotResults
+                    ? 'Проверьте результаты прямо в этом окне. После кнопки `Завершить и отправить в бот` турнир завершится только после успешной отправки.'
+                    : 'Проверьте результаты прямо в этом окне и завершите турнир отсюда же.'}
+              </div>
+            </div>
+
+            <div className="overflow-y-auto px-5 py-4">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-xl bg-[#0A0A0A] px-3 py-3 text-center">
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">В игре</div>
+                  <div className="mt-1 text-2xl font-black text-white">{tournamentPlayersSummary.active}</div>
+                </div>
+                <div className="rounded-xl bg-[#0A0A0A] px-3 py-3 text-center">
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Выбыли</div>
+                  <div className="mt-1 text-2xl font-black text-white">{tournamentPlayersSummary.bustouts}</div>
+                </div>
+                <div className="rounded-xl bg-[#0A0A0A] px-3 py-3 text-center">
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Входов</div>
+                  <div className="mt-1 text-2xl font-black text-white">{tournamentPlayersSummary.entrants}</div>
+                </div>
+              </div>
+
+              {missingBotRosterForFinish && (
+                <div className="mt-4 rounded-xl border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
+                  Перед завершением игры из бота нужен список игроков. Нажмите `Синхронизировать` или добавьте игроков вручную.
+                </div>
+              )}
+
+              {playersMissingFinalPlace > 0 && (
+                <div className="mt-4 rounded-xl border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
+                  Без итогового места: {playersMissingFinalPlace}. Перед отправкой переведите оставшихся игроков в `Выбыл` и при необходимости поправьте место вручную.
+                </div>
+              )}
+
+              {visibleResultsNotice && (
+                <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
+                  visibleResultsNotice.tone === 'success'
+                    ? 'border-green-900/60 bg-green-950/30 text-green-200'
+                    : 'border-red-900/60 bg-red-950/40 text-red-300'
+                }`}>
+                  {visibleResultsNotice.text}
+                </div>
+              )}
+
+              {resultsAlreadyCurrent && (
+                <div className="mt-4 rounded-xl border border-green-900/60 bg-green-950/30 px-4 py-3 text-sm text-green-200">
+                  Текущая версия итогов уже отправлена в бот{resultsSentLabel ? ` · ${resultsSentLabel}` : ''}.
+                </div>
+              )}
+
+              {resultsNeedResubmit && (
+                <div className="mt-4 rounded-xl border border-blue-900/60 bg-blue-950/30 px-4 py-3 text-sm text-blue-200">
+                  После прошлой отправки данные менялись. Можно отправить обновлённую версию результатов.
+                </div>
+              )}
+
+              <div className="mt-4">
+                <TournamentPlayersTab
+                  groupedPlayers={groupedPlayers}
+                  playerSyncState={playerSyncState}
+                  botSyncState={botSyncState}
+                  tournamentBotId={gameState.tournamentBotId}
+                  isTournamentEnded={false}
+                  reviewPlayers={[]}
+                  onOpenControlTab={() => {}}
+                  onRefreshFromBot={refreshFromBot}
+                  onAddManualPlayer={addManualPlayer}
+                  onUpdatePlayerField={updatePlayerField}
+                  onSetPlayerArrival={setPlayerArrival}
+                  onMarkPlayerOut={markPlayerOut}
+                />
+              </div>
+            </div>
+
+            <div className="border-t border-[#2D2D2D] px-5 py-4">
+              {gameState.status === 'ended' ? (
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setFinishReviewOpen(false)}
+                    className="admin-btn-secondary px-4 py-3 text-sm"
+                  >
+                    Закрыть
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void submitTournamentResults()}
+                    disabled={!canSubmitTournamentResults || resultsBusy}
+                    className="admin-btn-primary px-4 py-3 text-sm disabled:opacity-40"
+                  >
+                    {sendResultsButtonLabel}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void confirmStartNewTournament()}
+                    disabled={newTournamentBusy}
+                    className="admin-btn-primary px-4 py-3 text-sm disabled:opacity-40"
+                  >
+                    {newTournamentBusy ? 'Сохранение...' : '↺ Новый турнир'}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setFinishReviewOpen(false)}
+                    className="admin-btn-secondary px-4 py-3 text-sm"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void finishAndSubmitTournament()}
+                    disabled={!canFinishTournamentFromReview}
+                    className="admin-btn-danger px-4 py-3 text-sm disabled:opacity-40"
+                  >
+                    {finishReviewPrimaryLabel}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </ErrorBoundary>
   );

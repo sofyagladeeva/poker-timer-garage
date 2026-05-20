@@ -135,6 +135,40 @@ export interface TournamentRecord {
   levels_played: number;
 }
 
+export interface TournamentResultsPlayerRecord {
+  botRegistrationId: string | null;
+  telegramId: number | null;
+  name: string;
+  username: string | null;
+  source: LiveTournamentPlayerSource;
+  arrivalStatus: LiveTournamentArrivalStatus;
+  paymentMethod: LiveTournamentPaymentMethod;
+  paymentDue: number;
+  rebuyCount: number;
+  addonCount: number;
+  bounty: number;
+  status: LiveTournamentPlayerStatus;
+  place: number | null;
+  bustoutOrder: number | null;
+}
+
+export interface TournamentResultsPayload {
+  sessionId: number;
+  tournamentBotId: number | null;
+  tournamentTitle: string;
+  finishedAt: string;
+  levelsPlayed: number;
+  summary: {
+    entrants: number;
+    rebuys: number;
+    addons: number;
+    bonuses: number;
+    bountyTotal: number;
+    totalStack: number;
+  };
+  players: TournamentResultsPlayerRecord[];
+}
+
 // Rank points from Excel table (Покер RANK.xlsx):
 // total points are distributed across top-9 with fixed shares.
 const RANK_POINT_SHARES = [0.315, 0.195, 0.137, 0.105, 0.067, 0.054, 0.047, 0.042, 0.038] as const;

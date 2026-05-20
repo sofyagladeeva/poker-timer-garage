@@ -1,4 +1,4 @@
-import type { GameState, GameStatus } from './types';
+import type { GameState, GameStatus } from './types.ts';
 
 function toNumber(value: unknown, fallback = 0) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;

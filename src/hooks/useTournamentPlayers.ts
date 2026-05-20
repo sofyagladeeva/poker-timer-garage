@@ -1,7 +1,7 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { supabase } from '../supabase';
-import { calcTotalStack } from '../gameStateMath';
-import { fetchBotTournamentRoster, type ImportedTournamentPlayer } from '../tournamentBotApi';
+import { supabase } from '../supabase.ts';
+import { calcTotalStack } from '../gameStateMath.ts';
+import { fetchBotTournamentRoster, submitBotTournamentResults, type ImportedTournamentPlayer } from '../tournamentBotApi.ts';
 import type {
   GameState,
   LiveTournamentArrivalStatus,
@@ -9,7 +9,8 @@ import type {
   LiveTournamentPlayerStatus,
   LiveTournamentRegistrationSource,
   TournamentPlayersSummary,
-} from '../types';
+  TournamentResultsPayload,
+} from '../types.ts';
 
 const PLAYERS_LOCAL_PREFIX = 'poker_live_tournament_players';
 const SHARED_PLAYERS_PREFIX = '__live_players__';
@@ -46,13 +47,27 @@ type StoredPlayersPayload = {
   tournamentBotId: number | null;
   tournamentTitle: string;
   updatedAt: string;
+  resultsSentAt?: string | null;
+  resultsSignature?: string | null;
   players: unknown;
+};
+
+type TournamentResultsSubmissionState = {
+  sentAt: string | null;
+  signature: string | null;
 };
 
 type LoadedPlayersSnapshot = {
   players: LiveTournamentPlayer[];
   updatedAt: string | null;
   structured: boolean;
+  resultsSubmission: TournamentResultsSubmissionState;
+};
+
+type QueuedSharedPlayersSnapshot = {
+  players: LiveTournamentPlayer[];
+  resultsSubmission: TournamentResultsSubmissionState;
+  updatedAt: string;
 };
 
 function hasSharedPlayersStorage() {
@@ -110,8 +125,36 @@ function normalizeTournamentTitle(value: string | null | undefined) {
     : '';
 }
 
+function normalizeResultsSubmission(
+  sentAt: unknown,
+  signature: unknown
+): TournamentResultsSubmissionState {
+  return {
+    sentAt: typeof sentAt === 'string' && sentAt.trim() ? sentAt : null,
+    signature: typeof signature === 'string' && signature.trim() ? signature : null,
+  };
+}
+
 function nowIso() {
   return new Date().toISOString();
+}
+
+function parseSnapshotUpdatedAt(value: string | null | undefined) {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function isIncomingPlayersSnapshotStale(
+  currentUpdatedAt: string | null,
+  incomingUpdatedAt: string | null
+) {
+  const currentTs = parseSnapshotUpdatedAt(currentUpdatedAt);
+  const incomingTs = parseSnapshotUpdatedAt(incomingUpdatedAt);
+
+  if (incomingTs === null) return currentTs !== null;
+  if (currentTs === null) return false;
+  return incomingTs < currentTs;
 }
 
 function createId() {
@@ -139,7 +182,7 @@ function normalizePlayerStatus(value: unknown, fallback: LiveTournamentPlayerSta
     : fallback;
 }
 
-function calcPaymentDue(arrivalStatus: LiveTournamentArrivalStatus, rebuyCount: number, addonCount: number) {
+export function calcPaymentDue(arrivalStatus: LiveTournamentArrivalStatus, rebuyCount: number, addonCount: number) {
   if (arrivalStatus === 'absent') return 0;
 
   const entryUnits = arrivalStatus === 'free' ? 0 : 1;
@@ -461,12 +504,13 @@ function matchesGameStateCounters(players: LiveTournamentPlayer[], gameState: Ga
   );
 }
 
-function buildStoredPlayersPayload(
+export function buildStoredPlayersPayload(
   players: LiveTournamentPlayer[],
   sessionId: number,
   tournamentBotId: number | null,
   tournamentTitle: string,
-  updatedAt = nowIso()
+  updatedAt = nowIso(),
+  resultsSubmission: TournamentResultsSubmissionState = { sentAt: null, signature: null }
 ): StoredPlayersPayload {
   return {
     version: 1,
@@ -474,11 +518,13 @@ function buildStoredPlayersPayload(
     tournamentBotId,
     tournamentTitle,
     updatedAt,
+    resultsSentAt: resultsSubmission.sentAt,
+    resultsSignature: resultsSubmission.signature,
     players: recalculatePlayers(players),
   };
 }
 
-function parseStoredPlayersPayload(
+export function parseStoredPlayersPayload(
   raw: unknown,
   sessionId: number,
   tournamentBotId: number | null,
@@ -506,6 +552,7 @@ function parseStoredPlayersPayload(
     players: normalizePlayersPayload(payload.players, sessionId, tournamentBotId),
     updatedAt: typeof payload.updatedAt === 'string' && payload.updatedAt ? payload.updatedAt : null,
     structured: true,
+    resultsSubmission: normalizeResultsSubmission(payload.resultsSentAt, payload.resultsSignature),
   };
 }
 
@@ -548,6 +595,7 @@ function parseLegacyPlayersSnapshot(
     players: normalizePlayersPayload(raw, sessionId, tournamentBotId),
     updatedAt: null,
     structured: false,
+    resultsSubmission: { sentAt: null, signature: null },
   };
 }
 
@@ -560,6 +608,21 @@ function trustLoadedPlayersSnapshot(snapshot: LoadedPlayersSnapshot | null, game
   }
 
   return matchesGameStateCounters(snapshot.players, gameState) ? snapshot : null;
+}
+
+export function sortPlayersForResults(players: LiveTournamentPlayer[]) {
+  return [...players].sort((a, b) => {
+    if (a.place !== null && b.place !== null) return a.place - b.place;
+    if (a.place !== null) return -1;
+    if (b.place !== null) return 1;
+    return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'ru');
+  });
+}
+
+export function buildTournamentResultsSignature(payload: TournamentResultsPayload) {
+  const { finishedAt, ...stablePayload } = payload;
+  void finishedAt;
+  return JSON.stringify(stablePayload);
 }
 
 function formatSharedPlayersError(action: string, error: unknown) {
@@ -596,6 +659,10 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     lastSyncedAt: null,
     shared: false,
   });
+  const [resultsSubmission, setResultsSubmission] = useState<TournamentResultsSubmissionState>({
+    sentAt: null,
+    signature: null,
+  });
 
   const playersRef = useRef(players);
   const sessionIdRef = useRef(sessionId);
@@ -604,8 +671,62 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
   const sharedStorageIdRef = useRef(sharedStorageId);
   const botSyncUnsupported = useRef(false);
   const playersHydratedRef = useRef(!sharedEnabled);
+  const resultsSubmissionRef = useRef(resultsSubmission);
+  const snapshotUpdatedAtRef = useRef<string | null>(null);
+  const sharedPersistInFlightRef = useRef(false);
+  const queuedSharedPersistRef = useRef<QueuedSharedPlayersSnapshot | null>(null);
 
   const summary = useMemo(() => summarizePlayers(players), [players]);
+  const currentResultsSignature = useMemo(() => {
+    if (players.length === 0 || gameState.tournamentBotId == null) return null;
+
+    const orderedPlayers = sortPlayersForResults(players);
+    const payload: TournamentResultsPayload = {
+      sessionId,
+      tournamentBotId: gameState.tournamentBotId,
+      tournamentTitle: gameState.tournamentTitle,
+      finishedAt: '',
+      levelsPlayed: gameState.currentLevelIndex + 1,
+      summary: {
+        entrants: summary.entrants,
+        rebuys: summary.rebuys,
+        addons: summary.addons,
+        bonuses: summary.bonuses,
+        bountyTotal: summary.bountyTotal,
+        totalStack: gameState.totalStack,
+      },
+      players: orderedPlayers.map(player => ({
+        botRegistrationId: player.botRegistrationId,
+        telegramId: player.telegramId,
+        name: player.name,
+        username: player.username,
+        source: player.source,
+        arrivalStatus: player.arrivalStatus,
+        paymentMethod: player.paymentMethod,
+        paymentDue: player.paymentDue,
+        rebuyCount: player.rebuyCount,
+        addonCount: player.addonCount,
+        bounty: player.bounty,
+        status: player.status,
+        place: player.place,
+        bustoutOrder: player.bustoutOrder,
+      })),
+    };
+
+    return buildTournamentResultsSignature(payload);
+  }, [
+    gameState.currentLevelIndex,
+    gameState.totalStack,
+    gameState.tournamentBotId,
+    gameState.tournamentTitle,
+    players,
+    sessionId,
+    summary.addons,
+    summary.bonuses,
+    summary.bountyTotal,
+    summary.entrants,
+    summary.rebuys,
+  ]);
 
   const groupedPlayers = useMemo(() => ({
     active: players.filter(player => player.status === 'active').sort(playerSort),
@@ -619,17 +740,26 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     }),
   }), [players]);
 
-  const applyPlayersSnapshot = useCallback((nextPlayers: LiveTournamentPlayer[]) => {
+  const applyPlayersSnapshot = useCallback((
+    nextPlayers: LiveTournamentPlayer[],
+    nextResultsSubmission: TournamentResultsSubmissionState = resultsSubmissionRef.current,
+    updatedAt = nowIso()
+  ) => {
     const normalized = recalculatePlayers(nextPlayers);
     playersRef.current = normalized;
+    resultsSubmissionRef.current = nextResultsSubmission;
+    snapshotUpdatedAtRef.current = updatedAt;
     setPlayers(normalized);
+    setResultsSubmission(nextResultsSubmission);
     saveLocal(
       storageKeyRef.current,
       buildStoredPlayersPayload(
         normalized,
         sessionIdRef.current,
         tournamentBotIdRef.current,
-        gameState.tournamentTitle
+        gameState.tournamentTitle,
+        updatedAt,
+        nextResultsSubmission
       )
     );
     return normalized;
@@ -659,6 +789,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
         found: false as const,
         players: [] as LiveTournamentPlayer[],
         lastSyncedAt: null as string | null,
+        resultsSubmission: { sentAt: null, signature: null },
       };
     }
 
@@ -675,6 +806,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
         found: false as const,
         players: [] as LiveTournamentPlayer[],
         lastSyncedAt: null as string | null,
+        resultsSubmission: { sentAt: null, signature: null },
       };
     }
 
@@ -682,49 +814,84 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       found: true as const,
       players: parsedSnapshot.players,
       lastSyncedAt: parsedSnapshot.updatedAt ?? parseSharedPlayersUpdatedAt(row.name, row.created_at),
+      resultsSubmission: parsedSnapshot.resultsSubmission,
     };
   }, [gameState.tournamentTitle, sharedEnabled]);
 
-  const persistSharedPlayersSnapshot = useCallback(async (nextPlayers: LiveTournamentPlayer[]) => {
+  const persistSharedPlayersSnapshot = useCallback(async (
+    nextPlayers: LiveTournamentPlayer[],
+    nextResultsSubmission: TournamentResultsSubmissionState = resultsSubmissionRef.current,
+    updatedAt = nowIso()
+  ) => {
     if (!sharedEnabled) return false;
 
-    const updatedAt = nowIso();
-    const payload = {
-      id: sharedStorageIdRef.current,
-      name: buildSharedPlayersName(updatedAt),
-      levels: buildStoredPlayersPayload(
-        nextPlayers,
-        sessionIdRef.current,
-        tournamentBotIdRef.current,
-        gameState.tournamentTitle,
-        updatedAt
-      ),
+    queuedSharedPersistRef.current = {
+      players: nextPlayers,
+      resultsSubmission: nextResultsSubmission,
+      updatedAt,
     };
 
-    const { error } = await supabase.from(SHARED_PLAYERS_TABLE).upsert(payload);
-    if (error) {
-      setPlayerSyncState(prev => ({
-        ...prev,
-        loading: false,
-        error: formatSharedPlayersError('сохранить', error),
-        shared: false,
-      }));
-      return false;
+    if (sharedPersistInFlightRef.current) return true;
+
+    sharedPersistInFlightRef.current = true;
+    let lastPersistedAt: string | null = null;
+
+    try {
+      while (queuedSharedPersistRef.current) {
+        const pending = queuedSharedPersistRef.current;
+        queuedSharedPersistRef.current = null;
+
+        const payload = {
+          id: sharedStorageIdRef.current,
+          name: buildSharedPlayersName(pending.updatedAt),
+          levels: buildStoredPlayersPayload(
+            pending.players,
+            sessionIdRef.current,
+            tournamentBotIdRef.current,
+            gameState.tournamentTitle,
+            pending.updatedAt,
+            pending.resultsSubmission
+          ),
+        };
+
+        const { error } = await supabase.from(SHARED_PLAYERS_TABLE).upsert(payload);
+        if (error) {
+          setPlayerSyncState(prev => ({
+            ...prev,
+            loading: false,
+            error: formatSharedPlayersError('сохранить', error),
+            shared: false,
+          }));
+          return false;
+        }
+
+        lastPersistedAt = pending.updatedAt;
+      }
+    } finally {
+      sharedPersistInFlightRef.current = false;
     }
+
+    if (!lastPersistedAt) return true;
 
     setPlayerSyncState(prev => ({
       ...prev,
       loading: false,
       error: null,
-      lastSyncedAt: updatedAt,
+      lastSyncedAt: isIncomingPlayersSnapshotStale(prev.lastSyncedAt, lastPersistedAt)
+        ? prev.lastSyncedAt
+        : lastPersistedAt,
       shared: true,
     }));
     return true;
   }, [gameState.tournamentTitle, sharedEnabled]);
 
-  const commitPlayersSnapshot = useCallback(async (nextPlayers: LiveTournamentPlayer[]) => {
-    const normalized = applyPlayersSnapshot(nextPlayers);
-    void persistSharedPlayersSnapshot(normalized);
+  const commitPlayersSnapshot = useCallback(async (
+    nextPlayers: LiveTournamentPlayer[],
+    nextResultsSubmission: TournamentResultsSubmissionState = resultsSubmissionRef.current
+  ) => {
+    const updatedAt = nowIso();
+    const normalized = applyPlayersSnapshot(nextPlayers, nextResultsSubmission, updatedAt);
+    void persistSharedPlayersSnapshot(normalized, nextResultsSubmission, updatedAt);
     return normalized;
   }, [applyPlayersSnapshot, persistSharedPlayersSnapshot]);
 
@@ -755,13 +922,17 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       : parseLegacyPlayersSnapshot(loadLocal<unknown>(storageKey, null), sessionId, tournamentBotId);
     const trustedLocalSnapshot = trustLoadedPlayersSnapshot(parsedLocalSnapshot ?? legacyLocalSnapshot, gameState);
     const trustedLocalPlayers = trustedLocalSnapshot?.players ?? [];
+    const trustedLocalResultsSubmission = trustedLocalSnapshot?.resultsSubmission ?? { sentAt: null, signature: null };
     const ignoredStaleLocal = Boolean((parsedLocalSnapshot ?? legacyLocalSnapshot)?.players.length) && trustedLocalPlayers.length === 0;
 
     playersRef.current = trustedLocalPlayers;
+    resultsSubmissionRef.current = trustedLocalResultsSubmission;
+    snapshotUpdatedAtRef.current = trustedLocalSnapshot?.updatedAt ?? null;
     botSyncUnsupported.current = false;
 
     startTransition(() => {
       setPlayers(trustedLocalPlayers);
+      setResultsSubmission(trustedLocalResultsSubmission);
       setBotSyncState({
         loading: false,
         error: null,
@@ -791,10 +962,25 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
           players: sharedSnapshot.players,
           updatedAt: sharedSnapshot.lastSyncedAt,
           structured: true,
+          resultsSubmission: sharedSnapshot.resultsSubmission,
         }, gameState);
 
         if (trustedSharedSnapshot) {
-          applyPlayersSnapshot(trustedSharedSnapshot.players);
+          if (isIncomingPlayersSnapshotStale(snapshotUpdatedAtRef.current, trustedSharedSnapshot.updatedAt)) {
+            setPlayerSyncState(prev => ({
+              ...prev,
+              loading: false,
+              shared: true,
+            }));
+            playersHydratedRef.current = true;
+            return;
+          }
+
+          applyPlayersSnapshot(
+            trustedSharedSnapshot.players,
+            trustedSharedSnapshot.resultsSubmission,
+            trustedSharedSnapshot.updatedAt ?? nowIso()
+          );
           setPlayerSyncState(prev => ({
             ...prev,
             loading: false,
@@ -808,7 +994,11 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       }
 
       if (trustedLocalPlayers.length > 0) {
-        await persistSharedPlayersSnapshot(trustedLocalPlayers);
+        await persistSharedPlayersSnapshot(
+          trustedLocalPlayers,
+          trustedLocalResultsSubmission,
+          trustedLocalSnapshot?.updatedAt ?? nowIso()
+        );
       } else if (!cancelled) {
         setPlayerSyncState(prev => ({
           ...prev,
@@ -843,6 +1033,10 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
   }, [players]);
 
   useEffect(() => {
+    resultsSubmissionRef.current = resultsSubmission;
+  }, [resultsSubmission]);
+
+  useEffect(() => {
     if (!sharedEnabled) return;
 
     const channel = supabase
@@ -861,7 +1055,15 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
         void loadSharedPlayersSnapshot().then(sharedSnapshot => {
           if (!sharedSnapshot?.found) return;
 
-          applyPlayersSnapshot(sharedSnapshot.players);
+          if (isIncomingPlayersSnapshotStale(snapshotUpdatedAtRef.current, sharedSnapshot.lastSyncedAt)) {
+            return;
+          }
+
+          applyPlayersSnapshot(
+            sharedSnapshot.players,
+            sharedSnapshot.resultsSubmission,
+            sharedSnapshot.lastSyncedAt ?? nowIso()
+          );
           setPlayerSyncState(prev => ({
             ...prev,
             loading: false,
@@ -1103,12 +1305,72 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     }));
   }, [applyPlayerMutation, sessionId, tournamentBotId]);
 
+  const exportTournamentResults = useCallback(async (levelsPlayed: number) => {
+    if (playersRef.current.length === 0 || gameState.tournamentBotId == null) {
+      return { ok: true as const, skipped: true as const, error: null, signature: null, sentAt: null };
+    }
+
+    const s = summarizePlayers(playersRef.current);
+    const orderedPlayers = sortPlayersForResults(playersRef.current);
+    const finishedAt = new Date().toISOString();
+
+    const payload: TournamentResultsPayload = {
+      sessionId: sessionIdRef.current,
+      tournamentBotId: gameState.tournamentBotId,
+      tournamentTitle: gameState.tournamentTitle,
+      finishedAt,
+      levelsPlayed,
+      summary: {
+        entrants: s.entrants,
+        rebuys: s.rebuys,
+        addons: s.addons,
+        bonuses: s.bonuses,
+        bountyTotal: s.bountyTotal,
+        totalStack: gameState.totalStack,
+      },
+      players: orderedPlayers.map(p => ({
+        botRegistrationId: p.botRegistrationId,
+        telegramId: p.telegramId,
+        name: p.name,
+        username: p.username,
+        source: p.source,
+        arrivalStatus: p.arrivalStatus,
+        paymentMethod: p.paymentMethod,
+        paymentDue: p.paymentDue,
+        rebuyCount: p.rebuyCount,
+        addonCount: p.addonCount,
+        bounty: p.bounty,
+        status: p.status,
+        place: p.place,
+        bustoutOrder: p.bustoutOrder,
+      })),
+    };
+    const signature = buildTournamentResultsSignature(payload);
+
+    const result = await submitBotTournamentResults(payload);
+    if (result.ok) {
+      await commitPlayersSnapshot(playersRef.current, {
+        sentAt: finishedAt,
+        signature,
+      });
+    }
+    return {
+      ok: result.ok,
+      skipped: false as const,
+      error: result.ok ? null : result.error,
+      signature,
+      sentAt: result.ok ? finishedAt : null,
+    };
+  }, [commitPlayersSnapshot, gameState.totalStack, gameState.tournamentBotId, gameState.tournamentTitle]);
+
   return {
     players,
     groupedPlayers,
     summary,
     playerSyncState,
     botSyncState,
+    resultsSubmission,
+    currentResultsSignature,
     managedCountersEnabled: players.length > 0,
     refreshFromBot,
     addManualPlayer,
@@ -1116,5 +1378,6 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     setPlayerArrival,
     markPlayerOut,
     restorePlayer,
+    exportTournamentResults,
   };
 }

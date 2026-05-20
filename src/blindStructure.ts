@@ -1,4 +1,4 @@
-import type { BlindLevel } from './types';
+import type { BlindLevel } from './types.ts';
 
 export const GARAGE_BLIND_PAIRS = [
   { sb: 100, bb: 100 },

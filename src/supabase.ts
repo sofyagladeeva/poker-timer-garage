@@ -1,10 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
-import { createGarageBlindTemplate } from './blindStructure';
+import { createGarageBlindTemplate } from './blindStructure.ts';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const ENV = (import.meta as ImportMeta & {
+  env?: {
+    VITE_SUPABASE_URL?: string;
+    VITE_SUPABASE_ANON_KEY?: string;
+  };
+}).env;
 
-if (!supabaseUrl || !supabaseAnonKey) {
+const supabaseUrl = ENV?.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = ENV?.VITE_SUPABASE_ANON_KEY || '';
+
+if ((typeof window !== 'undefined' || typeof document !== 'undefined') && (!supabaseUrl || !supabaseAnonKey)) {
   console.warn('Supabase credentials missing. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env');
 }
 

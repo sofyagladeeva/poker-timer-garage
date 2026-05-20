@@ -1,7 +1,18 @@
-import type { LiveTournamentRegistrationSource } from './types';
+import type { LiveTournamentRegistrationSource, TournamentResultsPayload } from './types.ts';
 
-const BOT_API = import.meta.env.VITE_BOT_API_URL || 'https://web-production-6035.up.railway.app';
-const ROSTER_URL_TEMPLATE = import.meta.env.VITE_BOT_TOURNAMENT_PLAYERS_URL_TEMPLATE || `${BOT_API}/api/games/{id}/players`;
+const ENV = (import.meta as ImportMeta & {
+  env?: {
+    VITE_BOT_API_URL?: string;
+    VITE_BOT_TOURNAMENT_PLAYERS_URL_TEMPLATE?: string;
+    VITE_BOT_TOURNAMENT_RESULTS_URL_TEMPLATE?: string;
+    VITE_BOT_ADMIN_TOKEN?: string;
+  };
+}).env;
+
+const BOT_API = ENV?.VITE_BOT_API_URL || 'https://web-production-6035.up.railway.app';
+const ROSTER_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_PLAYERS_URL_TEMPLATE || `${BOT_API}/api/games/{id}/players`;
+const RESULTS_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_RESULTS_URL_TEMPLATE || `${BOT_API}/api/games/{id}/results`;
+const BOT_ADMIN_TOKEN = ENV?.VITE_BOT_ADMIN_TOKEN || '';
 
 export interface ImportedTournamentPlayer {
   botRegistrationId: string | null;
@@ -207,6 +218,44 @@ export async function fetchBotTournamentRoster(tournamentBotId: number) {
     return {
       ok: false as const,
       error: error instanceof Error ? error.message : 'Не удалось загрузить состав турнира.',
+      unsupported: false,
+    };
+  }
+}
+
+export async function submitBotTournamentResults(payload: TournamentResultsPayload) {
+  const url = fillUrlTemplate(RESULTS_URL_TEMPLATE, payload.tournamentBotId);
+  if (!url) {
+    return {
+      ok: false as const,
+      error: 'Не настроен URL для отправки итогов турнира.',
+      unsupported: true,
+    };
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(BOT_ADMIN_TOKEN ? { 'X-Admin-Token': BOT_ADMIN_TOKEN } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      return {
+        ok: false as const,
+        error: `Бот не принял итоги турнира (HTTP ${response.status}).`,
+        unsupported: response.status === 404,
+      };
+    }
+
+    return { ok: true as const, url };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : 'Не удалось отправить итоги турнира.',
       unsupported: false,
     };
   }
