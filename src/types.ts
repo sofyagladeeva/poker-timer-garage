@@ -28,6 +28,9 @@ export interface BlindTemplate {
   id: string;
   name: string;
   levels: BlindLevel[];
+  startStack: number;
+  addonStack: number;
+  bonusStack: number;
   createdAt: string;
 }
 

@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { getKnockoutLabel, getNextKnockoutInfo, setKnockoutMarker } from '../src/blindLevelMarkers.ts';
+import {
+  getKnockoutLabel,
+  getLateRegistrationLevel,
+  getNextKnockoutInfo,
+  isLateRegistrationLevel,
+  setKnockoutMarker,
+  setLateRegistrationMarker,
+} from '../src/blindLevelMarkers.ts';
 import type { BlindLevel } from '../src/types.ts';
 
 const levels: BlindLevel[] = [
@@ -70,4 +77,22 @@ test('getNextKnockoutInfo returns startsNow for the current knockout level', () 
   assert.ok(info);
   assert.equal(info?.startsNow, true);
   assert.equal(info?.secondsUntil, 0);
+});
+
+test('setLateRegistrationMarker marks one level without breaking knockout metadata', () => {
+  const lateRegLevel = setLateRegistrationMarker(levels[1], true);
+  assert.equal(isLateRegistrationLevel(lateRegLevel), true);
+
+  const combined = setKnockoutMarker(lateRegLevel, true, 'Bubble');
+  assert.equal(isLateRegistrationLevel(combined), true);
+  assert.equal(getKnockoutLabel(combined), 'Bubble');
+});
+
+test('getLateRegistrationLevel returns the marked regular level', () => {
+  const markedLevels = [...levels];
+  markedLevels[0] = setLateRegistrationMarker(markedLevels[0], true);
+
+  const lateRegLevel = getLateRegistrationLevel(markedLevels);
+  assert.ok(lateRegLevel);
+  assert.equal(lateRegLevel?.level, 1);
 });

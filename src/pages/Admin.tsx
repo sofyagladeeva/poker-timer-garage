@@ -5,7 +5,14 @@ import { useTournamentBotLiveSync } from '../hooks/useTournamentBotLiveSync';
 import { useTournamentPlayers } from '../hooks/useTournamentPlayers';
 import { supabase } from '../supabase';
 import { getNextGarageBlindPair } from '../blindStructure';
-import { getKnockoutLabel, getNextKnockoutInfo, setKnockoutMarker } from '../blindLevelMarkers';
+import {
+  getKnockoutLabel,
+  getLateRegistrationLevel,
+  getNextKnockoutInfo,
+  isLateRegistrationLevel,
+  setKnockoutMarker,
+  setLateRegistrationMarker,
+} from '../blindLevelMarkers';
 import { calcTotalStack } from '../gameStateMath';
 import type { BlindLevel, BlindTemplate, Combination, Card, Suit, Rank, TournamentRecord, GameState } from '../types';
 import { SUIT_SYMBOLS } from '../types';
@@ -196,10 +203,12 @@ function CardPicker({ onAdd }: { onAdd: (card: Card) => void }) {
 function BlindRow({
   level,
   onChange,
+  onToggleLateRegistration,
   onDelete,
 }: {
   level: BlindLevel;
   onChange: (l: BlindLevel) => void;
+  onToggleLateRegistration: () => void;
   onDelete: () => void;
 }) {
   const upd = (patch: Partial<BlindLevel>) => onChange({ ...level, ...patch });
@@ -208,6 +217,7 @@ function BlindRow({
   const [minutesDraft, setMinutesDraft] = useState(String(Math.round(level.duration / 60)));
   const knockoutLabel = getKnockoutLabel(level);
   const knockoutEnabled = Boolean(knockoutLabel);
+  const lateRegistrationEnabled = isLateRegistrationLevel(level);
 
   const parseDraftNumber = (value: string) => {
     const trimmed = value.trim();
@@ -267,6 +277,11 @@ function BlindRow({
           {knockoutEnabled && (
             <span className="rounded-full border border-[#C0392B]/40 bg-[#1a0a00] px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-[#E31E24]">
               Игра на вылет
+            </span>
+          )}
+          {lateRegistrationEnabled && (
+            <span className="rounded-full border border-emerald-500/30 bg-emerald-950/40 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-200">
+              Поздняя рег.
             </span>
           )}
         </div>
@@ -343,6 +358,23 @@ function BlindRow({
           }`}
         >
           {knockoutEnabled ? 'Вкл' : 'Выкл'}
+        </button>
+      </div>
+      <div className="mt-1 flex items-center justify-between rounded-xl border border-[#1F1F1F] bg-[#0A0A0A] px-3 py-2">
+        <div>
+          <div className="text-white text-sm font-medium">Поздняя регистрация</div>
+          <div className="text-[#666] text-xs">До этого уровня включительно открыта поздняя регистрация.</div>
+        </div>
+        <button
+          type="button"
+          onClick={onToggleLateRegistration}
+          className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide transition-colors ${
+            lateRegistrationEnabled
+              ? 'bg-emerald-700 text-white'
+              : 'bg-[#1E1E1E] text-[#777] hover:text-white'
+          }`}
+        >
+          {lateRegistrationEnabled ? 'Вкл' : 'Выкл'}
         </button>
       </div>
     </div>
@@ -1012,7 +1044,11 @@ export function Admin() {
       const existing = blindTemplatesRef.current.find(
         template => template.name.trim().toLowerCase() === name.toLowerCase()
       );
-      const template = buildBlindTemplate(name, blindLevels, existing?.id);
+      const template = buildBlindTemplate(name, blindLevels, {
+        startStack: gameState.startStack,
+        addonStack: gameState.addonStack,
+        bonusStack: gameState.bonusStack,
+      }, existing?.id);
       const next = mergeBlindTemplates(
         blindTemplatesRef.current.filter(item => item.id !== template.id),
         [template]
@@ -1035,10 +1071,20 @@ export function Admin() {
     await updateBlindLevels(levels);
 
     const firstLevel = levels[0];
+    const nextState = {
+      ...gameStateSnapshotRef.current,
+      startStack: template.startStack,
+      addonStack: template.addonStack,
+      bonusStack: template.bonusStack,
+    };
     await updateGameState({
       currentLevelIndex: 0,
       timeLeft: firstLevel?.duration ?? 1200,
       status: 'paused',
+      startStack: template.startStack,
+      addonStack: template.addonStack,
+      bonusStack: template.bonusStack,
+      totalStack: calcTotalStack(nextState),
     });
 
     setTemplateNote(`Применен шаблон «${template.name}».`);
@@ -1138,6 +1184,7 @@ export function Admin() {
   const currentLevel = blindLevels[gameState.currentLevelIndex];
   const regularBlindLevels = blindLevels.filter(level => !level.isBreak);
   const anteStartLevel = regularBlindLevels.find(level => level.ante > 0)?.level ?? 0;
+  const lateRegistrationLevel = getLateRegistrationLevel(blindLevels);
   const currentKnockoutLabel = getKnockoutLabel(currentLevel);
   const nextKnockout = getNextKnockoutInfo(blindLevels, gameState.currentLevelIndex, gameState.timeLeft);
   const nextKnockoutTime = nextKnockout && !nextKnockout.startsNow
@@ -1169,6 +1216,18 @@ export function Admin() {
           ...level,
           ante: startLevel > 0 && level.level >= startLevel ? level.bb : 0,
         };
+      })
+    );
+  };
+
+  const toggleLateRegistrationLevel = (targetLevelId: string) => {
+    updateBlindLevels(
+      blindLevels.map(level => {
+        if (level.isBreak) return level;
+        if (level.id === targetLevelId) {
+          return setLateRegistrationMarker(level, !isLateRegistrationLevel(level));
+        }
+        return setLateRegistrationMarker(level, false);
       })
     );
   };
@@ -1881,6 +1940,11 @@ export function Admin() {
                   <div className="text-[#555] text-xs mt-1">
                     Анте всегда равно BB. Здесь можно быстро включить его с нужного уровня, и эта схема сохранится в шаблонах.
                   </div>
+                  <div className="text-[#555] text-xs mt-1">
+                    {lateRegistrationLevel
+                      ? `Поздняя регистрация сейчас отмечена до уровня ${lateRegistrationLevel.level}.`
+                      : 'Позднюю регистрацию можно отметить на нужном уровне прямо в списке ниже.'}
+                  </div>
                 </div>
 
                 <div className="w-full sm:w-[240px]">
@@ -1907,7 +1971,7 @@ export function Admin() {
                   <div>
                     <div className="text-[#888] text-xs uppercase tracking-widest">Шаблоны блайндов</div>
                     <div className="text-[#555] text-xs mt-1">
-                      Сохраните текущую структуру под именем и потом быстро применяйте нужный шаблон.
+                      Сохраните текущую структуру под именем. В шаблон теперь входят уровни, стеки старта/аддона/бонуса и точка закрытия поздней регистрации.
                     </div>
                   </div>
                   <div className="rounded-full border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-1 text-[11px] uppercase tracking-wide text-[#777]">
@@ -1944,43 +2008,55 @@ export function Admin() {
                 )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                  {allBlindTemplates.map(template => (
-                    <div key={template.id} className="rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-white font-bold text-sm">{template.name}</div>
-                          <div className="text-[#666] text-xs mt-1">
-                            Уровней: {template.levels.filter(level => !level.isBreak).length}
-                            {template.levels.some(level => level.isBreak)
-                              ? ` · Перерывов: ${template.levels.filter(level => level.isBreak).length}`
-                              : ''}
-                          </div>
-                        </div>
-                        {template.id.startsWith('preset_') && (
-                          <span className="rounded-full bg-[#1F1F1F] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#AAA]">
-                            Базовый
-                          </span>
-                        )}
-                      </div>
+                  {allBlindTemplates.map(template => {
+                    const templateLateRegistrationLevel = getLateRegistrationLevel(template.levels);
 
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          onClick={() => void applyBlindTemplate(template)}
-                          className="admin-btn-primary px-4 py-2 text-sm"
-                        >
-                          Применить
-                        </button>
-                        {!template.id.startsWith('preset_') && (
+                    return (
+                      <div key={template.id} className="rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-white font-bold text-sm">{template.name}</div>
+                            <div className="text-[#666] text-xs mt-1">
+                              Уровней: {template.levels.filter(level => !level.isBreak).length}
+                              {template.levels.some(level => level.isBreak)
+                                ? ` · Перерывов: ${template.levels.filter(level => level.isBreak).length}`
+                                : ''}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[#999]">
+                              <span>Старт: {(template.startStack ?? 0).toLocaleString('ru-RU')}</span>
+                              <span>Аддон: {(template.addonStack ?? 0).toLocaleString('ru-RU')}</span>
+                              <span>Бонус: {(template.bonusStack ?? 0).toLocaleString('ru-RU')}</span>
+                              {templateLateRegistrationLevel && (
+                                <span>Поздняя рег. до ур. {templateLateRegistrationLevel.level}</span>
+                              )}
+                            </div>
+                          </div>
+                          {template.id.startsWith('preset_') && (
+                            <span className="rounded-full bg-[#1F1F1F] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#AAA]">
+                              Базовый
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
                           <button
-                            onClick={() => void removeBlindTemplate(template.id)}
-                            className="admin-btn-danger px-4 py-2 text-sm"
+                            onClick={() => void applyBlindTemplate(template)}
+                            className="admin-btn-primary px-4 py-2 text-sm"
                           >
-                            Удалить
+                            Применить
                           </button>
-                        )}
+                          {!template.id.startsWith('preset_') && (
+                            <button
+                              onClick={() => void removeBlindTemplate(template.id)}
+                              className="admin-btn-danger px-4 py-2 text-sm"
+                            >
+                              Удалить
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -2038,6 +2114,7 @@ export function Admin() {
                     <BlindRow
                       level={level}
                       onChange={l => updateLevel(idx, l)}
+                      onToggleLateRegistration={() => toggleLateRegistrationLevel(level.id)}
                       onDelete={() => deleteLevel(idx)}
                     />
                   </div>

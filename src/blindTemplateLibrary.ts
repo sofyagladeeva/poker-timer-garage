@@ -12,6 +12,13 @@ interface BlindTemplateRow {
 const STORAGE_KEY = 'poker_timer_blind_templates_v1';
 const SHARED_TABLE = 'blind_templates';
 
+type BlindTemplateStoredPayload = {
+  levels: BlindLevel[];
+  startStack?: number;
+  addonStack?: number;
+  bonusStack?: number;
+};
+
 function isBlindLevel(value: unknown): value is BlindLevel {
   if (!value || typeof value !== 'object') return false;
 
@@ -24,19 +31,6 @@ function isBlindLevel(value: unknown): value is BlindLevel {
     typeof item.ante === 'number' &&
     typeof item.duration === 'number' &&
     typeof item.isBreak === 'boolean'
-  );
-}
-
-function isBlindTemplate(value: unknown): value is BlindTemplate {
-  if (!value || typeof value !== 'object') return false;
-
-  const item = value as Record<string, unknown>;
-  return (
-    typeof item.id === 'string' &&
-    typeof item.name === 'string' &&
-    Array.isArray(item.levels) &&
-    item.levels.every(isBlindLevel) &&
-    typeof item.createdAt === 'string'
   );
 }
 
@@ -65,6 +59,15 @@ function cloneLevels(levels: BlindLevel[]) {
   return levels.map(level => ({ ...level }));
 }
 
+function normalizeStackValue(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.round(value));
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return Math.max(0, Math.round(parsed));
+  }
+  return 0;
+}
+
 function normalizeTemplateName(name: string) {
   return name.trim();
 }
@@ -73,20 +76,79 @@ function toRow(template: BlindTemplate): BlindTemplateRow {
   return {
     id: template.id,
     name: template.name,
-    levels: cloneLevels(template.levels),
+    levels: {
+      levels: cloneLevels(template.levels),
+      startStack: template.startStack,
+      addonStack: template.addonStack,
+      bonusStack: template.bonusStack,
+    },
     created_at: template.createdAt,
   };
 }
 
-function toTemplate(row: BlindTemplateRow): BlindTemplate | null {
-  if (!Array.isArray(row.levels) || !row.levels.every(isBlindLevel)) {
+function parseTemplateLevelsPayload(raw: unknown): BlindTemplateStoredPayload | null {
+  if (Array.isArray(raw) && raw.every(isBlindLevel)) {
+    return {
+      levels: cloneLevels(raw),
+      startStack: 0,
+      addonStack: 0,
+      bonusStack: 0,
+    };
+  }
+
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return null;
+  }
+
+  const payload = raw as Partial<BlindTemplateStoredPayload>;
+  if (!Array.isArray(payload.levels) || !payload.levels.every(isBlindLevel)) {
     return null;
   }
 
   return {
+    levels: cloneLevels(payload.levels),
+    startStack: normalizeStackValue(payload.startStack),
+    addonStack: normalizeStackValue(payload.addonStack),
+    bonusStack: normalizeStackValue(payload.bonusStack),
+  };
+}
+
+function normalizeBlindTemplate(raw: unknown): BlindTemplate | null {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const item = raw as Record<string, unknown>;
+  if (
+    typeof item.id !== 'string' ||
+    typeof item.name !== 'string' ||
+    !Array.isArray(item.levels) ||
+    !item.levels.every(isBlindLevel) ||
+    typeof item.createdAt !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    id: item.id,
+    name: item.name,
+    levels: cloneLevels(item.levels as BlindLevel[]),
+    startStack: normalizeStackValue(item.startStack),
+    addonStack: normalizeStackValue(item.addonStack),
+    bonusStack: normalizeStackValue(item.bonusStack),
+    createdAt: item.createdAt,
+  };
+}
+
+function toTemplate(row: BlindTemplateRow): BlindTemplate | null {
+  const payload = parseTemplateLevelsPayload(row.levels);
+  if (!payload) return null;
+
+  return {
     id: row.id,
     name: row.name,
-    levels: cloneLevels(row.levels),
+    levels: payload.levels,
+    startStack: normalizeStackValue(payload.startStack),
+    addonStack: normalizeStackValue(payload.addonStack),
+    bonusStack: normalizeStackValue(payload.bonusStack),
     createdAt: row.created_at,
   };
 }
@@ -109,6 +171,9 @@ export const PRESET_BLIND_TEMPLATES: BlindTemplate[] = [
     id: 'preset_garage_base',
     name: 'Garage Base',
     levels: createGarageBlindTemplate(),
+    startStack: 0,
+    addonStack: 0,
+    bonusStack: 0,
     createdAt: 'preset',
   },
 ];
@@ -125,7 +190,11 @@ export function loadBlindTemplates(): BlindTemplate[] {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
 
-    return sortTemplates(parsed.filter(isBlindTemplate));
+    return sortTemplates(
+      parsed
+        .map(normalizeBlindTemplate)
+        .filter((template): template is BlindTemplate => Boolean(template))
+    );
   } catch {
     return [];
   }
@@ -153,11 +222,19 @@ export function mergeBlindTemplates(...collections: BlindTemplate[][]) {
   return sortTemplates(Array.from(unique.values()));
 }
 
-export function buildBlindTemplate(name: string, levels: BlindLevel[], existingId?: string): BlindTemplate {
+export function buildBlindTemplate(
+  name: string,
+  levels: BlindLevel[],
+  stacks: Pick<BlindTemplate, 'startStack' | 'addonStack' | 'bonusStack'>,
+  existingId?: string
+): BlindTemplate {
   return {
     id: existingId || createId(),
     name: normalizeTemplateName(name),
     levels: cloneLevels(levels),
+    startStack: normalizeStackValue(stacks.startStack),
+    addonStack: normalizeStackValue(stacks.addonStack),
+    bonusStack: normalizeStackValue(stacks.bonusStack),
     createdAt: new Date().toISOString(),
   };
 }
