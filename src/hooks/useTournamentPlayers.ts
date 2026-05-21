@@ -678,6 +678,20 @@ export function sortPlayersForResults(players: LiveTournamentPlayer[]) {
   });
 }
 
+export function findPlayerWithPlaceConflict(
+  players: LiveTournamentPlayer[],
+  playerId: string,
+  place: number | null
+) {
+  if (place == null) return null;
+
+  return players.find(player => (
+    player.id !== playerId &&
+    player.arrivalStatus !== 'absent' &&
+    player.place === place
+  )) ?? null;
+}
+
 export function buildTournamentResultsSignature(payload: TournamentResultsPayload) {
   const { finishedAt, ...stablePayload } = payload;
   void finishedAt;
@@ -1273,15 +1287,29 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
   }, [applyPlayerMutation, sessionId, tournamentBotId]);
 
   const updatePlayerField = useCallback(async (playerId: string, patch: Partial<LiveTournamentPlayer>) => {
+    const currentPlayer = playersRef.current.find(player => player.id === playerId);
+    if (!currentPlayer) return false;
+
+    const nextPlayer = normalizePlayer({
+      ...currentPlayer,
+      ...patch,
+      updatedAt: nowIso(),
+    }, sessionId, tournamentBotId);
+
+    const conflictingPlayer = nextPlayer.arrivalStatus !== 'absent'
+      ? findPlayerWithPlaceConflict(playersRef.current, playerId, nextPlayer.place)
+      : null;
+
+    if (conflictingPlayer) {
+      return false;
+    }
+
     await applyPlayerMutation(current => current.map(player => {
       if (player.id !== playerId) return player;
 
-      return normalizePlayer({
-        ...player,
-        ...patch,
-        updatedAt: nowIso(),
-      }, sessionId, tournamentBotId);
+      return nextPlayer;
     }));
+    return true;
   }, [applyPlayerMutation, sessionId, tournamentBotId]);
 
   const setPlayerArrival = useCallback(async (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => {

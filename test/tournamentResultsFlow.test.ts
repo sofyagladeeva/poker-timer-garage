@@ -6,6 +6,7 @@ import {
   buildStoredPlayersPayload,
   buildTournamentResultsSignature,
   calcPaymentDue,
+  findPlayerWithPlaceConflict,
   isIncomingPlayersSnapshotStale,
   parseStoredPlayersPayload,
   sortPlayersForResults,
@@ -204,6 +205,18 @@ test('sortPlayersForResults puts placed players first and preserves stable fallb
 test('getDuplicatePlaces returns unique repeated places in ascending order', () => {
   assert.deepEqual(getDuplicatePlaces([3, 1, 3, null, 2, 2, undefined, 5]), [2, 3]);
   assert.deepEqual(getDuplicatePlaces([1, 2, 3]), []);
+});
+
+test('findPlayerWithPlaceConflict ignores self and absent players', () => {
+  const players = [
+    createPlayer({ id: 'a', name: 'Alpha', arrivalStatus: 'paid', place: 5, status: 'out' }),
+    createPlayer({ id: 'b', name: 'Bravo', arrivalStatus: 'absent', place: 5, status: 'registered' }),
+    createPlayer({ id: 'c', name: 'Charlie', arrivalStatus: 'paid', place: 7, status: 'out' }),
+  ];
+
+  assert.equal(findPlayerWithPlaceConflict(players, 'a', 5), null);
+  assert.equal(findPlayerWithPlaceConflict(players, 'c', 5)?.id, 'a');
+  assert.equal(findPlayerWithPlaceConflict(players, 'c', 8), null);
 });
 
 test('deriveTournamentResultsUiState and button labels reflect first send, resend and locked states', () => {

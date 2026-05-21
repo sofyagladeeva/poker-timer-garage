@@ -4,6 +4,7 @@ import type {
   LiveTournamentArrivalStatus,
   LiveTournamentPlayer,
 } from '../types';
+import { findPlayerWithPlaceConflict } from '../hooks/useTournamentPlayers';
 
 type Props = {
   groupedPlayers: {
@@ -30,7 +31,7 @@ type Props = {
   onOpenControlTab: () => void;
   onRefreshFromBot: (force?: boolean) => Promise<boolean>;
   onAddManualPlayer: (name: string) => Promise<boolean>;
-  onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<void>;
+  onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<boolean>;
   onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
   onMarkPlayerOut: (playerId: string) => Promise<void>;
 };
@@ -52,8 +53,15 @@ export function TournamentPlayersTab({
   const [manualPlayerName, setManualPlayerName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewFilter, setViewFilter] = useState<'all' | 'active' | 'pending' | 'waitlist' | 'out' | 'unpaid'>('all');
+  const [placeConflictNotice, setPlaceConflictNotice] = useState<string | null>(null);
   const totalPlayers = groupedPlayers.active.length + groupedPlayers.pending.length + groupedPlayers.waitlist.length + groupedPlayers.out.length;
   const normalizedQuery = searchQuery.trim().toLowerCase();
+  const rosterPlayers = [
+    ...groupedPlayers.active,
+    ...groupedPlayers.pending,
+    ...groupedPlayers.waitlist,
+    ...groupedPlayers.out,
+  ];
 
   const matchesSearch = (player: LiveTournamentPlayer) => {
     if (!normalizedQuery) return true;
@@ -266,6 +274,12 @@ export function TournamentPlayersTab({
           </div>
         )}
 
+        {placeConflictNotice && (
+          <div className="rounded-xl border border-red-900/70 bg-red-950/40 px-3 py-2 text-red-300 text-sm">
+            {placeConflictNotice}
+          </div>
+        )}
+
         <div className="text-[11px] text-[#666] flex flex-wrap gap-x-3 gap-y-1">
           <span>
             {tournamentBotId == null
@@ -289,6 +303,8 @@ export function TournamentPlayersTab({
                 <MobilePlayerCard
                   key={player.id}
                   player={player}
+                  rosterPlayers={rosterPlayers}
+                  onPlaceConflict={setPlaceConflictNotice}
                   onUpdatePlayerField={onUpdatePlayerField}
                   onSetPlayerArrival={onSetPlayerArrival}
                   onMarkPlayerOut={onMarkPlayerOut}
@@ -315,6 +331,8 @@ export function TournamentPlayersTab({
                     <PlayerRow
                       key={player.id}
                       player={player}
+                      rosterPlayers={rosterPlayers}
+                      onPlaceConflict={setPlaceConflictNotice}
                       onUpdatePlayerField={onUpdatePlayerField}
                       onSetPlayerArrival={onSetPlayerArrival}
                       onMarkPlayerOut={onMarkPlayerOut}
@@ -332,12 +350,16 @@ export function TournamentPlayersTab({
 
 function MobilePlayerCard({
   player,
+  rosterPlayers,
+  onPlaceConflict,
   onUpdatePlayerField,
   onSetPlayerArrival,
   onMarkPlayerOut,
 }: {
   player: LiveTournamentPlayer;
-  onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<void>;
+  rosterPlayers: LiveTournamentPlayer[];
+  onPlaceConflict: (message: string | null) => void;
+  onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<boolean>;
   onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
   onMarkPlayerOut: (playerId: string) => Promise<void>;
 }) {
@@ -370,6 +392,23 @@ function MobilePlayerCard({
     }
   };
 
+  const handlePlaceCommit = async (value: number | null, override: boolean) => {
+    if (value !== null) {
+      const conflictPlayer = findPlayerWithPlaceConflict(rosterPlayers, player.id, value);
+      if (conflictPlayer) {
+        onPlaceConflict(`Место #${value} уже занято игроком ${conflictPlayer.name}. Освободите его или выберите другое место.`);
+        return false;
+      }
+    }
+
+    onPlaceConflict(null);
+    const updated = await onUpdatePlayerField(player.id, { place: value, placeOverride: override });
+    if (!updated && value !== null) {
+      onPlaceConflict(`Место #${value} уже занято другим игроком. Выберите другое место.`);
+    }
+    return updated;
+  };
+
   return (
     <div className="rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] p-3">
       <div className="flex items-start justify-between gap-3">
@@ -387,7 +426,7 @@ function MobilePlayerCard({
               value={player.place}
               disabled={false}
               className="admin-input mt-2 !w-full !py-1.5 !px-2 !text-center !text-base font-black"
-              onCommit={(value, override) => onUpdatePlayerField(player.id, { place: value, placeOverride: override })}
+              onCommit={handlePlaceCommit}
             />
           ) : (
             <div className="mt-1 text-lg font-black text-[#777]">—</div>
@@ -483,12 +522,16 @@ function MobilePlayerCard({
 
 function PlayerRow({
   player,
+  rosterPlayers,
+  onPlaceConflict,
   onUpdatePlayerField,
   onSetPlayerArrival,
   onMarkPlayerOut,
 }: {
   player: LiveTournamentPlayer;
-  onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<void>;
+  rosterPlayers: LiveTournamentPlayer[];
+  onPlaceConflict: (message: string | null) => void;
+  onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<boolean>;
   onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
   onMarkPlayerOut: (playerId: string) => Promise<void>;
 }) {
@@ -521,6 +564,23 @@ function PlayerRow({
     : player.arrivalStatus === 'absent'
       ? 'border-[#4A4A4A] bg-[#161616] text-[#C2C2C2]'
       : 'border-blue-700/70 bg-blue-950/40 text-blue-200';
+
+  const handlePlaceCommit = async (value: number | null, override: boolean) => {
+    if (value !== null) {
+      const conflictPlayer = findPlayerWithPlaceConflict(rosterPlayers, player.id, value);
+      if (conflictPlayer) {
+        onPlaceConflict(`Место #${value} уже занято игроком ${conflictPlayer.name}. Освободите его или выберите другое место.`);
+        return false;
+      }
+    }
+
+    onPlaceConflict(null);
+    const updated = await onUpdatePlayerField(player.id, { place: value, placeOverride: override });
+    if (!updated && value !== null) {
+      onPlaceConflict(`Место #${value} уже занято другим игроком. Выберите другое место.`);
+    }
+    return updated;
+  };
 
   return (
     <tr className="rounded-2xl bg-[#0A0A0A]">
@@ -663,7 +723,7 @@ function PlayerRow({
             value={player.place}
             disabled={false}
             className="admin-input !w-full !py-1 !px-1 !text-[10px] sm:!text-[11px] text-center font-black"
-            onCommit={(value, override) => onUpdatePlayerField(player.id, { place: value, placeOverride: override })}
+            onCommit={handlePlaceCommit}
           />
         ) : (
           <div className="inline-flex w-full items-center justify-center whitespace-nowrap rounded-lg border border-[#2D2D2D] bg-[#141414] px-1 py-1 text-[9px] text-[#777] sm:px-1.5 sm:text-[11px] font-bold">
@@ -719,7 +779,7 @@ function BountyInput({
 }: {
   value: number;
   className: string;
-  onCommit: (value: number) => Promise<void>;
+  onCommit: (value: number) => Promise<boolean>;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const focusedRef = useRef(false);
@@ -759,7 +819,7 @@ function PlaceInput({
   value: number | null;
   disabled: boolean;
   className: string;
-  onCommit: (value: number | null, override: boolean) => Promise<void>;
+  onCommit: (value: number | null, override: boolean) => Promise<boolean>;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const focusedRef = useRef(false);
@@ -785,7 +845,7 @@ function PlaceInput({
       onFocus={() => {
         focusedRef.current = true;
       }}
-      onBlur={event => {
+      onBlur={async event => {
         focusedRef.current = false;
         if (disabled) {
           event.currentTarget.value = '';
@@ -795,13 +855,21 @@ function PlaceInput({
         const raw = event.currentTarget.value.trim();
         if (!raw) {
           event.currentTarget.value = '';
-          void onCommit(null, false);
+          const ok = await onCommit(null, false);
+          if (!ok) {
+            event.currentTarget.value = value !== null && value > 0 ? String(value) : '';
+          }
           return;
         }
 
         const nextValue = Math.max(1, Number(raw) || 0);
-        event.currentTarget.value = nextValue > 0 ? String(nextValue) : '';
-        void onCommit(nextValue > 0 ? nextValue : null, nextValue > 0);
+        const normalizedValue = nextValue > 0 ? nextValue : null;
+        const ok = await onCommit(normalizedValue, nextValue > 0);
+        event.currentTarget.value = ok && normalizedValue !== null
+          ? String(normalizedValue)
+          : value !== null && value > 0
+            ? String(value)
+            : '';
       }}
       className={className}
       placeholder="—"
