@@ -96,3 +96,12 @@ test('getLateRegistrationLevel returns the marked regular level', () => {
   assert.ok(lateRegLevel);
   assert.equal(lateRegLevel?.level, 1);
 });
+
+test('getLateRegistrationLevel falls back to knockout level when no separate marker exists', () => {
+  const markedLevels = [...levels];
+  markedLevels[1] = setKnockoutMarker(markedLevels[1], true);
+
+  const lateRegLevel = getLateRegistrationLevel(markedLevels);
+  assert.ok(lateRegLevel);
+  assert.equal(lateRegLevel?.level, 2);
+});

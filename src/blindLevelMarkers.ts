@@ -105,7 +105,10 @@ export function setLateRegistrationMarker(level: BlindLevel, enabled: boolean): 
 }
 
 export function getLateRegistrationLevel(blindLevels: BlindLevel[]) {
-  return blindLevels.find(level => isLateRegistrationLevel(level)) ?? null;
+  const explicitLevel = blindLevels.find(level => isLateRegistrationLevel(level)) ?? null;
+  if (explicitLevel) return explicitLevel;
+
+  return blindLevels.find(level => isKnockoutLevel(level)) ?? null;
 }
 
 export interface KnockoutCountdownInfo {

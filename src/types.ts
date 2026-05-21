@@ -139,11 +139,13 @@ export interface TournamentRecord {
 }
 
 export interface TournamentResultsPlayerRecord {
+  id: string;
   botRegistrationId: string | null;
   telegramId: number | null;
   name: string;
   username: string | null;
   source: LiveTournamentPlayerSource;
+  registrationSource: LiveTournamentRegistrationSource;
   arrivalStatus: LiveTournamentArrivalStatus;
   paymentMethod: LiveTournamentPaymentMethod;
   paymentDue: number;
@@ -159,15 +161,26 @@ export interface TournamentResultsPayload {
   sessionId: number;
   tournamentBotId: number | null;
   tournamentTitle: string;
+  tournamentMode?: string;
   finishedAt: string;
   levelsPlayed: number;
+  gameStatus: string;
   summary: {
     entrants: number;
+    active: number;
+    bustouts: number;
+    pending: number;
+    waitlist: number;
     rebuys: number;
     addons: number;
-    bonuses: number;
     bountyTotal: number;
+    paidEntries: number;
+    freeEntries: number;
+    totalDue: number;
+    bonusCount: number;
     totalStack: number;
+    lateRegistrationPlayers?: number | null;
+    ratingPlayerCount?: number | null;
   };
   players: TournamentResultsPlayerRecord[];
 }

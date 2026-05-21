@@ -30,6 +30,26 @@ function fillUrlTemplate(template: string, tournamentBotId: number | null) {
   return template.replaceAll('{id}', String(tournamentBotId));
 }
 
+async function readBotErrorDetails(response: Response) {
+  try {
+    const body = await response.json() as {
+      detail?: Array<{ loc?: Array<string | number>; msg?: string }>;
+    };
+
+    if (!Array.isArray(body.detail) || body.detail.length === 0) return null;
+
+    return body.detail
+      .map(item => {
+        const path = Array.isArray(item.loc) ? item.loc.slice(1).join('.') : '';
+        const message = typeof item.msg === 'string' ? item.msg : 'Ошибка валидации';
+        return path ? `${path}: ${message}` : message;
+      })
+      .join('; ');
+  } catch {
+    return null;
+  }
+}
+
 function toNullableNumber(value: unknown) {
   if (typeof value === 'number' && Number.isFinite(value)) return Math.round(value);
   if (typeof value === 'string' && value.trim() !== '') {
@@ -244,9 +264,12 @@ export async function submitBotTournamentResults(payload: TournamentResultsPaylo
     });
 
     if (!response.ok) {
+      const details = await readBotErrorDetails(response);
       return {
         ok: false as const,
-        error: `Бот не принял итоги турнира (HTTP ${response.status}).`,
+        error: details
+          ? `Бот не принял итоги турнира (HTTP ${response.status}): ${details}.`
+          : `Бот не принял итоги турнира (HTTP ${response.status}).`,
         unsupported: response.status === 404,
       };
     }

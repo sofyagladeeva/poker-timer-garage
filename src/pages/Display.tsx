@@ -273,7 +273,7 @@ export function Display() {
           </div>
           <div className="flex gap-4 flex-wrap justify-center">
             {ratingPlayers.slice(3, 7).map((p, i) => (
-              <div key={p.telegram_id}
+              <div key={p.telegram_id ?? `rating-${p.name}-${i + 4}`}
                    className="bg-[#141414] border border-[#222] rounded-xl px-6 py-3 flex items-center gap-4 min-w-[220px]">
                 <span className="text-[#444] font-bold w-5">{i + 4}</span>
                 <span className="text-white font-bold flex-1 truncate">{p.name}</span>
@@ -527,12 +527,10 @@ export function Display() {
             {/* Top-3 */}
             <div className="flex flex-col gap-2">
               <ColLabel>{sidebarLeaderboardTitle}</ColLabel>
-              {sidebarLeaderboardError
-                ? <div className="text-[#444] text-sm">Нет связи с рейтингом</div>
-                : sidebarLeaderboardPlayers.length === 0 && sidebarLeaderboardLoading
+              {sidebarLeaderboardPlayers.length === 0 && sidebarLeaderboardLoading
                 ? <div className="text-[#252525] text-sm">Загрузка...</div>
                 : sidebarLeaderboardPlayers.length === 0
-                ? <div className="text-[#444] text-sm">Нет данных</div>
+                ? <div className="text-[#444] text-sm">{sidebarLeaderboardError ? 'Нет связи с рейтингом' : 'Нет данных'}</div>
                 : sidebarLeaderboardPlayers.map((player, i) => {
                     const value = sidebarLeaderboardMode === 'rating'
                       ? (player as { points: number }).points.toFixed(1)
@@ -540,7 +538,7 @@ export function Display() {
                     const suffix = sidebarLeaderboardMode === 'rating' ? 'pts' : 'KO';
 
                     return (
-                      <div key={player.telegram_id}
+                      <div key={player.telegram_id ?? `${sidebarLeaderboardMode}-${player.name}-${i + 1}`}
                            className={`flex items-center gap-3 rounded-xl px-3 py-2 ${
                              i === 0
                                ? 'bg-[#160800] border border-[#E31E24]/25'
@@ -556,6 +554,9 @@ export function Display() {
                     );
                   })
               }
+              {sidebarLeaderboardError && sidebarLeaderboardPlayers.length > 0 && (
+                <div className="text-[#555] text-xs">Нет связи с ботом, показаны последние сохранённые данные</div>
+              )}
             </div>
 
             <div className="h-px bg-[#181818]" />

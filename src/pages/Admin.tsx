@@ -9,9 +9,7 @@ import {
   getKnockoutLabel,
   getLateRegistrationLevel,
   getNextKnockoutInfo,
-  isLateRegistrationLevel,
   setKnockoutMarker,
-  setLateRegistrationMarker,
 } from '../blindLevelMarkers';
 import { calcTotalStack } from '../gameStateMath';
 import type { BlindLevel, BlindTemplate, Combination, Card, Suit, Rank, TournamentRecord, GameState } from '../types';
@@ -203,12 +201,10 @@ function CardPicker({ onAdd }: { onAdd: (card: Card) => void }) {
 function BlindRow({
   level,
   onChange,
-  onToggleLateRegistration,
   onDelete,
 }: {
   level: BlindLevel;
   onChange: (l: BlindLevel) => void;
-  onToggleLateRegistration: () => void;
   onDelete: () => void;
 }) {
   const upd = (patch: Partial<BlindLevel>) => onChange({ ...level, ...patch });
@@ -217,7 +213,6 @@ function BlindRow({
   const [minutesDraft, setMinutesDraft] = useState(String(Math.round(level.duration / 60)));
   const knockoutLabel = getKnockoutLabel(level);
   const knockoutEnabled = Boolean(knockoutLabel);
-  const lateRegistrationEnabled = isLateRegistrationLevel(level);
 
   const parseDraftNumber = (value: string) => {
     const trimmed = value.trim();
@@ -276,12 +271,7 @@ function BlindRow({
           <span className="text-[#666] text-xs">Ур. {level.level}</span>
           {knockoutEnabled && (
             <span className="rounded-full border border-[#C0392B]/40 bg-[#1a0a00] px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-[#E31E24]">
-              Игра на вылет
-            </span>
-          )}
-          {lateRegistrationEnabled && (
-            <span className="rounded-full border border-emerald-500/30 bg-emerald-950/40 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-200">
-              Поздняя рег.
+              Игра на вылет / поздняя рег.
             </span>
           )}
         </div>
@@ -345,8 +335,8 @@ function BlindRow({
       </div>
       <div className="mt-1 flex items-center justify-between rounded-xl border border-[#1F1F1F] bg-[#0A0A0A] px-3 py-2">
         <div>
-          <div className="text-white text-sm font-medium">Игра на вылет</div>
-          <div className="text-[#666] text-xs">С этого уровня начинается игра на вылет.</div>
+          <div className="text-white text-sm font-medium">Игра на вылет и поздняя регистрация</div>
+          <div className="text-[#666] text-xs">Этот уровень отмечает начало игры на вылет и точку закрытия поздней регистрации.</div>
         </div>
         <button
           type="button"
@@ -358,23 +348,6 @@ function BlindRow({
           }`}
         >
           {knockoutEnabled ? 'Вкл' : 'Выкл'}
-        </button>
-      </div>
-      <div className="mt-1 flex items-center justify-between rounded-xl border border-[#1F1F1F] bg-[#0A0A0A] px-3 py-2">
-        <div>
-          <div className="text-white text-sm font-medium">Поздняя регистрация</div>
-          <div className="text-[#666] text-xs">До этого уровня включительно открыта поздняя регистрация.</div>
-        </div>
-        <button
-          type="button"
-          onClick={onToggleLateRegistration}
-          className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide transition-colors ${
-            lateRegistrationEnabled
-              ? 'bg-emerald-700 text-white'
-              : 'bg-[#1E1E1E] text-[#777] hover:text-white'
-          }`}
-        >
-          {lateRegistrationEnabled ? 'Вкл' : 'Выкл'}
         </button>
       </div>
     </div>
@@ -1216,18 +1189,6 @@ export function Admin() {
           ...level,
           ante: startLevel > 0 && level.level >= startLevel ? level.bb : 0,
         };
-      })
-    );
-  };
-
-  const toggleLateRegistrationLevel = (targetLevelId: string) => {
-    updateBlindLevels(
-      blindLevels.map(level => {
-        if (level.isBreak) return level;
-        if (level.id === targetLevelId) {
-          return setLateRegistrationMarker(level, !isLateRegistrationLevel(level));
-        }
-        return setLateRegistrationMarker(level, false);
       })
     );
   };
@@ -2114,7 +2075,6 @@ export function Admin() {
                     <BlindRow
                       level={level}
                       onChange={l => updateLevel(idx, l)}
-                      onToggleLateRegistration={() => toggleLateRegistrationLevel(level.id)}
                       onDelete={() => deleteLevel(idx)}
                     />
                   </div>

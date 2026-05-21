@@ -483,6 +483,64 @@ function summarizePlayers(players: LiveTournamentPlayer[]): TournamentPlayersSum
   });
 }
 
+function buildTournamentResultsPayload(params: {
+  sessionId: number;
+  tournamentBotId: number | null;
+  tournamentTitle: string;
+  finishedAt: string;
+  levelsPlayed: number;
+  totalStack: number;
+  summary: TournamentPlayersSummary;
+  players: LiveTournamentPlayer[];
+}): TournamentResultsPayload {
+  const { sessionId, tournamentBotId, tournamentTitle, finishedAt, levelsPlayed, totalStack, summary, players } = params;
+
+  return {
+    sessionId,
+    tournamentBotId,
+    tournamentTitle,
+    tournamentMode: 'garage',
+    finishedAt,
+    levelsPlayed,
+    gameStatus: 'completed',
+    summary: {
+      entrants: summary.entrants,
+      active: summary.active,
+      bustouts: summary.bustouts,
+      pending: summary.pending,
+      waitlist: summary.waitlist,
+      rebuys: summary.rebuys,
+      addons: summary.addons,
+      bountyTotal: summary.bountyTotal,
+      paidEntries: summary.paidEntries,
+      freeEntries: summary.freeEntries,
+      totalDue: summary.totalDue,
+      bonusCount: summary.bonuses,
+      totalStack,
+      lateRegistrationPlayers: null,
+      ratingPlayerCount: summary.entrants,
+    },
+    players: players.map(player => ({
+      id: player.id,
+      botRegistrationId: player.botRegistrationId,
+      telegramId: player.telegramId,
+      name: player.name,
+      username: player.username,
+      source: player.source,
+      registrationSource: player.registrationSource,
+      arrivalStatus: player.arrivalStatus,
+      paymentMethod: player.paymentMethod,
+      paymentDue: player.paymentDue,
+      rebuyCount: player.rebuyCount,
+      addonCount: player.addonCount,
+      bounty: player.bounty,
+      status: player.status,
+      place: player.place,
+      bustoutOrder: player.bustoutOrder,
+    })),
+  };
+}
+
 function hasPlayerCounters(gameState: GameState) {
   return (
     gameState.players > 0 ||
@@ -681,37 +739,16 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     if (players.length === 0 || gameState.tournamentBotId == null) return null;
 
     const orderedPlayers = sortPlayersForResults(players);
-    const payload: TournamentResultsPayload = {
+    const payload = buildTournamentResultsPayload({
       sessionId,
       tournamentBotId: gameState.tournamentBotId,
       tournamentTitle: gameState.tournamentTitle,
       finishedAt: '',
       levelsPlayed: gameState.currentLevelIndex + 1,
-      summary: {
-        entrants: summary.entrants,
-        rebuys: summary.rebuys,
-        addons: summary.addons,
-        bonuses: summary.bonuses,
-        bountyTotal: summary.bountyTotal,
-        totalStack: gameState.totalStack,
-      },
-      players: orderedPlayers.map(player => ({
-        botRegistrationId: player.botRegistrationId,
-        telegramId: player.telegramId,
-        name: player.name,
-        username: player.username,
-        source: player.source,
-        arrivalStatus: player.arrivalStatus,
-        paymentMethod: player.paymentMethod,
-        paymentDue: player.paymentDue,
-        rebuyCount: player.rebuyCount,
-        addonCount: player.addonCount,
-        bounty: player.bounty,
-        status: player.status,
-        place: player.place,
-        bustoutOrder: player.bustoutOrder,
-      })),
-    };
+      totalStack: gameState.totalStack,
+      summary,
+      players: orderedPlayers,
+    });
 
     return buildTournamentResultsSignature(payload);
   }, [
@@ -721,11 +758,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     gameState.tournamentTitle,
     players,
     sessionId,
-    summary.addons,
-    summary.bonuses,
-    summary.bountyTotal,
-    summary.entrants,
-    summary.rebuys,
+    summary,
   ]);
 
   const groupedPlayers = useMemo(() => ({
@@ -1313,38 +1346,16 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     const s = summarizePlayers(playersRef.current);
     const orderedPlayers = sortPlayersForResults(playersRef.current);
     const finishedAt = new Date().toISOString();
-
-    const payload: TournamentResultsPayload = {
+    const payload = buildTournamentResultsPayload({
       sessionId: sessionIdRef.current,
       tournamentBotId: gameState.tournamentBotId,
       tournamentTitle: gameState.tournamentTitle,
       finishedAt,
       levelsPlayed,
-      summary: {
-        entrants: s.entrants,
-        rebuys: s.rebuys,
-        addons: s.addons,
-        bonuses: s.bonuses,
-        bountyTotal: s.bountyTotal,
-        totalStack: gameState.totalStack,
-      },
-      players: orderedPlayers.map(p => ({
-        botRegistrationId: p.botRegistrationId,
-        telegramId: p.telegramId,
-        name: p.name,
-        username: p.username,
-        source: p.source,
-        arrivalStatus: p.arrivalStatus,
-        paymentMethod: p.paymentMethod,
-        paymentDue: p.paymentDue,
-        rebuyCount: p.rebuyCount,
-        addonCount: p.addonCount,
-        bounty: p.bounty,
-        status: p.status,
-        place: p.place,
-        bustoutOrder: p.bustoutOrder,
-      })),
-    };
+      totalStack: gameState.totalStack,
+      summary: s,
+      players: orderedPlayers,
+    });
     const signature = buildTournamentResultsSignature(payload);
 
     const result = await submitBotTournamentResults(payload);

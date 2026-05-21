@@ -47,7 +47,7 @@ export function RatingDisplay() {
         <div className="text-[#555] text-lg">Загрузка...</div>
       )}
 
-      {error && (
+      {error && players.length === 0 && (
         <div className="text-red-500 text-sm">Ошибка: {error}</div>
       )}
 
@@ -77,7 +77,7 @@ export function RatingDisplay() {
       {rest.length > 0 && (
         <div className="flex flex-col gap-1.5 w-full max-w-2xl">
           {rest.map((p, i) => (
-            <div key={p.telegram_id}
+            <div key={p.telegram_id ?? `rating-${p.name}-${i + 4}`}
                  className="flex items-center gap-4 bg-[#111] border border-[#2D2D2D] rounded-xl px-5 py-2">
               <span className="text-[#555] w-6 text-center font-bold">{i + 4}</span>
               <span className="flex-1 text-white font-medium">{p.name}</span>
@@ -86,6 +86,9 @@ export function RatingDisplay() {
             </div>
           ))}
         </div>
+      )}
+      {error && players.length > 0 && (
+        <div className="text-[#666] text-xs">Нет связи с ботом, показаны последние сохранённые данные</div>
       )}
     </div>
   );
