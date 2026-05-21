@@ -101,6 +101,11 @@ type TournamentResultsDispatchOutcome = {
   resent: boolean;
 };
 
+type PendingTournamentSelection = {
+  title: string;
+  botId: number | null;
+};
+
 function formatNextGameFallback(game: { title: string; date: string; confirmed: number; max_players: number }) {
   const d = new Date(game.date);
   const dateStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
@@ -670,7 +675,7 @@ export function Admin() {
     }
   };
 
-  const startNewTournamentFlow = async () => {
+  const startNewTournamentFlow = async (nextTournament?: PendingTournamentSelection) => {
     setNewTournamentBusy(true);
     try {
       await saveTournament(gameState, levelsPlayed);
@@ -681,6 +686,17 @@ export function Admin() {
         return;
       }
 
+      if (nextTournament) {
+        const selectionOk = await updateGameState({
+          tournamentTitle: nextTournament.title,
+          tournamentBotId: nextTournament.botId,
+        }, true);
+
+        if (selectionOk === false) {
+          alert('Турнир сброшен, но новую игру не удалось применить сразу. Выберите её ещё раз.');
+        }
+      }
+
       setFinishReviewOpen(false);
       setResultsNotice(null);
       setActiveTab('control');
@@ -689,13 +705,35 @@ export function Admin() {
     }
   };
 
-  const confirmStartNewTournament = async () => {
-    const message = hasBotResultsTarget && !resultsAlreadyCurrent
-      ? 'Начать новый турнир? Если итоги ещё не отправлены в бот, сделайте это сначала. Данные текущего турнира сохранятся в архив.'
-      : 'Завершить текущий турнир и начать новый? Данные сохранятся в архив.';
+  const confirmStartNewTournament = async (nextTournament?: PendingTournamentSelection) => {
+    const message = nextTournament
+      ? `Начать новый турнир с игрой «${nextTournament.title}»? Завершённый турнир сохранится в архив.`
+      : hasBotResultsTarget && !resultsAlreadyCurrent
+        ? 'Начать новый турнир? Если итоги ещё не отправлены в бот, сделайте это сначала. Данные текущего турнира сохранятся в архив.'
+        : 'Завершить текущий турнир и начать новый? Данные сохранятся в архив.';
 
     if (!confirm(message)) return;
-    await startNewTournamentFlow();
+    await startNewTournamentFlow(nextTournament);
+  };
+
+  const handleSelectTournament = async (title: string, botId: number | null) => {
+    const sameSelection = gameState.tournamentTitle === title && gameState.tournamentBotId === botId;
+    if (sameSelection) {
+      setGamePickerOpen(false);
+      setCustomGameOpen(false);
+      return;
+    }
+
+    if (gameState.status === 'ended') {
+      await confirmStartNewTournament({ title, botId });
+      setGamePickerOpen(false);
+      setCustomGameOpen(false);
+      return;
+    }
+
+    await updateGameState({ tournamentTitle: title, tournamentBotId: botId });
+    setGamePickerOpen(false);
+    setCustomGameOpen(false);
   };
 
   const playersInGame = managedPlayerCountsActive
@@ -1179,6 +1217,9 @@ export function Admin() {
           <div className="text-[#666] text-xs mt-3">
             Пока синхронизация не восстановится, управление заблокировано, чтобы не перезаписать живой турнир дефолтными данными.
           </div>
+          <div className="text-[#666] text-xs mt-2">
+            Админка сама повторяет подключение каждые 10 секунд. Кнопка ниже нужна, если хочется форсировать попытку сразу.
+          </div>
           <button
             onClick={() => { void retrySync(); }}
             className="admin-btn-primary w-full py-3 mt-5"
@@ -1447,7 +1488,7 @@ export function Admin() {
                           return (
                             <button
                               key={g.id}
-                              onClick={() => updateGameState({ tournamentTitle: g.title, tournamentBotId: g.id })}
+                              onClick={() => { void handleSelectTournament(g.title, g.id); }}
                               className={`flex items-center justify-between px-4 py-3 rounded-xl border text-left transition-all ${
                                 isSelected
                                   ? 'border-[#C0392B] bg-[#1a0a00] text-white'
@@ -1478,9 +1519,8 @@ export function Admin() {
                         onChange={e => setCustomGameTitle(e.target.value)}
                         onKeyDown={e => {
                           if (e.key === 'Enter' && customGameTitle.trim()) {
-                            updateGameState({ tournamentTitle: customGameTitle.trim(), tournamentBotId: null });
+                            void handleSelectTournament(customGameTitle.trim(), null);
                             setCustomGameTitle('');
-                            setGamePickerOpen(false);
                           }
                         }}
                         placeholder="Название игры..."
@@ -1489,9 +1529,8 @@ export function Admin() {
                       <button
                         onClick={() => {
                           if (!customGameTitle.trim()) return;
-                          updateGameState({ tournamentTitle: customGameTitle.trim(), tournamentBotId: null });
+                          void handleSelectTournament(customGameTitle.trim(), null);
                           setCustomGameTitle('');
-                          setGamePickerOpen(false);
                         }}
                         disabled={!customGameTitle.trim()}
                         className="admin-btn-primary py-3 text-sm disabled:opacity-30"
@@ -1621,7 +1660,7 @@ export function Admin() {
                 )}
                 {resultsAlreadyCurrent && (
                   <div className="rounded-xl border border-green-900/60 bg-green-950/30 px-4 py-3 text-sm text-green-200">
-                    Итоги уже отправлены в бот{resultsSentLabel ? ` · ${resultsSentLabel}` : ''}. Все дальнейшие действия доступны только через окно `Итоги и отправка`.
+                    Итоги уже отправлены в бот{resultsSentLabel ? ` · ${resultsSentLabel}` : ''}. Можно открыть детали итогов или сразу начать новый турнир.
                   </div>
                 )}
                 {resultsNeedResubmit && (
@@ -1629,12 +1668,19 @@ export function Admin() {
                     После прошлой отправки результаты были изменены. Откройте окно `Итоги и отправка`, чтобы отправить обновлённую версию.
                   </div>
                 )}
-                <div className="grid grid-cols-1 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <button
                     onClick={() => setFinishReviewOpen(true)}
                     className="admin-btn-secondary py-4 text-sm font-bold"
                   >
                     {resultsAlreadyCurrent ? '🧾 Итоги отправлены' : '🧾 Итоги и отправка'}
+                  </button>
+                  <button
+                    onClick={() => void confirmStartNewTournament()}
+                    disabled={newTournamentBusy}
+                    className="admin-btn-primary py-4 text-sm font-bold disabled:opacity-40"
+                  >
+                    {newTournamentBusy ? 'Сохранение...' : '↺ Новый турнир'}
                   </button>
                 </div>
               </div>

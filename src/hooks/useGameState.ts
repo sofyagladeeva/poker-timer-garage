@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, DEFAULT_BLIND_LEVELS, DEFAULT_GAME_STATE } from '../supabase';
+import { buildGameStatePersistencePatch, shouldApplyRemoteGameStateUpdate } from '../gameStateSync';
 import { hasMissingBonusColumns, hasMissingNextGameBotId, hasMissingResetAt, normalizeGameState, toLegacyGameState } from '../gameStateMath';
 import type { GameState, BlindLevel, Combination, TournamentRecord } from '../types';
 
@@ -17,6 +18,7 @@ const DISPLAY_STALE_RELOAD_MS = 45_000;
 const DISPLAY_WATCHDOG_MS = 5_000;
 const AUTO_ADVANCE_SERVER_CHECK_MS = 350;
 const FOREGROUND_SYNC_TIMEOUT_MS = 5_000;
+const AUTHORITATIVE_RETRY_MS = 10_000;
 
 // ─── Local storage fallback (when Supabase not configured) ─────────────────
 function loadLocal<T>(key: string, defaultValue: T): T {
@@ -182,6 +184,7 @@ export function useGameState(readOnly = false) {
   // Debounce Supabase upsert for rapid counter updates
   const supabaseUpsertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingUpsertState = useRef<GameState | null>(null);
+  const pendingUpsertPatch = useRef<Partial<GameState> | null>(null);
   const autoAdvancePending = useRef(false);
 
   // Broadcast channel ref — for low-latency state push (<100ms)
@@ -283,14 +286,17 @@ export function useGameState(readOnly = false) {
     lastServerSyncAt.current = Date.now();
   }, []);
 
-  const shouldApplyRemoteGameState = useCallback((data: Record<string, unknown>) => {
-    const incomingResetAt = typeof data.resetAt === 'number' ? data.resetAt : null;
-    const localResetAt = gameStateRef.current.resetAt;
-    if (incomingResetAt !== null && localResetAt > 0 && incomingResetAt < localResetAt) return false;
-    if (hasFreshLocalWrite()) return false;
-    const incomingTick = typeof data.lastTickAt === 'number' ? data.lastTickAt : 0;
-    const localTick = gameStateRef.current.lastTickAt ?? 0;
-    return incomingTick >= localTick;
+  const shouldApplyRemoteGameState = useCallback((
+    data: Record<string, unknown>,
+    authoritativeSource = false
+  ) => {
+    return shouldApplyRemoteGameStateUpdate({
+      incoming: data,
+      localState: gameStateRef.current,
+      hasFreshLocalWrite: hasFreshLocalWrite(),
+      authoritativeLoaded: serverLoaded.current,
+      authoritativeSource,
+    });
   }, [hasFreshLocalWrite]);
 
   const applyAuthoritativeGameState = useCallback((data: Record<string, unknown>, source?: string) => {
@@ -298,9 +304,13 @@ export function useGameState(readOnly = false) {
     applySync(data, source);
   }, [applySync, markServerSync]);
 
-  const applyIfNewerGameState = useCallback((data: Record<string, unknown>, source?: string) => {
+  const applyIfNewerGameState = useCallback((
+    data: Record<string, unknown>,
+    source?: string,
+    authoritativeSource = false
+  ) => {
     markServerSync();
-    if (!shouldApplyRemoteGameState(data)) return false;
+    if (!shouldApplyRemoteGameState(data, authoritativeSource)) return false;
     applySync(data, source);
     return true;
   }, [applySync, markServerSync, shouldApplyRemoteGameState]);
@@ -334,7 +344,7 @@ export function useGameState(readOnly = false) {
       }
       return false;
     }
-    applyIfNewerGameState(data as Record<string, unknown>, source);
+    applyIfNewerGameState(data as Record<string, unknown>, source, true);
     return true;
   }, [applyIfNewerGameState, isSupabaseConfigured]);
 
@@ -406,7 +416,11 @@ export function useGameState(readOnly = false) {
     });
   }, []);
 
-  const persistGameState = useCallback(async (stateToSave: GameState, immediate = false) => {
+  const persistGameState = useCallback(async (
+    stateToSave: GameState,
+    patchToPersist: Partial<GameState>,
+    immediate = false
+  ) => {
     skipGameStateRealtime.current = true;
     if (skipGameStateTimer.current) clearTimeout(skipGameStateTimer.current);
     skipGameStateTimer.current = setTimeout(() => { skipGameStateRealtime.current = false; }, immediate ? 8000 : 4000);
@@ -426,7 +440,7 @@ export function useGameState(readOnly = false) {
       }
     }
 
-    let payload: Record<string, unknown> = { id: 1, ...stateToSave };
+    let payload: Record<string, unknown> = { id: 1, ...patchToPersist };
     let error: unknown = null;
 
     for (let attempt = 0; attempt < 4; attempt++) {
@@ -435,7 +449,7 @@ export function useGameState(readOnly = false) {
       if (!error) return true;
 
       if (hasMissingBonusColumns(error)) {
-        payload = { id: 1, ...toLegacyGameState(stateToSave) };
+        payload = { id: 1, ...toLegacyGameState({ ...stateToSave, ...patchToPersist }) };
         continue;
       }
 
@@ -558,7 +572,7 @@ export function useGameState(readOnly = false) {
         if (incomingResetAt !== null && localResetAt > 0 && incomingResetAt !== localResetAt) {
           if (incomingResetAt > localResetAt) {
             // Newer reset from another device — this is a legitimate new tournament
-            applyAuthoritativeGameState(incoming, 'broadcast-newer-reset');
+            applyAuthoritativeGameState({ ...gameStateRef.current, ...incoming }, 'broadcast-newer-reset');
           } else {
             // Incoming is older tournament — stale device, fetch authoritative state
             Promise.resolve(supabase.from('game_state').select('*').single())
@@ -566,7 +580,7 @@ export function useGameState(readOnly = false) {
           }
           return;
         }
-        applyIfNewerGameState(incoming, 'broadcast');
+        applyIfNewerGameState({ ...gameStateRef.current, ...incoming }, 'broadcast');
       })
       .on('broadcast', { event: 'time_sync_request' }, (msg) => {
         const requesterCid = typeof msg.payload?._cid === 'string' ? msg.payload._cid : null;
@@ -608,7 +622,7 @@ export function useGameState(readOnly = false) {
         }
         if (skipGameStateRealtime.current) return;
         if (!payload.new) return;
-        applyIfNewerGameState(payload.new as Record<string, unknown>, 'realtime');
+        applyIfNewerGameState(payload.new as Record<string, unknown>, 'realtime', true);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_levels' }, () => {
         if (skipBlindRealtime.current) return;
@@ -698,6 +712,24 @@ export function useGameState(readOnly = false) {
     syncGameStateFromServer,
   ]);
 
+  useEffect(() => {
+    if (!isSupabaseConfigured || !syncReady || authoritativeReady) return;
+
+    const retryAuthoritativeSync = () => {
+      if (document.visibilityState !== 'visible') return;
+      void queueForegroundSync('authoritative-retry');
+    };
+
+    const interval = setInterval(retryAuthoritativeSync, AUTHORITATIVE_RETRY_MS);
+    window.addEventListener('online', retryAuthoritativeSync);
+    retryAuthoritativeSync();
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('online', retryAuthoritativeSync);
+    };
+  }, [authoritativeReady, isSupabaseConfigured, queueForegroundSync, syncReady]);
+
   // ─── Local timer tick (time-based: all devices compute from same anchor) ─
   useEffect(() => {
     if (gameState.status !== 'running' && gameState.status !== 'break') return;
@@ -743,6 +775,7 @@ export function useGameState(readOnly = false) {
     }
 
     const updated = normalizeGameState({ ...gameStateRef.current, ...nextPatch }, gameStateRef.current);
+    const persistedPatch = buildGameStatePersistencePatch(updated, nextPatch);
     setGameState(updated);
     saveLocal(STATE_KEY, updated);
     if (!isSupabaseConfigured) return Promise.resolve(true);
@@ -760,7 +793,7 @@ export function useGameState(readOnly = false) {
         type: 'broadcast',
         event: 'game_state',
         payload: {
-          ...updated,
+          ...persistedPatch,
           _cid: clientId.current,
           _serverNow: serverClockOffsetMs.current === null ? undefined : getAuthoritativeNow(),
         },
@@ -768,15 +801,17 @@ export function useGameState(readOnly = false) {
     }
 
     pendingUpsertState.current = updated;
+    pendingUpsertPatch.current = persistedPatch;
     if (supabaseUpsertTimer.current) clearTimeout(supabaseUpsertTimer.current);
     if (immediate) {
-      return persistGameState(updated, true);
+      return persistGameState(updated, persistedPatch, true);
     }
 
     supabaseUpsertTimer.current = setTimeout(() => {
       const stateToSave = pendingUpsertState.current;
-      if (!stateToSave) return;
-      void persistGameState(stateToSave, false);
+      const patchToPersist = pendingUpsertPatch.current;
+      if (!stateToSave || !patchToPersist) return;
+      void persistGameState(stateToSave, patchToPersist, false);
     }, 300);
 
     return Promise.resolve(true);
