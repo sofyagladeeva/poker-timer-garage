@@ -483,17 +483,18 @@ function summarizePlayers(players: LiveTournamentPlayer[]): TournamentPlayersSum
   });
 }
 
-function buildTournamentResultsPayload(params: {
+export function buildTournamentResultsPayload(params: {
   sessionId: number;
   tournamentBotId: number | null;
   tournamentTitle: string;
   finishedAt: string;
   levelsPlayed: number;
   totalStack: number;
-  summary: TournamentPlayersSummary;
   players: LiveTournamentPlayer[];
 }): TournamentResultsPayload {
-  const { sessionId, tournamentBotId, tournamentTitle, finishedAt, levelsPlayed, totalStack, summary, players } = params;
+  const { sessionId, tournamentBotId, tournamentTitle, finishedAt, levelsPlayed, totalStack, players } = params;
+  const eligiblePlayers = players.filter(player => player.arrivalStatus !== 'absent');
+  const summary = summarizePlayers(eligiblePlayers);
 
   return {
     sessionId,
@@ -520,7 +521,7 @@ function buildTournamentResultsPayload(params: {
       lateRegistrationPlayers: null,
       ratingPlayerCount: summary.entrants,
     },
-    players: players.map(player => ({
+    players: eligiblePlayers.map(player => ({
       id: player.id,
       botRegistrationId: player.botRegistrationId,
       telegramId: player.telegramId,
@@ -746,7 +747,6 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       finishedAt: '',
       levelsPlayed: gameState.currentLevelIndex + 1,
       totalStack: gameState.totalStack,
-      summary,
       players: orderedPlayers,
     });
 
@@ -758,7 +758,6 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     gameState.tournamentTitle,
     players,
     sessionId,
-    summary,
   ]);
 
   const groupedPlayers = useMemo(() => ({
@@ -1343,7 +1342,6 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       return { ok: true as const, skipped: true as const, error: null, signature: null, sentAt: null };
     }
 
-    const s = summarizePlayers(playersRef.current);
     const orderedPlayers = sortPlayersForResults(playersRef.current);
     const finishedAt = new Date().toISOString();
     const payload = buildTournamentResultsPayload({
@@ -1353,7 +1351,6 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       finishedAt,
       levelsPlayed,
       totalStack: gameState.totalStack,
-      summary: s,
       players: orderedPlayers,
     });
     const signature = buildTournamentResultsSignature(payload);

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  buildTournamentResultsPayload,
   buildStoredPlayersPayload,
   buildTournamentResultsSignature,
   calcPaymentDue,
@@ -115,6 +116,40 @@ test('buildTournamentResultsSignature ignores finishedAt but reacts to actual re
     buildTournamentResultsSignature(basePayload),
     buildTournamentResultsSignature(changedData)
   );
+});
+
+test('buildTournamentResultsPayload excludes absent players from exported results', () => {
+  const payload = buildTournamentResultsPayload({
+    sessionId: 100,
+    tournamentBotId: 77,
+    tournamentTitle: 'Friday',
+    finishedAt: '2026-05-19T10:00:00.000Z',
+    levelsPlayed: 8,
+    totalStack: 123000,
+    players: [
+      createPlayer({
+        id: 'absent-1',
+        name: 'Absent',
+        arrivalStatus: 'absent',
+        status: 'registered',
+        place: null,
+        paymentDue: 0,
+      }),
+      createPlayer({
+        id: 'out-1',
+        name: 'Out',
+        arrivalStatus: 'paid',
+        status: 'out',
+        place: 1,
+        bustoutOrder: 10,
+      }),
+    ],
+  });
+
+  assert.equal(payload.summary.entrants, 1);
+  assert.equal(payload.summary.pending, 0);
+  assert.equal(payload.players.length, 1);
+  assert.equal(payload.players[0]?.id, 'out-1');
 });
 
 test('stored players payload round-trips results submission metadata', () => {

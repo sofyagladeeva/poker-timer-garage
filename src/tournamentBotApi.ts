@@ -31,12 +31,20 @@ function fillUrlTemplate(template: string, tournamentBotId: number | null) {
 }
 
 async function readBotErrorDetails(response: Response) {
+  const raw = await response.text();
+  if (!raw.trim()) return null;
+
   try {
-    const body = await response.json() as {
-      detail?: Array<{ loc?: Array<string | number>; msg?: string }>;
+    const body = JSON.parse(raw) as {
+      detail?: Array<{ loc?: Array<string | number>; msg?: string }> | string;
+      error?: string;
+      message?: string;
     };
 
-    if (!Array.isArray(body.detail) || body.detail.length === 0) return null;
+    if (typeof body.detail === 'string' && body.detail.trim()) return body.detail.trim();
+    if (typeof body.error === 'string' && body.error.trim()) return body.error.trim();
+    if (typeof body.message === 'string' && body.message.trim()) return body.message.trim();
+    if (!Array.isArray(body.detail) || body.detail.length === 0) return raw.trim();
 
     return body.detail
       .map(item => {
@@ -46,7 +54,7 @@ async function readBotErrorDetails(response: Response) {
       })
       .join('; ');
   } catch {
-    return null;
+    return raw.trim() || null;
   }
 }
 
