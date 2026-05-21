@@ -14,7 +14,7 @@ import {
 import { calcTotalStack } from '../gameStateMath';
 import type { BlindLevel, BlindTemplate, Combination, Card, Suit, Rank, TournamentRecord, GameState } from '../types';
 import { SUIT_SYMBOLS } from '../types';
-import { deriveTournamentResultsUiState, getTournamentResultsButtonLabel } from '../tournamentResultsFlow';
+import { deriveTournamentResultsUiState, getDuplicatePlaces, getTournamentResultsButtonLabel } from '../tournamentResultsFlow';
 import { PokerCard } from '../components/PokerCard';
 import { TournamentPlayersTab } from '../components/TournamentPlayersTab';
 import {
@@ -438,6 +438,12 @@ export function Admin() {
   const playersMissingFinalPlace = finishReviewPlayers.filter(player => (
     player.arrivalStatus !== 'absent' && player.status !== 'out'
   )).length;
+  const duplicateResultPlaces = getDuplicatePlaces(
+    finishReviewPlayers
+      .filter(player => player.arrivalStatus !== 'absent')
+      .map(player => player.place)
+  );
+  const duplicateResultPlacesLabel = duplicateResultPlaces.join(', ');
   const hasBotResultsTarget = tournamentPlayers.length > 0 && gameState.tournamentBotId != null;
   const requiresBotResults = gameState.tournamentBotId != null;
   const {
@@ -447,6 +453,7 @@ export function Admin() {
   } = deriveTournamentResultsUiState({
     hasBotResultsTarget,
     playersMissingFinalPlace,
+    duplicatePlacesCount: duplicateResultPlaces.length,
     resultsSubmissionSignature: resultsSubmission.signature,
     currentResultsSignature,
   });
@@ -534,6 +541,15 @@ export function Admin() {
 
   const submitTournamentResults = async () => {
     setResultsNotice(null);
+
+    if (duplicateResultPlaces.length > 0) {
+      setResultsNotice({
+        tone: 'error',
+        text: `В итогах дублируются места: ${duplicateResultPlacesLabel}. Исправьте места перед отправкой в бот.`,
+      });
+      return false;
+    }
+
     const dispatchResult = await dispatchTournamentResults();
     if (dispatchResult.cancelled) return false;
 
@@ -575,6 +591,14 @@ export function Admin() {
       setResultsNotice({
         tone: 'error',
         text: 'Перед завершением переведите всех оставшихся игроков в `Выбыл` и проверьте финальные места.',
+      });
+      return false;
+    }
+
+    if (requiresBotResults && duplicateResultPlaces.length > 0) {
+      setResultsNotice({
+        tone: 'error',
+        text: `В итогах дублируются места: ${duplicateResultPlacesLabel}. Исправьте места перед отправкой в бот.`,
       });
       return false;
     }
@@ -1573,6 +1597,11 @@ export function Admin() {
                     Итоги ещё не готовы к отправке: без финального места осталось {playersMissingFinalPlace}. Откройте окно `Итоги и отправка`, проверьте результаты и довыставьте выбывших.
                   </div>
                 )}
+                {duplicateResultPlaces.length > 0 && (
+                  <div className="rounded-xl border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm text-red-300">
+                    Итоги ещё не готовы к отправке: дублируются места {duplicateResultPlacesLabel}. Откройте окно `Итоги и отправка` и исправьте повторы.
+                  </div>
+                )}
                 {resultsAlreadyCurrent && (
                   <div className="rounded-xl border border-green-900/60 bg-green-950/30 px-4 py-3 text-sm text-green-200">
                     Итоги уже отправлены в бот{resultsSentLabel ? ` · ${resultsSentLabel}` : ''}. Все дальнейшие действия доступны только через окно `Итоги и отправка`.
@@ -2402,6 +2431,12 @@ export function Admin() {
               {playersMissingFinalPlace > 0 && (
                 <div className="mt-4 rounded-xl border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
                   Без итогового места: {playersMissingFinalPlace}. Перед отправкой переведите оставшихся игроков в `Выбыл` и при необходимости поправьте место вручную.
+                </div>
+              )}
+
+              {duplicateResultPlaces.length > 0 && (
+                <div className="mt-4 rounded-xl border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm text-red-300">
+                  Дублируются места: {duplicateResultPlacesLabel}. Перед отправкой у каждого участника должно быть уникальное итоговое место.
                 </div>
               )}
 

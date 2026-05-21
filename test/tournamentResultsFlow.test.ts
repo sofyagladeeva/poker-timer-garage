@@ -12,6 +12,7 @@ import {
 } from '../src/hooks/useTournamentPlayers.ts';
 import {
   deriveTournamentResultsUiState,
+  getDuplicatePlaces,
   getTournamentResultsButtonLabel,
 } from '../src/tournamentResultsFlow.ts';
 import type { LiveTournamentPlayer, TournamentResultsPayload } from '../src/types.ts';
@@ -200,10 +201,16 @@ test('sortPlayersForResults puts placed players first and preserves stable fallb
   );
 });
 
+test('getDuplicatePlaces returns unique repeated places in ascending order', () => {
+  assert.deepEqual(getDuplicatePlaces([3, 1, 3, null, 2, 2, undefined, 5]), [2, 3]);
+  assert.deepEqual(getDuplicatePlaces([1, 2, 3]), []);
+});
+
 test('deriveTournamentResultsUiState and button labels reflect first send, resend and locked states', () => {
   const firstSend = deriveTournamentResultsUiState({
     hasBotResultsTarget: true,
     playersMissingFinalPlace: 0,
+    duplicatePlacesCount: 0,
     resultsSubmissionSignature: null,
     currentResultsSignature: 'sig-a',
   });
@@ -217,6 +224,7 @@ test('deriveTournamentResultsUiState and button labels reflect first send, resen
   const alreadySent = deriveTournamentResultsUiState({
     hasBotResultsTarget: true,
     playersMissingFinalPlace: 0,
+    duplicatePlacesCount: 0,
     resultsSubmissionSignature: 'sig-a',
     currentResultsSignature: 'sig-a',
   });
@@ -230,6 +238,7 @@ test('deriveTournamentResultsUiState and button labels reflect first send, resen
   const changedAfterSend = deriveTournamentResultsUiState({
     hasBotResultsTarget: true,
     playersMissingFinalPlace: 0,
+    duplicatePlacesCount: 0,
     resultsSubmissionSignature: 'sig-a',
     currentResultsSignature: 'sig-b',
   });
@@ -243,10 +252,20 @@ test('deriveTournamentResultsUiState and button labels reflect first send, resen
   const missingPlaces = deriveTournamentResultsUiState({
     hasBotResultsTarget: true,
     playersMissingFinalPlace: 2,
+    duplicatePlacesCount: 0,
     resultsSubmissionSignature: null,
     currentResultsSignature: 'sig-a',
   });
   assert.equal(missingPlaces.canSubmitTournamentResults, false);
+
+  const duplicatePlaces = deriveTournamentResultsUiState({
+    hasBotResultsTarget: true,
+    playersMissingFinalPlace: 0,
+    duplicatePlacesCount: 2,
+    resultsSubmissionSignature: null,
+    currentResultsSignature: 'sig-a',
+  });
+  assert.equal(duplicatePlaces.canSubmitTournamentResults, false);
 });
 
 test('isIncomingPlayersSnapshotStale ignores older shared snapshots and accepts newer ones', () => {
