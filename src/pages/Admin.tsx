@@ -75,6 +75,7 @@ const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'poker2024';
 const MAX_BACKGROUND_ITEMS = 24;
 const SHARED_LIBRARY_TIMEOUT_MS = 20_000;
 const SHARED_LIBRARY_RETRY_COUNT = 2;
+const ADMIN_AUTH_STORAGE_KEY = 'admin_authed';
 
 type BotGameSummary = {
   id: number;
@@ -135,6 +136,22 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
 
 function wait(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function loadAdminAuthFlag() {
+  try {
+    return sessionStorage.getItem(ADMIN_AUTH_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveAdminAuthFlag() {
+  try {
+    sessionStorage.setItem(ADMIN_AUTH_STORAGE_KEY, '1');
+  } catch (error) {
+    console.warn('Failed to persist admin auth flag in sessionStorage', error);
+  }
 }
 
 async function withRetries<T>(
@@ -358,7 +375,7 @@ function BlindRow({
 export function Admin() {
   const sharedBackgroundLibraryEnabled = isSharedBackgroundLibraryEnabled();
   const sharedBlindTemplateLibraryEnabled = isSharedBlindTemplateLibraryEnabled();
-  const [authed, setAuthed] = useState(() => sessionStorage.getItem('admin_authed') === '1');
+  const [authed, setAuthed] = useState(loadAdminAuthFlag);
   const [pwInput, setPwInput] = useState('');
   const [pwError, setPwError] = useState(false);
   const [activeTab, setActiveTab] = useState<'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings'>('control');
@@ -732,7 +749,7 @@ export function Admin() {
   const handleLogin = () => {
     if (pwInput === ADMIN_PASSWORD) {
       setAuthed(true);
-      sessionStorage.setItem('admin_authed', '1');
+      saveAdminAuthFlag();
     } else {
       setPwError(true);
       setTimeout(() => setPwError(false), 2000);
