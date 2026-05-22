@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, DEFAULT_BLIND_LEVELS, DEFAULT_GAME_STATE } from '../supabase';
 import { buildGameStatePersistencePatch, shouldApplyRemoteGameStateUpdate } from '../gameStateSync';
 import { hasMissingBonusColumns, hasMissingNextGameBotId, hasMissingResetAt, normalizeGameState, toLegacyGameState } from '../gameStateMath';
+import { buildAdvanceLevelPatch } from '../levelAdvance';
 import type { GameState, BlindLevel, Combination, TournamentRecord } from '../types';
 
 const STATE_KEY = 'poker_game_state';
@@ -849,22 +850,15 @@ export function useGameState(readOnly = false) {
     updateGameState({ status: 'paused', timeLeft: liveTimeLeft }, true);
   }, [getAuthoritativeNow, updateGameState]);
 
-  const nextLevel = useCallback(() => {
-    const gs = gameStateRef.current;
-    const bl = blindLevelsRef.current;
-    const nextIndex = gs.currentLevelIndex + 1;
-    if (nextIndex >= bl.length) {
-      updateGameState({ status: 'ended' }, true);
-      return;
-    }
-    const nextLvl = bl[nextIndex];
-    updateGameState({
-      currentLevelIndex: nextIndex,
-      timeLeft: nextLvl.duration,
-      status: nextLvl.isBreak ? 'break' : 'running',
-      lastTickAt: getAuthoritativeNow(),
-    }, true);
+  const advanceToLevelIndex = useCallback((targetIndex: number) => {
+    const patch = buildAdvanceLevelPatch(blindLevelsRef.current, targetIndex, getAuthoritativeNow());
+    return updateGameState(patch, true);
   }, [getAuthoritativeNow, updateGameState]);
+
+  const nextLevel = useCallback(() => {
+    const nextIndex = gameStateRef.current.currentLevelIndex + 1;
+    return advanceToLevelIndex(nextIndex);
+  }, [advanceToLevelIndex]);
 
   // ─── Авто-переход: таймер дошёл до 0 → следующий уровень ──────────────
   // Any live client may advance the level if the timer reaches 0.
@@ -878,9 +872,10 @@ export function useGameState(readOnly = false) {
     if (autoAdvancePending.current) return;
 
     autoAdvancePending.current = true;
+    const targetIndex = gameState.currentLevelIndex + 1;
 
     const advanceImmediately = () => {
-      nextLevel();
+      void advanceToLevelIndex(targetIndex);
     };
 
     // Before advancing, check server state to ensure this device isn't stale.
@@ -919,7 +914,7 @@ export function useGameState(readOnly = false) {
       .finally(() => {
         autoAdvancePending.current = false;
       });
-  }, [readOnly, gameState.timeLeft, gameState.status, nextLevel, isSupabaseConfigured, applyAuthoritativeGameState]);
+  }, [readOnly, gameState.currentLevelIndex, gameState.timeLeft, gameState.status, advanceToLevelIndex, isSupabaseConfigured, applyAuthoritativeGameState]);
 
   const prevLevel = useCallback(() => {
     const gs = gameStateRef.current;
