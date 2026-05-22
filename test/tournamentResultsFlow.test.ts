@@ -8,6 +8,7 @@ import {
   calcPaymentDue,
   findPlayerWithPlaceConflict,
   isIncomingPlayersSnapshotStale,
+  mergeChangedPlayersOntoSnapshot,
   parseEmergencyPlayersPayload,
   parseStoredPlayersPayload,
   resolveHydratedPlayersSnapshot,
@@ -373,6 +374,24 @@ test('findPlayerWithPlaceConflict ignores self and absent players', () => {
   assert.equal(findPlayerWithPlaceConflict(players, 'a', 5), null);
   assert.equal(findPlayerWithPlaceConflict(players, 'c', 5)?.id, 'a');
   assert.equal(findPlayerWithPlaceConflict(players, 'c', 8), null);
+});
+
+test('mergeChangedPlayersOntoSnapshot preserves unrelated newer players while applying local edits', () => {
+  const latestShared = [
+    createPlayer({ id: 'a', name: 'Alpha', status: 'active', rebuyCount: 0, updatedAt: '2026-05-22T21:00:00.000Z' }),
+    createPlayer({ id: 'b', name: 'Bravo', status: 'out', place: 2, placeOverride: true, bustoutOrder: 2, updatedAt: '2026-05-22T21:01:00.000Z' }),
+  ];
+  const localChanges = [
+    createPlayer({ id: 'a', name: 'Alpha', status: 'out', place: 1, placeOverride: true, bustoutOrder: 1, updatedAt: '2026-05-22T21:02:00.000Z' }),
+    createPlayer({ id: 'c', name: 'Charlie', status: 'active', sortOrder: 2, updatedAt: '2026-05-22T21:02:30.000Z' }),
+  ];
+
+  const merged = mergeChangedPlayersOntoSnapshot(latestShared, localChanges);
+
+  assert.deepEqual(merged.map(player => player.id), ['a', 'b', 'c']);
+  assert.equal(merged.find(player => player.id === 'a')?.status, 'out');
+  assert.equal(merged.find(player => player.id === 'b')?.status, 'out');
+  assert.equal(merged.find(player => player.id === 'c')?.name, 'Charlie');
 });
 
 test('deriveTournamentResultsUiState and button labels reflect first send, resend and locked states', () => {

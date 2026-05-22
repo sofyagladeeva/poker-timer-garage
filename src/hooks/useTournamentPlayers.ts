@@ -394,6 +394,22 @@ function diffPlayers(previous: LiveTournamentPlayer[], next: LiveTournamentPlaye
   return next.filter(player => !playersEqual(previousById.get(player.id), player));
 }
 
+export function mergeChangedPlayersOntoSnapshot(
+  currentPlayers: LiveTournamentPlayer[],
+  changedPlayers: LiveTournamentPlayer[]
+) {
+  if (changedPlayers.length === 0) {
+    return recalculatePlayers(currentPlayers);
+  }
+
+  const nextById = new Map(currentPlayers.map(player => [player.id, player]));
+  changedPlayers.forEach(player => {
+    nextById.set(player.id, player);
+  });
+
+  return recalculatePlayers(Array.from(nextById.values()));
+}
+
 function mergeImportedRoster(
   previousPlayers: LiveTournamentPlayer[],
   importedPlayers: ImportedTournamentPlayer[],
@@ -1355,12 +1371,20 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       ...player,
       updatedAt: player.updatedAt || nowIso(),
     })));
+    const changedPlayers = diffPlayers(baseSnapshot.players, mutated);
+
+    if (changedPlayers.length === 0 && mutated.length === baseSnapshot.players.length) {
+      return baseSnapshot.players;
+    }
+
+    const latestSnapshot = await syncLatestSharedPlayersSnapshot();
+    const rebasedPlayers = mergeChangedPlayersOntoSnapshot(latestSnapshot.players, changedPlayers);
     await commitPlayersSnapshot(
-      mutated,
-      baseSnapshot.resultsSubmission,
-      getNextSnapshotRevision(baseSnapshot.revision)
+      rebasedPlayers,
+      latestSnapshot.resultsSubmission,
+      getNextSnapshotRevision(latestSnapshot.revision)
     );
-    return mutated;
+    return rebasedPlayers;
   }, [commitPlayersSnapshot, syncLatestSharedPlayersSnapshot]);
 
   const refreshFromBot = useCallback(async (force = false) => {
@@ -1395,10 +1419,12 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     const baseSnapshot = await syncLatestSharedPlayersSnapshot();
     const merged = mergeImportedRoster(baseSnapshot.players, imported, sessionIdRef.current, tournamentBotIdRef.current);
     if (merged.changedRows.length > 0 || merged.players.length !== baseSnapshot.players.length) {
+      const latestSnapshot = await syncLatestSharedPlayersSnapshot();
+      const rebasedPlayers = mergeChangedPlayersOntoSnapshot(latestSnapshot.players, merged.changedRows);
       await commitPlayersSnapshot(
-        merged.players,
-        baseSnapshot.resultsSubmission,
-        getNextSnapshotRevision(baseSnapshot.revision)
+        rebasedPlayers,
+        latestSnapshot.resultsSubmission,
+        getNextSnapshotRevision(latestSnapshot.revision)
       );
     }
     setBotSyncState({
