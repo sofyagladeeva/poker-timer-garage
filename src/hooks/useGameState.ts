@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, DEFAULT_BLIND_LEVELS, DEFAULT_GAME_STATE } from '../supabase';
 import { buildGameStatePersistencePatch, shouldApplyRemoteGameStateUpdate } from '../gameStateSync';
 import { hasMissingBonusColumns, hasMissingNextGameBotId, hasMissingResetAt, normalizeGameState, toLegacyGameState } from '../gameStateMath';
-import { buildAdvanceLevelPatch } from '../levelAdvance';
+import { buildAdvanceLevelPatch, buildAutoAdvanceAnchor } from '../levelAdvance';
 import type { GameState, BlindLevel, Combination, TournamentRecord } from '../types';
 
 const STATE_KEY = 'poker_game_state';
@@ -187,6 +187,7 @@ export function useGameState(readOnly = false) {
   const pendingUpsertState = useRef<GameState | null>(null);
   const pendingUpsertPatch = useRef<Partial<GameState> | null>(null);
   const autoAdvancePending = useRef(false);
+  const lastAutoAdvanceAnchor = useRef<string | null>(null);
 
   // Broadcast channel ref — for low-latency state push (<100ms)
   const broadcastChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -860,6 +861,14 @@ export function useGameState(readOnly = false) {
     return advanceToLevelIndex(nextIndex);
   }, [advanceToLevelIndex]);
 
+  useEffect(() => {
+    if (gameState.timeLeft === 0 && (gameState.status === 'running' || gameState.status === 'break')) {
+      return;
+    }
+
+    lastAutoAdvanceAnchor.current = null;
+  }, [gameState.status, gameState.timeLeft]);
+
   // ─── Авто-переход: таймер дошёл до 0 → следующий уровень ──────────────
   // Any live client may advance the level if the timer reaches 0.
   // This avoids a hard dependency on the admin tab staying open and awake.
@@ -871,11 +880,19 @@ export function useGameState(readOnly = false) {
     if (gameState.status !== 'running' && gameState.status !== 'break') return;
     if (autoAdvancePending.current) return;
 
+    const autoAdvanceAnchor = buildAutoAdvanceAnchor(gameState);
+    if (lastAutoAdvanceAnchor.current === autoAdvanceAnchor) return;
+
+    lastAutoAdvanceAnchor.current = autoAdvanceAnchor;
     autoAdvancePending.current = true;
     const targetIndex = gameState.currentLevelIndex + 1;
 
     const advanceImmediately = () => {
-      void advanceToLevelIndex(targetIndex);
+      void advanceToLevelIndex(targetIndex).then(applied => {
+        if (applied === false && lastAutoAdvanceAnchor.current === autoAdvanceAnchor) {
+          lastAutoAdvanceAnchor.current = null;
+        }
+      });
     };
 
     // Before advancing, check server state to ensure this device isn't stale.
@@ -914,7 +931,13 @@ export function useGameState(readOnly = false) {
       .finally(() => {
         autoAdvancePending.current = false;
       });
-  }, [readOnly, gameState.currentLevelIndex, gameState.timeLeft, gameState.status, advanceToLevelIndex, isSupabaseConfigured, applyAuthoritativeGameState]);
+  }, [
+    readOnly,
+    gameState,
+    advanceToLevelIndex,
+    isSupabaseConfigured,
+    applyAuthoritativeGameState,
+  ]);
 
   const prevLevel = useCallback(() => {
     const gs = gameStateRef.current;

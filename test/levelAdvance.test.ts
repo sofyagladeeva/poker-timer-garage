@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildAdvanceLevelPatch } from '../src/levelAdvance.ts';
-import type { BlindLevel } from '../src/types.ts';
+import { buildAdvanceLevelPatch, buildAutoAdvanceAnchor } from '../src/levelAdvance.ts';
+import type { BlindLevel, GameState } from '../src/types.ts';
 
 const LEVELS: BlindLevel[] = [
   {
@@ -49,4 +49,30 @@ test('buildAdvanceLevelPatch ends the tournament after the last level', () => {
   const patch = buildAdvanceLevelPatch(LEVELS, LEVELS.length, 12_345);
 
   assert.deepEqual(patch, { status: 'ended' });
+});
+
+test('buildAutoAdvanceAnchor changes when tournament generation, level or tick changes', () => {
+  const baseState: Pick<GameState, 'resetAt' | 'currentLevelIndex' | 'lastTickAt' | 'status'> = {
+    resetAt: 1_000,
+    currentLevelIndex: 2,
+    lastTickAt: 55_000,
+    status: 'running',
+  };
+
+  assert.equal(
+    buildAutoAdvanceAnchor(baseState),
+    buildAutoAdvanceAnchor({ ...baseState })
+  );
+  assert.notEqual(
+    buildAutoAdvanceAnchor(baseState),
+    buildAutoAdvanceAnchor({ ...baseState, currentLevelIndex: 3 })
+  );
+  assert.notEqual(
+    buildAutoAdvanceAnchor(baseState),
+    buildAutoAdvanceAnchor({ ...baseState, lastTickAt: 56_000 })
+  );
+  assert.notEqual(
+    buildAutoAdvanceAnchor(baseState),
+    buildAutoAdvanceAnchor({ ...baseState, resetAt: 2_000 })
+  );
 });

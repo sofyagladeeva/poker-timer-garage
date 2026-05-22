@@ -21,3 +21,14 @@ export function buildAdvanceLevelPatch(
     lastTickAt: authoritativeNow,
   };
 }
+
+export function buildAutoAdvanceAnchor(state: Pick<GameState, 'resetAt' | 'currentLevelIndex' | 'lastTickAt' | 'status'>) {
+  return [
+    Math.max(0, Math.round(state.resetAt || 0)),
+    Math.max(0, Math.round(state.currentLevelIndex || 0)),
+    typeof state.lastTickAt === 'number' && Number.isFinite(state.lastTickAt)
+      ? Math.round(state.lastTickAt)
+      : 'none',
+    state.status,
+  ].join(':');
+}
