@@ -285,6 +285,7 @@ test('emergency snapshot can restore live players for the same bot tournament ac
     primarySnapshot: {
       players: [],
       updatedAt: '2026-05-22T20:05:00.000Z',
+      revision: 0,
       structured: true,
       resultsSubmission: { sentAt: null, signature: null },
     },
@@ -323,6 +324,7 @@ test('emergency snapshot is ignored for a fresh idle tournament', () => {
     primarySnapshot: {
       players: [],
       updatedAt: null,
+      revision: null,
       structured: true,
       resultsSubmission: { sentAt: null, signature: null },
     },
@@ -451,5 +453,13 @@ test('isIncomingPlayersSnapshotStale ignores older shared snapshots and accepts 
   assert.equal(
     isIncomingPlayersSnapshotStale(null, '2026-05-20T01:00:11.000Z'),
     false
+  );
+  assert.equal(
+    isIncomingPlayersSnapshotStale('2026-05-20T01:00:20.000Z', '2026-05-20T01:00:05.000Z', 4, 5),
+    false
+  );
+  assert.equal(
+    isIncomingPlayersSnapshotStale('2026-05-20T01:00:05.000Z', '2026-05-20T01:00:20.000Z', 6, 5),
+    true
   );
 });
