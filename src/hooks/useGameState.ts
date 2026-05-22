@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, DEFAULT_BLIND_LEVELS, DEFAULT_GAME_STATE } from '../supabase';
-import { buildGameStatePersistencePatch, shouldApplyRemoteGameStateUpdate } from '../gameStateSync';
+import {
+  buildGameStatePersistencePatch,
+  shouldApplyRemoteGameStateUpdate,
+  shouldForceForegroundSyncBeforeWrite,
+} from '../gameStateSync';
 import { hasMissingBonusColumns, hasMissingNextGameBotId, hasMissingResetAt, normalizeGameState, toLegacyGameState } from '../gameStateMath';
 import { buildAdvanceLevelPatch, buildAutoAdvanceAnchor } from '../levelAdvance';
 import type { GameState, BlindLevel, Combination, TournamentRecord } from '../types';
@@ -199,6 +203,7 @@ export function useGameState(readOnly = false) {
   const baseTimestamp = useRef(gameState.lastTickAt ?? 0);
   // local clock minus authoritative shared clock
   const serverClockOffsetMs = useRef<number | null>(loadLocal<number | null>(CLOCK_OFFSET_KEY, null));
+  const lastClientActivityAt = useRef(0);
 
   // Track when WE last wrote to Supabase — polling won't override local state
   // for 20 seconds after any local write, breaking the multi-device fight cycle
@@ -227,12 +232,19 @@ export function useGameState(readOnly = false) {
     if (!clientId.current) {
       clientId.current = createClientId();
     }
+    if (lastClientActivityAt.current === 0) {
+      lastClientActivityAt.current = Date.now();
+    }
   }, []);
 
   const markAuthoritativeReady = useCallback(() => {
     serverLoaded.current = true;
     setAuthoritativeReady(true);
     setSyncError(null);
+  }, []);
+
+  const markClientActivity = useCallback(() => {
+    lastClientActivityAt.current = Date.now();
   }, []);
 
   const getAuthoritativeNow = useCallback(() => {
@@ -282,7 +294,8 @@ export function useGameState(readOnly = false) {
     markAuthoritativeReady();
     setGameState(liveState);
     saveLocal(STATE_KEY, persistedState);
-  }, [hydrateSyncedState, markAuthoritativeReady]);
+    markClientActivity();
+  }, [hydrateSyncedState, markAuthoritativeReady, markClientActivity]);
 
   const markServerSync = useCallback(() => {
     lastServerSyncAt.current = Date.now();
@@ -737,6 +750,7 @@ export function useGameState(readOnly = false) {
     if (gameState.status !== 'running' && gameState.status !== 'break') return;
 
     const interval = setInterval(() => {
+      markClientActivity();
       setGameState(prev => {
         if (prev.status !== 'running' && prev.status !== 'break') return prev;
         const elapsed = Math.floor((getAuthoritativeNow() - baseTimestamp.current) / 1000);
@@ -749,7 +763,7 @@ export function useGameState(readOnly = false) {
     }, 500);
 
     return () => clearInterval(interval);
-  }, [gameState.status, getAuthoritativeNow, isSupabaseConfigured]);
+  }, [gameState.status, getAuthoritativeNow, isSupabaseConfigured, markClientActivity]);
 
   // ─── Admin actions (stable — don't depend on gameState/blindLevels) ─────
   // immediate=true skips debounce — used for pause/start/level changes
@@ -780,6 +794,7 @@ export function useGameState(readOnly = false) {
     const persistedPatch = buildGameStatePersistencePatch(updated, nextPatch);
     setGameState(updated);
     saveLocal(STATE_KEY, updated);
+    markClientActivity();
     if (!isSupabaseConfigured) return Promise.resolve(true);
 
     // Debounce Supabase writes to avoid a DB call on every counter click
@@ -817,12 +832,22 @@ export function useGameState(readOnly = false) {
     }, 300);
 
     return Promise.resolve(true);
-  }, [getAuthoritativeNow, isSupabaseConfigured, persistGameState]);
+  }, [getAuthoritativeNow, isSupabaseConfigured, markClientActivity, persistGameState]);
 
   const updateGameState = useCallback(async (patch: Partial<GameState>, immediate = false) => {
     if (isSupabaseConfigured && !serverLoaded.current) return false;
 
-    if (isSupabaseConfigured && (foregroundSyncRequired.current || foregroundSyncPromise.current)) {
+    const inactiveForMs = Date.now() - lastClientActivityAt.current;
+    const shouldForceWakeSync = isSupabaseConfigured && shouldForceForegroundSyncBeforeWrite(
+      gameStateRef.current,
+      inactiveForMs
+    );
+
+    if (shouldForceWakeSync) {
+      foregroundSyncRequired.current = true;
+    }
+
+    if (isSupabaseConfigured && (foregroundSyncRequired.current || foregroundSyncPromise.current || shouldForceWakeSync)) {
       const wakeSync = foregroundSyncPromise.current ?? queueForegroundSync('foreground-write');
 
       try {

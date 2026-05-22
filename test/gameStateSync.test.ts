@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { DEFAULT_GAME_STATE } from '../src/supabase.ts';
-import { buildGameStatePersistencePatch, shouldApplyRemoteGameStateUpdate } from '../src/gameStateSync.ts';
+import {
+  buildGameStatePersistencePatch,
+  shouldApplyRemoteGameStateUpdate,
+  shouldForceForegroundSyncBeforeWrite,
+} from '../src/gameStateSync.ts';
 import type { GameState } from '../src/types.ts';
 
 function createGameState(overrides: Partial<GameState> = {}): GameState {
@@ -90,4 +94,23 @@ test('game state persistence patch only includes touched fields plus sync anchor
   });
   assert.equal('players' in patch, false);
   assert.equal('outs' in patch, false);
+});
+
+test('foreground wake sync is forced only for long inactive running timers', () => {
+  assert.equal(
+    shouldForceForegroundSyncBeforeWrite(createGameState({ status: 'running' }), 9_000),
+    true
+  );
+  assert.equal(
+    shouldForceForegroundSyncBeforeWrite(createGameState({ status: 'break' }), 9_000),
+    true
+  );
+  assert.equal(
+    shouldForceForegroundSyncBeforeWrite(createGameState({ status: 'paused' }), 9_000),
+    false
+  );
+  assert.equal(
+    shouldForceForegroundSyncBeforeWrite(createGameState({ status: 'running' }), 5_000),
+    false
+  );
 });

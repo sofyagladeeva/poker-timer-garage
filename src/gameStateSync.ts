@@ -49,3 +49,11 @@ export function buildGameStatePersistencePatch(
 
   return persistedPatch;
 }
+
+export function shouldForceForegroundSyncBeforeWrite(
+  state: Pick<GameState, 'status'>,
+  inactiveForMs: number
+) {
+  const timerRunning = state.status === 'running' || state.status === 'break';
+  return timerRunning && inactiveForMs > 8_000;
+}
