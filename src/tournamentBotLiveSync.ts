@@ -7,7 +7,7 @@ const ENV = (import.meta as ImportMeta & {
     VITE_BOT_TOURNAMENT_LIVE_SYNC_URL_TEMPLATE?: string;
   };
 }).env;
-const BOT_API = ENV?.VITE_BOT_API_URL || 'https://web-production-6035.up.railway.app';
+const BOT_API = ENV?.VITE_BOT_API_URL || 'https://garage-game-club-bot-production.up.railway.app';
 const LIVE_SYNC_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_LIVE_SYNC_URL_TEMPLATE || `${BOT_API}/api/games/{id}/live-state`;
 
 export const BOT_LIVE_SYNC_INTERVAL_MS = 15_000;

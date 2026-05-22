@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { buildLeaderboardCacheKey, loadCachedLeaderboard, saveCachedLeaderboard } from './botLeaderboardCache.ts';
 
 const BOT_API = (import.meta as ImportMeta & { env?: { VITE_BOT_API_URL?: string } }).env?.VITE_BOT_API_URL
-  || 'https://web-production-6035.up.railway.app';
+  || 'https://garage-game-club-bot-production.up.railway.app';
 export const BOT_RATING_CACHE_PREFIX = 'poker_bot_rating_cache';
 
 export interface BotPlayer {

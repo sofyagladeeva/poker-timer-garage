@@ -69,7 +69,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: string |
   }
 }
 
-const BOT_API = import.meta.env.VITE_BOT_API_URL || 'https://web-production-6035.up.railway.app';
+const BOT_API = import.meta.env.VITE_BOT_API_URL || 'https://garage-game-club-bot-production.up.railway.app';
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'poker2024';
 const MAX_BACKGROUND_ITEMS = 24;
