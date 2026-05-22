@@ -6,10 +6,6 @@ import { useNextGame } from '../hooks/useNextGame';
 import { getKnockoutLabel, getNextKnockoutInfo, isKnockoutLevel } from '../blindLevelMarkers';
 import { getRankPoints, RED_SUITS, SUIT_SYMBOLS } from '../types';
 import type { Card } from '../types';
-import logoUrl from '../assets/logo.png';
-import medal1Url from '../assets/medal-1.png';
-import medal2Url from '../assets/medal-2.png';
-import medal3Url from '../assets/medal-3.png';
 
 type AudioContextConstructor = typeof AudioContext;
 type AudioWindow = Window & typeof globalThis & {
@@ -94,8 +90,10 @@ function formatFallbackNextGameLines(raw: string) {
     .filter(Boolean);
 }
 
-const MEDAL_URLS = [medal1Url, medal2Url, medal3Url];
 const SIDEBAR_LEADERBOARD_ROTATION_MS = 20_000;
+const BRAND_RED = '#FF1A1F';
+const BRAND_WHITE = '#FFFFFF';
+const BRAND_BLACK = '#050505';
 
 function FullscreenButton() {
   const [isFs, setIsFs] = useState(false);
@@ -298,12 +296,7 @@ export function Display() {
 
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className="flex items-center justify-center gap-5 px-8 py-2 border-b border-[#181818] flex-shrink-0">
-          <img
-            src={logoUrl}
-            alt="Garage Game Club"
-            style={{ height: '44px', width: 'auto' }}
-            className="opacity-90 select-none pointer-events-none"
-          />
+          <GarageLogo height={44} />
           {gameState.tournamentTitle && (
             <>
               <span className="text-[#2A2A2A] text-3xl font-thin">·</span>
@@ -544,7 +537,7 @@ export function Display() {
                                ? 'bg-[#160800] border border-[#E31E24]/25'
                                : 'bg-[#111] border border-[#1A1A1A]'
                            }`}>
-                        <img src={MEDAL_URLS[i]} style={{ width: 28, height: 28, objectFit: 'contain' }} alt="" />
+                        <MedalBadge place={i + 1} size={28} />
                         <span className="text-white font-bold text-base flex-1 truncate">{player.name}</span>
                         <span className={`font-black text-2xl ${i === 0 ? 'text-[#E31E24]' : 'text-[#555]'}`}>
                           {value}
@@ -674,10 +667,143 @@ function RatingCard({ player, medal, big }: {
       className={`flex-1 bg-[#141414] rounded-2xl p-6 text-center ${big ? 'border-2 border-[#E31E24]' : 'border border-[#222]'}`}
       style={big ? { boxShadow: '0 0 40px rgba(227,30,36,0.2)' } : {}}
     >
-      <img src={MEDAL_URLS[medal - 1]} style={{ width: big ? 80 : 60, height: big ? 80 : 60, objectFit: 'contain', margin: '0 auto' }} alt="" />
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <MedalBadge place={medal} size={big ? 80 : 60} />
+      </div>
       <div className={`text-white font-black mt-2 ${big ? 'text-3xl' : 'text-xl'}`}>{player.name}</div>
       <div className={`text-[#E31E24] font-black mt-1 ${big ? 'text-5xl' : 'text-3xl'}`}>{player.points.toFixed(1)}</div>
       <div className="text-[#383838] text-sm mt-1">{player.games} игр</div>
     </div>
+  );
+}
+
+function GarageLogo({ height }: { height: number }) {
+  return (
+    <svg
+      viewBox="0 0 430 96"
+      role="img"
+      aria-label="Garage Game Club"
+      style={{ height, width: 'auto' }}
+      className="select-none pointer-events-none"
+    >
+      <g transform="translate(0 2)">
+        <path
+          d="M26 68 L40 28 L84 10 L96 24 L108 10 L152 28 L166 68 L150 86 L132 82 L126 100 L96 112 L66 100 L60 82 L42 86 Z"
+          fill={BRAND_RED}
+        />
+        <path
+          d="M79 26 L96 8 L113 26 L112 47 C112 61 121 74 134 90 L118 102 L96 95 L74 102 L58 90 C71 74 80 61 80 47 Z"
+          fill={BRAND_BLACK}
+        />
+        <path
+          d="M79 52 C87 61 105 61 113 52 L120 84 C111 92 104 96 96 99 C88 96 81 92 72 84 Z"
+          fill={BRAND_BLACK}
+        />
+        <rect
+          x="34"
+          y="62"
+          width="24"
+          height="36"
+          rx="4"
+          fill={BRAND_WHITE}
+          transform="rotate(-18 34 62)"
+        />
+        <rect
+          x="43"
+          y="70"
+          width="8"
+          height="16"
+          rx="1.5"
+          fill={BRAND_BLACK}
+          transform="rotate(-18 43 70)"
+        />
+        <circle cx="146" cy="78" r="18" fill="none" stroke={BRAND_WHITE} strokeWidth="5.5" />
+        <circle cx="146" cy="78" r="10" fill="none" stroke={BRAND_WHITE} strokeWidth="4" />
+        <g fill={BRAND_WHITE}>
+          <rect x="143.5" y="53" width="5" height="10" rx="2" />
+          <rect x="143.5" y="93" width="5" height="10" rx="2" />
+          <rect x="121" y="75.5" width="10" height="5" rx="2" />
+          <rect x="161" y="75.5" width="10" height="5" rx="2" />
+          <rect x="128.2" y="59.2" width="5" height="10" rx="2" transform="rotate(-55 130.7 64.2)" />
+          <rect x="158.8" y="87.8" width="5" height="10" rx="2" transform="rotate(-55 161.3 92.8)" />
+          <rect x="158.8" y="59.2" width="5" height="10" rx="2" transform="rotate(55 161.3 64.2)" />
+          <rect x="128.2" y="87.8" width="5" height="10" rx="2" transform="rotate(55 130.7 92.8)" />
+        </g>
+      </g>
+      <g transform="translate(188 18)">
+        <text
+          x="0"
+          y="28"
+          fill={BRAND_RED}
+          fontSize="34"
+          fontWeight="900"
+          letterSpacing="3.5"
+          fontFamily="Georgia, 'Times New Roman', serif"
+        >
+          GARAGE
+        </text>
+        <text
+          x="0"
+          y="62"
+          fill={BRAND_WHITE}
+          fontSize="24"
+          fontWeight="900"
+          letterSpacing="5"
+          fontFamily="'Arial Black', Impact, sans-serif"
+        >
+          GAME CLUB
+        </text>
+      </g>
+    </svg>
+  );
+}
+
+function MedalBadge({ place, size }: { place: number; size: number }) {
+  const label = String(Math.max(1, Math.min(3, Math.round(place || 1))));
+  const fontSize = label === '1' ? 90 : 82;
+  const x = label === '1' ? 82 : 80;
+
+  return (
+    <svg
+      viewBox="0 0 160 176"
+      aria-hidden="true"
+      style={{ width: size, height: size, display: 'block', flexShrink: 0 }}
+      className="select-none pointer-events-none"
+    >
+      <path
+        d="M80 8 L118 22 L126 38 L144 48 L156 82 L140 92 L148 118 L128 146 L110 158 L102 170 L80 176 L58 170 L50 158 L32 146 L12 118 L20 92 L4 82 L16 48 L34 38 L42 22 Z"
+        fill="none"
+        stroke={BRAND_RED}
+        strokeWidth="8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M80 34 L108 44 L116 60 L128 68 L134 92 L124 102 L128 116 L116 136 L98 146 L80 150 L62 146 L44 136 L32 116 L36 98 L28 92 L36 68 L52 60 L60 44 Z"
+        fill="none"
+        stroke={BRAND_RED}
+        strokeWidth="7"
+        strokeLinejoin="round"
+      />
+      <g fill={BRAND_WHITE}>
+        <path d="M38 56 L54 42 L34 76 Z" />
+        <path d="M122 42 L138 56 L126 76 Z" />
+        <path d="M34 108 L54 138 L42 132 Z" />
+        <path d="M126 138 L146 108 L138 132 Z" />
+        <path d="M68 154 L80 160 L92 154 L80 166 Z" />
+      </g>
+      <text
+        x={x}
+        y="100"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fill={BRAND_WHITE}
+        fontSize={fontSize}
+        fontWeight="900"
+        fontFamily="'Arial Black', Impact, sans-serif"
+        transform={label === '1' ? 'skewX(-4)' : undefined}
+      >
+        {label}
+      </text>
+    </svg>
   );
 }
