@@ -14,6 +14,11 @@
   box-sizing: border-box;
 }
 
+html {
+  background-color: #0A0A0A;
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
   padding: 0;
@@ -26,6 +31,28 @@ body {
 #root {
   width: 100%;
   min-height: 100vh;
+}
+
+html.tv-safe-display,
+html.tv-safe-display body,
+html.tv-safe-display #root,
+html.tv-safe-display #root * {
+  forced-color-adjust: none;
+}
+
+html.tv-safe-display {
+  background-color: #0A0A0A;
+  color-scheme: dark;
+}
+
+body.tv-safe-display {
+  background-color: #0A0A0A;
+}
+
+.tv-safe-light-surface {
+  background-color: #F1ECE2;
+  border: 1px solid rgba(17, 17, 17, 0.14);
+  color: #111111;
 }
 
 /* Poker card visual */

@@ -159,6 +159,15 @@ export function Display() {
   const { k, x, y } = useScale();
   const [sidebarLeaderboardMode, setSidebarLeaderboardMode] = useState<'rating' | 'bounty'>('rating');
 
+  useEffect(() => {
+    document.documentElement.classList.add('tv-safe-display');
+    document.body.classList.add('tv-safe-display');
+    return () => {
+      document.documentElement.classList.remove('tv-safe-display');
+      document.body.classList.remove('tv-safe-display');
+    };
+  }, []);
+
   // Активируем AudioContext при первом взаимодействии (политика браузера)
   useEffect(() => {
     const resume = () => {
@@ -624,7 +633,7 @@ function ComboCard({ card, count = 2 }: { card: Card; count?: number }) {
   const suitSmallSize = Math.round(w * 18 / 65);
   return (
     <div
-      className={`flex-shrink-0 flex flex-col items-center justify-center bg-white rounded-xl font-bold shadow-lg ${isRed ? 'text-[#C0392B]' : 'text-[#0A0A0A]'}`}
+      className={`tv-safe-light-surface flex-shrink-0 flex flex-col items-center justify-center rounded-xl font-bold shadow-lg ${isRed ? 'text-[#C0392B]' : 'text-[#0A0A0A]'}`}
       style={{ width: w, height: h }}
     >
       <span style={{ fontSize: rankSize, lineHeight: 1.1 }}>{card.rank}</span>

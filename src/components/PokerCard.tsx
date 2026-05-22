@@ -21,7 +21,7 @@ export function PokerCard({ card, size = 'md' }: Props) {
 
   return (
     <div
-      className={`inline-flex flex-col items-center justify-center bg-white rounded-lg m-1 font-bold shadow-lg ${s.card} ${isRed ? 'text-[#C0392B]' : 'text-[#0A0A0A]'}`}
+      className={`tv-safe-light-surface inline-flex flex-col items-center justify-center rounded-lg m-1 font-bold shadow-lg ${s.card} ${isRed ? 'text-[#C0392B]' : 'text-[#0A0A0A]'}`}
     >
       <span className={s.rank}>{card.rank}</span>
       {isAny ? (
