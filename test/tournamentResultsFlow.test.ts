@@ -8,15 +8,18 @@ import {
   calcPaymentDue,
   findPlayerWithPlaceConflict,
   isIncomingPlayersSnapshotStale,
+  parseEmergencyPlayersPayload,
   parseStoredPlayersPayload,
+  resolveHydratedPlayersSnapshot,
   sortPlayersForResults,
+  trustLoadedPlayersSnapshot,
 } from '../src/hooks/useTournamentPlayers.ts';
 import {
   deriveTournamentResultsUiState,
   getDuplicatePlaces,
   getTournamentResultsButtonLabel,
 } from '../src/tournamentResultsFlow.ts';
-import type { LiveTournamentPlayer, TournamentResultsPayload } from '../src/types.ts';
+import type { GameState, LiveTournamentPlayer, TournamentResultsPayload } from '../src/types.ts';
 
 function createPlayer(overrides: Partial<LiveTournamentPlayer> = {}): LiveTournamentPlayer {
   return {
@@ -43,6 +46,33 @@ function createPlayer(overrides: Partial<LiveTournamentPlayer> = {}): LiveTourna
     sortOrder: overrides.sortOrder ?? 0,
     createdAt: overrides.createdAt ?? '2026-05-19T12:00:00.000Z',
     updatedAt: overrides.updatedAt ?? '2026-05-19T12:00:00.000Z',
+  };
+}
+
+function createGameState(overrides: Partial<GameState> = {}): GameState {
+  return {
+    status: overrides.status ?? 'running',
+    currentLevelIndex: overrides.currentLevelIndex ?? 0,
+    timeLeft: overrides.timeLeft ?? 900,
+    lastTickAt: overrides.lastTickAt ?? Date.now(),
+    players: overrides.players ?? 10,
+    outs: overrides.outs ?? 3,
+    rebuys: overrides.rebuys ?? 2,
+    addonCount: overrides.addonCount ?? 1,
+    bonusCount: overrides.bonusCount ?? 0,
+    startStack: overrides.startStack ?? 20000,
+    addonStack: overrides.addonStack ?? 20000,
+    bonusStack: overrides.bonusStack ?? 5000,
+    totalStack: overrides.totalStack ?? 245000,
+    backgroundUrl: overrides.backgroundUrl ?? null,
+    nextGameInfo: overrides.nextGameInfo ?? '',
+    showRating: overrides.showRating ?? false,
+    prizeAmount: overrides.prizeAmount ?? 0,
+    prizePlaces: overrides.prizePlaces ?? 3,
+    tournamentTitle: overrides.tournamentTitle ?? 'Friday Garage',
+    tournamentBotId: overrides.tournamentBotId ?? 77,
+    nextGameBotId: overrides.nextGameBotId ?? null,
+    resetAt: overrides.resetAt ?? 100,
   };
 }
 
@@ -186,6 +216,130 @@ test('stored players payload round-trips results submission metadata', () => {
   });
   assert.equal(parsed.players.length, 1);
   assert.equal(parsed.players[0]?.place, 1);
+});
+
+test('structured players snapshot stays trusted even when counters in game state drift', () => {
+  const snapshot = parseStoredPlayersPayload(
+    buildStoredPlayersPayload(
+      [
+        createPlayer({
+          id: 'out-1',
+          status: 'out',
+          place: 1,
+          placeOverride: true,
+          bustoutOrder: 10,
+          rebuyCount: 1,
+          addonCount: 1,
+        }),
+      ],
+      100,
+      77,
+      'Friday Garage',
+      '2026-05-22T19:45:00.000Z'
+    ),
+    100,
+    77,
+    'Friday Garage'
+  );
+
+  const trusted = trustLoadedPlayersSnapshot(snapshot, createGameState({
+    players: 0,
+    outs: 0,
+    rebuys: 0,
+    addonCount: 0,
+    bonusCount: 0,
+  }));
+
+  assert.ok(trusted);
+  assert.equal(trusted.players.length, 1);
+  assert.equal(trusted.players[0]?.id, 'out-1');
+});
+
+test('emergency snapshot can restore live players for the same bot tournament across session mismatch', () => {
+  const emergency = parseEmergencyPlayersPayload(
+    buildStoredPlayersPayload(
+      [
+        createPlayer({
+          id: 'live-1',
+          sessionId: 100,
+          status: 'active',
+          arrivalStatus: 'paid',
+          rebuyCount: 2,
+          addonCount: 1,
+        }),
+      ],
+      100,
+      77,
+      'Friday Garage',
+      '2026-05-22T20:00:00.000Z'
+    ),
+    200,
+    77,
+    'Friday Garage'
+  );
+
+  assert.ok(emergency);
+  assert.equal(emergency.players[0]?.sessionId, 200);
+
+  const resolved = resolveHydratedPlayersSnapshot({
+    primarySnapshot: {
+      players: [],
+      updatedAt: '2026-05-22T20:05:00.000Z',
+      structured: true,
+      resultsSubmission: { sentAt: null, signature: null },
+    },
+    emergencySnapshot: emergency,
+    gameState: createGameState({
+      status: 'running',
+      resetAt: 200,
+      players: 14,
+      outs: 4,
+      rebuys: 3,
+      addonCount: 1,
+    }),
+  });
+
+  assert.ok(resolved.snapshot);
+  assert.equal(resolved.recoveredFromEmergency, true);
+  assert.equal(resolved.snapshot?.players.length, 1);
+  assert.equal(resolved.snapshot?.players[0]?.id, 'live-1');
+});
+
+test('emergency snapshot is ignored for a fresh idle tournament', () => {
+  const emergency = parseEmergencyPlayersPayload(
+    buildStoredPlayersPayload(
+      [createPlayer({ id: 'old-live-1', sessionId: 100, status: 'active' })],
+      100,
+      77,
+      'Friday Garage',
+      '2026-05-22T20:00:00.000Z'
+    ),
+    200,
+    77,
+    'Friday Garage'
+  );
+
+  const resolved = resolveHydratedPlayersSnapshot({
+    primarySnapshot: {
+      players: [],
+      updatedAt: null,
+      structured: true,
+      resultsSubmission: { sentAt: null, signature: null },
+    },
+    emergencySnapshot: emergency,
+    gameState: createGameState({
+      status: 'idle',
+      resetAt: 200,
+      players: 0,
+      outs: 0,
+      rebuys: 0,
+      addonCount: 0,
+      bonusCount: 0,
+    }),
+  });
+
+  assert.equal(resolved.snapshot?.players.length ?? 0, 0);
+  assert.equal(resolved.recoveredFromEmergency, false);
 });
 
 test('sortPlayersForResults puts placed players first and preserves stable fallback order', () => {

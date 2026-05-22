@@ -13,6 +13,7 @@ import type {
 } from '../types.ts';
 
 const PLAYERS_LOCAL_PREFIX = 'poker_live_tournament_players';
+const PLAYERS_EMERGENCY_PREFIX = 'poker_live_tournament_players_emergency';
 const SHARED_PLAYERS_PREFIX = '__live_players__';
 const SHARED_PLAYERS_NAME_PREFIX = 'live_tournament_players';
 const SHARED_PLAYERS_TABLE = 'blind_templates';
@@ -70,6 +71,12 @@ type QueuedSharedPlayersSnapshot = {
   updatedAt: string;
 };
 
+type HydratedPlayersSnapshotResolution = {
+  snapshot: LoadedPlayersSnapshot | null;
+  ignoredStaleLocal: boolean;
+  recoveredFromEmergency: boolean;
+};
+
 function hasSharedPlayersStorage() {
   return Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 }
@@ -80,6 +87,11 @@ function normalizeSessionId(resetAt: number) {
 
 function playersLocalKey(sessionId: number, tournamentBotId: number | null) {
   return `${PLAYERS_LOCAL_PREFIX}:${sessionId}:${tournamentBotId ?? 'manual'}`;
+}
+
+function playersEmergencyKey(tournamentBotId: number | null, tournamentTitle: string) {
+  const normalizedTitle = normalizeTournamentTitle(tournamentTitle) || 'manual';
+  return `${PLAYERS_EMERGENCY_PREFIX}:${tournamentBotId ?? normalizedTitle}`;
 }
 
 function playersSharedKey(sessionId: number, tournamentBotId: number | null) {
@@ -615,6 +627,36 @@ export function parseStoredPlayersPayload(
   };
 }
 
+export function parseEmergencyPlayersPayload(
+  raw: unknown,
+  sessionId: number,
+  tournamentBotId: number | null,
+  tournamentTitle: string
+): LoadedPlayersSnapshot | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+
+  const payload = raw as Partial<StoredPlayersPayload>;
+  if (payload.version !== 1 || !Array.isArray(payload.players)) return null;
+
+  const payloadTournamentBotId = payload.tournamentBotId == null
+    ? null
+    : typeof payload.tournamentBotId === 'number' && Number.isFinite(payload.tournamentBotId)
+      ? Math.round(payload.tournamentBotId)
+      : null;
+  const currentTitle = normalizeTournamentTitle(tournamentTitle);
+  const payloadTitle = normalizeTournamentTitle(payload.tournamentTitle);
+
+  if (payloadTournamentBotId !== tournamentBotId) return null;
+  if (tournamentBotId == null && currentTitle && payloadTitle && currentTitle !== payloadTitle) return null;
+
+  return {
+    players: normalizePlayersPayload(payload.players, sessionId, tournamentBotId),
+    updatedAt: typeof payload.updatedAt === 'string' && payload.updatedAt ? payload.updatedAt : null,
+    structured: true,
+    resultsSubmission: normalizeResultsSubmission(payload.resultsSentAt, payload.resultsSignature),
+  };
+}
+
 function parseLegacyPlayersSnapshot(
   raw: unknown,
   sessionId: number,
@@ -658,15 +700,39 @@ function parseLegacyPlayersSnapshot(
   };
 }
 
-function trustLoadedPlayersSnapshot(snapshot: LoadedPlayersSnapshot | null, gameState: GameState) {
+export function trustLoadedPlayersSnapshot(snapshot: LoadedPlayersSnapshot | null, gameState: GameState) {
   if (!snapshot) return null;
   if (snapshot.players.length === 0) return snapshot;
 
+  if (snapshot.structured) {
+    return snapshot;
+  }
+
   if (!hasPlayerCounters(gameState)) {
-    return snapshot.structured ? snapshot : null;
+    return null;
   }
 
   return matchesGameStateCounters(snapshot.players, gameState) ? snapshot : null;
+}
+
+export function resolveHydratedPlayersSnapshot(params: {
+  primarySnapshot: LoadedPlayersSnapshot | null;
+  emergencySnapshot: LoadedPlayersSnapshot | null;
+  gameState: GameState;
+}): HydratedPlayersSnapshotResolution {
+  const trustedPrimary = trustLoadedPlayersSnapshot(params.primarySnapshot, params.gameState);
+  const trustedEmergency = trustLoadedPlayersSnapshot(params.emergencySnapshot, params.gameState);
+  const canRecoverFromEmergency = params.gameState.status !== 'idle' && Boolean(trustedEmergency?.players.length);
+  const shouldPreferEmergency = canRecoverFromEmergency && (
+    !trustedPrimary ||
+    trustedPrimary.players.length === 0
+  );
+
+  return {
+    snapshot: shouldPreferEmergency ? trustedEmergency : trustedPrimary,
+    ignoredStaleLocal: Boolean(params.primarySnapshot?.players.length) && !trustedPrimary && !shouldPreferEmergency,
+    recoveredFromEmergency: shouldPreferEmergency,
+  };
 }
 
 export function sortPlayersForResults(players: LiveTournamentPlayer[]) {
@@ -717,6 +783,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
   const tournamentBotId = gameState.tournamentBotId;
   const tournamentTitle = gameState.tournamentTitle;
   const storageKey = playersLocalKey(sessionId, tournamentBotId);
+  const emergencyStorageKey = playersEmergencyKey(tournamentBotId, tournamentTitle);
   const sharedStorageId = playersSharedKey(sessionId, tournamentBotId);
 
   const [players, setPlayers] = useState<LiveTournamentPlayer[]>([]);
@@ -738,9 +805,12 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
   });
 
   const playersRef = useRef(players);
+  const gameStateRef = useRef(gameState);
   const sessionIdRef = useRef(sessionId);
   const tournamentBotIdRef = useRef(tournamentBotId);
+  const tournamentTitleRef = useRef(tournamentTitle);
   const storageKeyRef = useRef(storageKey);
+  const emergencyStorageKeyRef = useRef(emergencyStorageKey);
   const sharedStorageIdRef = useRef(sharedStorageId);
   const botSyncUnsupported = useRef(false);
   const playersHydratedRef = useRef(!sharedEnabled);
@@ -797,19 +867,18 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     snapshotUpdatedAtRef.current = updatedAt;
     setPlayers(normalized);
     setResultsSubmission(nextResultsSubmission);
-    saveLocal(
-      storageKeyRef.current,
-      buildStoredPlayersPayload(
-        normalized,
-        sessionIdRef.current,
-        tournamentBotIdRef.current,
-        gameState.tournamentTitle,
-        updatedAt,
-        nextResultsSubmission
-      )
+    const payload = buildStoredPlayersPayload(
+      normalized,
+      sessionIdRef.current,
+      tournamentBotIdRef.current,
+      tournamentTitleRef.current,
+      updatedAt,
+      nextResultsSubmission
     );
+    saveLocal(storageKeyRef.current, payload);
+    saveLocal(emergencyStorageKeyRef.current, payload);
     return normalized;
-  }, [gameState.tournamentTitle]);
+  }, []);
 
   const loadSharedPlayersSnapshot = useCallback(async () => {
     if (!sharedEnabled) return null;
@@ -844,7 +913,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       row.levels,
       sessionIdRef.current,
       tournamentBotIdRef.current,
-      gameState.tournamentTitle
+      tournamentTitleRef.current
     );
 
     if (!parsedSnapshot) {
@@ -862,7 +931,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       lastSyncedAt: parsedSnapshot.updatedAt ?? parseSharedPlayersUpdatedAt(row.name, row.created_at),
       resultsSubmission: parsedSnapshot.resultsSubmission,
     };
-  }, [gameState.tournamentTitle, sharedEnabled]);
+  }, [sharedEnabled]);
 
   const persistSharedPlayersSnapshot = useCallback(async (
     nextPlayers: LiveTournamentPlayer[],
@@ -894,7 +963,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
             pending.players,
             sessionIdRef.current,
             tournamentBotIdRef.current,
-            gameState.tournamentTitle,
+            tournamentTitleRef.current,
             pending.updatedAt,
             pending.resultsSubmission
           ),
@@ -929,7 +998,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       shared: true,
     }));
     return true;
-  }, [gameState.tournamentTitle, sharedEnabled]);
+  }, [sharedEnabled]);
 
   const commitPlayersSnapshot = useCallback(async (
     nextPlayers: LiveTournamentPlayer[],
@@ -942,6 +1011,10 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
   }, [applyPlayersSnapshot, persistSharedPlayersSnapshot]);
 
   useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
+  useEffect(() => {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
 
@@ -950,26 +1023,45 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
   }, [tournamentBotId]);
 
   useEffect(() => {
+    tournamentTitleRef.current = tournamentTitle;
+  }, [tournamentTitle]);
+
+  useEffect(() => {
     sharedStorageIdRef.current = sharedStorageId;
   }, [sharedStorageId]);
+
+  useEffect(() => {
+    emergencyStorageKeyRef.current = emergencyStorageKey;
+  }, [emergencyStorageKey]);
 
   useEffect(() => {
     storageKeyRef.current = storageKey;
     playersHydratedRef.current = !sharedEnabled;
 
+    const storedPrimarySnapshot = loadLocal<unknown>(storageKey, null);
     const parsedLocalSnapshot = parseStoredPlayersPayload(
-      loadLocal<unknown>(storageKey, null),
+      storedPrimarySnapshot,
       sessionId,
       tournamentBotId,
       tournamentTitle
     );
     const legacyLocalSnapshot = parsedLocalSnapshot
       ? null
-      : parseLegacyPlayersSnapshot(loadLocal<unknown>(storageKey, null), sessionId, tournamentBotId);
-    const trustedLocalSnapshot = trustLoadedPlayersSnapshot(parsedLocalSnapshot ?? legacyLocalSnapshot, gameState);
+      : parseLegacyPlayersSnapshot(storedPrimarySnapshot, sessionId, tournamentBotId);
+    const parsedEmergencySnapshot = parseEmergencyPlayersPayload(
+      loadLocal<unknown>(emergencyStorageKey, null),
+      sessionId,
+      tournamentBotId,
+      tournamentTitle
+    );
+    const localSnapshotResolution = resolveHydratedPlayersSnapshot({
+      primarySnapshot: parsedLocalSnapshot ?? legacyLocalSnapshot,
+      emergencySnapshot: parsedEmergencySnapshot,
+      gameState: gameStateRef.current,
+    });
+    const trustedLocalSnapshot = localSnapshotResolution.snapshot;
     const trustedLocalPlayers = trustedLocalSnapshot?.players ?? [];
     const trustedLocalResultsSubmission = trustedLocalSnapshot?.resultsSubmission ?? { sentAt: null, signature: null };
-    const ignoredStaleLocal = Boolean((parsedLocalSnapshot ?? legacyLocalSnapshot)?.players.length) && trustedLocalPlayers.length === 0;
 
     playersRef.current = trustedLocalPlayers;
     resultsSubmissionRef.current = trustedLocalResultsSubmission;
@@ -987,7 +1079,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       });
       setPlayerSyncState({
         loading: sharedEnabled,
-        error: ignoredStaleLocal
+        error: localSnapshotResolution.ignoredStaleLocal
           ? 'На этом устройстве был старый локальный список игроков. Он не совпал с текущим турниром и был скрыт.'
           : null,
         lastSyncedAt: trustedLocalSnapshot?.updatedAt ?? null,
@@ -1009,7 +1101,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
           updatedAt: sharedSnapshot.lastSyncedAt,
           structured: true,
           resultsSubmission: sharedSnapshot.resultsSubmission,
-        }, gameState);
+        }, gameStateRef.current);
 
         if (trustedSharedSnapshot) {
           if (isIncomingPlayersSnapshotStale(snapshotUpdatedAtRef.current, trustedSharedSnapshot.updatedAt)) {
@@ -1064,9 +1156,9 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     };
   }, [
     applyPlayersSnapshot,
-    gameState,
     loadSharedPlayersSnapshot,
     persistSharedPlayersSnapshot,
+    emergencyStorageKey,
     sessionId,
     sharedEnabled,
     storageKey,
