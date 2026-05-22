@@ -9,7 +9,7 @@ const ENV = (import.meta as ImportMeta & {
   };
 }).env;
 
-const BOT_API = ENV?.VITE_BOT_API_URL || 'https://garage-game-club-bot-production.up.railway.app';
+const BOT_API = ENV?.VITE_BOT_API_URL || 'https://web-production-6035.up.railway.app';
 const ROSTER_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_PLAYERS_URL_TEMPLATE || `${BOT_API}/api/games/{id}/players`;
 const RESULTS_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_RESULTS_URL_TEMPLATE || `${BOT_API}/api/games/{id}/results`;
 const BOT_ADMIN_TOKEN = ENV?.VITE_BOT_ADMIN_TOKEN || '';

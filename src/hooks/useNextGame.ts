@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 
 const BOT_API = (import.meta as ImportMeta & { env?: { VITE_BOT_API_URL?: string } }).env?.VITE_BOT_API_URL
-  || 'https://garage-game-club-bot-production.up.railway.app';
+  || 'https://web-production-6035.up.railway.app';
 export const NEXT_GAMES_CACHE_KEY = 'poker_next_games_cache';
 
 export interface NextGame {
