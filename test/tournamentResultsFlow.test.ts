@@ -8,9 +8,11 @@ import {
   calcPaymentDue,
   findPlayerWithPlaceConflict,
   isIncomingPlayersSnapshotStale,
+  mergeImportedRoster,
   mergeChangedPlayersOntoSnapshot,
   parseEmergencyPlayersPayload,
   parseStoredPlayersPayload,
+  rosterGroupSort,
   resolveHydratedPlayersSnapshot,
   sortPlayersForResults,
   trustLoadedPlayersSnapshot,
@@ -392,6 +394,62 @@ test('mergeChangedPlayersOntoSnapshot preserves unrelated newer players while ap
   assert.equal(merged.find(player => player.id === 'a')?.status, 'out');
   assert.equal(merged.find(player => player.id === 'b')?.status, 'out');
   assert.equal(merged.find(player => player.id === 'c')?.name, 'Charlie');
+});
+
+test('rosterGroupSort puts newer player activations first', () => {
+  const players = [
+    createPlayer({ id: 'old', name: 'Old', sortOrder: 1, updatedAt: '2026-05-24T10:00:00.000Z' }),
+    createPlayer({ id: 'new', name: 'New', sortOrder: 5, updatedAt: '2026-05-24T10:05:00.000Z' }),
+    createPlayer({ id: 'mid', name: 'Mid', sortOrder: 3, updatedAt: '2026-05-24T10:03:00.000Z' }),
+  ];
+
+  assert.deepEqual([...players].sort(rosterGroupSort).map(player => player.id), ['new', 'mid', 'old']);
+});
+
+test('transient absent bot player disappears when bot roster no longer contains them', () => {
+  const existingPlayers = [
+    createPlayer({
+      id: 'cancelled-bot',
+      source: 'bot',
+      botRegistrationId: 'reg-cancelled',
+      telegramId: 2,
+      arrivalStatus: 'absent',
+      status: 'registered',
+      sortOrder: 1,
+      paymentMethod: 'unpaid',
+      rebuyCount: 0,
+      addonCount: 0,
+      bonusCount: 0,
+      bounty: 0,
+      place: null,
+      bustoutOrder: null,
+    }),
+    createPlayer({
+      id: 'active-1',
+      source: 'bot',
+      botRegistrationId: 'reg-active',
+      telegramId: 1,
+      arrivalStatus: 'paid',
+      status: 'active',
+      sortOrder: 2,
+    }),
+  ];
+  const merged = mergeImportedRoster(
+    existingPlayers,
+    [
+      {
+        botRegistrationId: 'reg-active',
+        telegramId: 1,
+        name: 'Alpha',
+        username: null,
+        registrationSource: 'registered',
+      },
+    ],
+    100,
+    77,
+  );
+
+  assert.deepEqual(merged.players.map(player => player.id), ['active-1']);
 });
 
 test('deriveTournamentResultsUiState and button labels reflect first send, resend and locked states', () => {

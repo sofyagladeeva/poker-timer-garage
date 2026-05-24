@@ -283,6 +283,14 @@ function playerSort(a: LiveTournamentPlayer, b: LiveTournamentPlayer) {
   return a.sortOrder - b.sortOrder || a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name, 'ru');
 }
 
+function getNextPlayerSortOrder(players: LiveTournamentPlayer[]) {
+  return players.reduce((max, player) => Math.max(max, player.sortOrder), -1) + 1;
+}
+
+export function rosterGroupSort(a: LiveTournamentPlayer, b: LiveTournamentPlayer) {
+  return b.sortOrder - a.sortOrder || b.updatedAt.localeCompare(a.updatedAt) || b.createdAt.localeCompare(a.createdAt) || a.name.localeCompare(b.name, 'ru');
+}
+
 function recalculatePlayers(players: LiveTournamentPlayer[]) {
   const normalized = players.map(player => normalizePlayer(player, player.sessionId, player.tournamentBotId));
   const entrants = normalized.filter(player => player.arrivalStatus !== 'absent').length;
@@ -332,6 +340,22 @@ function recalculatePlayers(players: LiveTournamentPlayer[]) {
       };
     })
     .sort(playerSort);
+}
+
+function isTransientBotRosterPlayer(player: LiveTournamentPlayer) {
+  return (
+    player.source === 'bot' &&
+    player.arrivalStatus === 'absent' &&
+    player.status !== 'out' &&
+    player.paymentMethod === 'unpaid' &&
+    player.rebuyCount === 0 &&
+    player.addonCount === 0 &&
+    player.bonusCount === 0 &&
+    player.bounty === 0 &&
+    player.place === null &&
+    !player.placeOverride &&
+    player.bustoutOrder === null
+  );
 }
 
 function normalizePlayersPayload(
@@ -410,19 +434,21 @@ export function mergeChangedPlayersOntoSnapshot(
   return recalculatePlayers(Array.from(nextById.values()));
 }
 
-function mergeImportedRoster(
+export function mergeImportedRoster(
   previousPlayers: LiveTournamentPlayer[],
   importedPlayers: ImportedTournamentPlayer[],
   sessionId: number,
   tournamentBotId: number | null
 ) {
-  let nextSortOrder = previousPlayers.reduce((max, player) => Math.max(max, player.sortOrder), -1) + 1;
+  let nextSortOrder = getNextPlayerSortOrder(previousPlayers);
   const mutable = previousPlayers.map(player => ({ ...player }));
+  const matchedExistingIds = new Set<string>();
 
   for (const imported of importedPlayers) {
     const existing = findImportedMatch(mutable, imported);
 
     if (existing) {
+      matchedExistingIds.add(existing.id);
       const baseStatus = deriveBaseStatus(imported.registrationSource);
       const nextStatus = existing.status === 'out'
         ? 'out'
@@ -460,7 +486,7 @@ function mergeImportedRoster(
       continue;
     }
 
-    mutable.push(normalizePlayer({
+    const createdPlayer = normalizePlayer({
       id: createId(),
       sessionId,
       tournamentBotId,
@@ -484,10 +510,17 @@ function mergeImportedRoster(
       sortOrder: nextSortOrder++,
       createdAt: nowIso(),
       updatedAt: nowIso(),
-    }, sessionId, tournamentBotId));
+    }, sessionId, tournamentBotId);
+    matchedExistingIds.add(createdPlayer.id);
+    mutable.push(createdPlayer);
   }
 
-  const recalculated = recalculatePlayers(mutable);
+  const nextPlayers = mutable.filter(player => !(
+    isTransientBotRosterPlayer(player) &&
+    !matchedExistingIds.has(player.id)
+  ));
+
+  const recalculated = recalculatePlayers(nextPlayers);
   return {
     players: recalculated,
     changedRows: diffPlayers(previousPlayers, recalculated),
@@ -891,14 +924,14 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
   ]);
 
   const groupedPlayers = useMemo(() => ({
-    active: players.filter(player => player.status === 'active').sort(playerSort),
-    pending: players.filter(player => player.status === 'registered').sort(playerSort),
-    waitlist: players.filter(player => player.status === 'waitlist').sort(playerSort),
+    active: players.filter(player => player.status === 'active').sort(rosterGroupSort),
+    pending: players.filter(player => player.status === 'registered').sort(rosterGroupSort),
+    waitlist: players.filter(player => player.status === 'waitlist').sort(rosterGroupSort),
     out: [...players.filter(player => player.status === 'out')].sort((a, b) => {
       if (a.place !== null && b.place !== null) return a.place - b.place;
       if (a.place !== null) return -1;
       if (b.place !== null) return 1;
-      return playerSort(a, b);
+      return rosterGroupSort(a, b);
     }),
   }), [players]);
 
@@ -1510,7 +1543,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     if (!trimmedName) return false;
 
     await applyPlayerMutation(current => {
-      const nextSortOrder = current.reduce((max, player) => Math.max(max, player.sortOrder), -1) + 1;
+      const nextSortOrder = getNextPlayerSortOrder(current);
       const createdAt = nowIso();
       return [
         ...current,
@@ -1576,6 +1609,8 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       const nextStatus = arrivalStatus === 'absent'
         ? deriveBaseStatus(player.registrationSource)
         : 'active';
+      const becameActive = player.arrivalStatus === 'absent' && arrivalStatus !== 'absent';
+      const nextSortOrder = becameActive ? getNextPlayerSortOrder(current) : player.sortOrder;
 
       return normalizePlayer({
         ...player,
@@ -1585,6 +1620,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
         place: arrivalStatus === 'absent' ? null : player.place,
         placeOverride: arrivalStatus === 'absent' ? false : player.placeOverride,
         bustoutOrder: arrivalStatus === 'absent' ? null : player.bustoutOrder,
+        sortOrder: nextSortOrder,
         updatedAt: nowIso(),
       }, sessionId, tournamentBotId);
     }));
@@ -1608,18 +1644,22 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
   }, [applyPlayerMutation, sessionId, tournamentBotId]);
 
   const restorePlayer = useCallback(async (playerId: string) => {
-    await applyPlayerMutation(current => current.map(player => {
-      if (player.id !== playerId) return player;
+    await applyPlayerMutation(current => {
+      const nextSortOrder = getNextPlayerSortOrder(current);
+      return current.map(player => {
+        if (player.id !== playerId) return player;
 
-      return normalizePlayer({
-        ...player,
-        status: player.arrivalStatus === 'absent' ? deriveBaseStatus(player.registrationSource) : 'active',
-        place: null,
-        placeOverride: false,
-        bustoutOrder: null,
-        updatedAt: nowIso(),
-      }, sessionId, tournamentBotId);
-    }));
+        return normalizePlayer({
+          ...player,
+          status: player.arrivalStatus === 'absent' ? deriveBaseStatus(player.registrationSource) : 'active',
+          place: null,
+          placeOverride: false,
+          bustoutOrder: null,
+          sortOrder: player.arrivalStatus === 'absent' ? player.sortOrder : nextSortOrder,
+          updatedAt: nowIso(),
+        }, sessionId, tournamentBotId);
+      });
+    });
   }, [applyPlayerMutation, sessionId, tournamentBotId]);
 
   const exportTournamentResults = useCallback(async (levelsPlayed: number) => {
