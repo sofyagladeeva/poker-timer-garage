@@ -22,8 +22,8 @@ const SHARED_PLAYERS_TABLE = 'blind_templates';
 const BOT_ROSTER_POLL_MS = 15_000;
 const TOURNAMENT_UNIT_PRICE = 1000;
 const PROMO_DISCOUNT_FACTOR = 0.5;
-const SHARED_PLAYERS_BACKUP_KEEP_COUNT = 20;
-const SHARED_PLAYERS_BACKUP_FETCH_COUNT = 60;
+const SHARED_PLAYERS_BACKUP_KEEP_COUNT = 4;
+const SHARED_PLAYERS_BACKUP_FETCH_COUNT = 16;
 
 type UpdateGameState = (patch: Partial<GameState>, immediate?: boolean) => Promise<boolean | undefined>;
 

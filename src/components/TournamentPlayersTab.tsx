@@ -71,6 +71,7 @@ export function TournamentPlayersTab({
   const [placeConflictNotice, setPlaceConflictNotice] = useState<string | null>(null);
   const [backupRestoreBusyId, setBackupRestoreBusyId] = useState<string | null>(null);
   const [backupRestoreNotice, setBackupRestoreNotice] = useState<string | null>(null);
+  const [backupsOpen, setBackupsOpen] = useState(false);
   const [outDialogPlayerId, setOutDialogPlayerId] = useState<string | null>(null);
   const [outDialogBountyDraft, setOutDialogBountyDraft] = useState('0');
   const [outDialogBusy, setOutDialogBusy] = useState(false);
@@ -352,67 +353,79 @@ export function TournamentPlayersTab({
 
         {(playerSyncState.shared || playerBackups.length > 0) && (
           <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-3">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+            <button
+              type="button"
+              onClick={() => setBackupsOpen(current => !current)}
+              className="flex w-full items-start justify-between gap-3 text-left"
+            >
               <div>
                 <div className="text-white text-sm font-bold">Резервные копии игроков</div>
                 <div className="text-[#777] text-xs mt-1">
-                  Каждое live-изменение игроков сохраняется в общем облачном снимке. Если список слетел или откатился, его можно поднять отсюда.
+                  Сохраняются в облако. Откройте только если нужно восстановить слетевший список.
                 </div>
-              </div>
-              {playerBackups[0]?.updatedAt && (
-                <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">
-                  Последняя: {new Date(playerBackups[0].updatedAt).toLocaleString('ru-RU', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                  })}
-                </div>
-              )}
-            </div>
-
-            {backupRestoreNotice && (
-              <div className="mt-3 rounded-lg border border-[#2D2D2D] bg-[#111] px-3 py-2 text-sm text-[#DDD]">
-                {backupRestoreNotice}
-              </div>
-            )}
-
-            {playerBackups.length === 0 ? (
-              <div className="mt-3 text-xs text-[#666]">
-                Резервные копии ещё не появились. После первых сохранений игроков они будут доступны здесь.
-              </div>
-            ) : (
-              <div className="mt-3 flex flex-col gap-2">
-                {playerBackups.slice(0, 6).map(backup => (
-                  <div key={backup.id} className="flex flex-col gap-2 rounded-lg border border-[#2D2D2D] bg-[#111] px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="text-white text-sm font-bold">
-                        {backup.updatedAt
-                          ? new Date(backup.updatedAt).toLocaleString('ru-RU', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit',
-                            })
-                          : 'Без времени'}
-                      </div>
-                      <div className="text-[#777] text-xs mt-1">
-                        Игроков: {backup.playerCount} · Входов: {backup.entrants} · Выбыли: {backup.bustouts}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void handleRestoreBackup(backup.id)}
-                      disabled={backupRestoreBusyId !== null}
-                      className="admin-btn-secondary px-3 py-2 text-xs whitespace-nowrap"
-                    >
-                      {backupRestoreBusyId === backup.id ? 'Восстановление...' : 'Восстановить'}
-                    </button>
+                {playerBackups[0]?.updatedAt && (
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mt-2">
+                    Последняя: {new Date(playerBackups[0].updatedAt).toLocaleString('ru-RU', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                    })}
+                    {playerBackups.length > 0 ? ` · ${playerBackups.length} шт.` : ''}
                   </div>
-                ))}
+                )}
               </div>
+              <div className="shrink-0 rounded-full border border-[#2D2D2D] bg-[#111] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#AAA]">
+                {backupsOpen ? 'Скрыть ▲' : 'Открыть ▼'}
+              </div>
+            </button>
+
+            {backupsOpen && (
+              <>
+                {backupRestoreNotice && (
+                  <div className="mt-3 rounded-lg border border-[#2D2D2D] bg-[#111] px-3 py-2 text-sm text-[#DDD]">
+                    {backupRestoreNotice}
+                  </div>
+                )}
+
+                {playerBackups.length === 0 ? (
+                  <div className="mt-3 text-xs text-[#666]">
+                    Резервные копии ещё не появились. После первых сохранений игроков они будут доступны здесь.
+                  </div>
+                ) : (
+                  <div className="mt-3 flex flex-col gap-2">
+                    {playerBackups.map(backup => (
+                      <div key={backup.id} className="flex flex-col gap-2 rounded-lg border border-[#2D2D2D] bg-[#111] px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="text-white text-sm font-bold">
+                            {backup.updatedAt
+                              ? new Date(backup.updatedAt).toLocaleString('ru-RU', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  second: '2-digit',
+                                })
+                              : 'Без времени'}
+                          </div>
+                          <div className="text-[#777] text-xs mt-1">
+                            Игроков: {backup.playerCount} · Входов: {backup.entrants} · Выбыли: {backup.bustouts}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void handleRestoreBackup(backup.id)}
+                          disabled={backupRestoreBusyId !== null}
+                          className="admin-btn-secondary px-3 py-2 text-xs whitespace-nowrap"
+                        >
+                          {backupRestoreBusyId === backup.id ? 'Восстановление...' : 'Восстановить'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
