@@ -136,6 +136,33 @@ export interface TournamentRecord {
   bonus_stack?: number;
   total_stack: number;
   levels_played: number;
+  archive_details?: TournamentArchiveDetails | null;
+}
+
+export interface TournamentArchivePlayerRecord {
+  id: string;
+  name: string;
+  username: string | null;
+  source: LiveTournamentPlayerSource;
+  registrationSource: LiveTournamentRegistrationSource;
+  status: LiveTournamentPlayerStatus;
+  arrivalStatus: LiveTournamentArrivalStatus;
+  rebuyCount: number;
+  addonCount: number;
+  bonusCount: number;
+  bounty: number;
+  paymentDue: number;
+  paymentMethod: LiveTournamentPaymentMethod;
+  place: number | null;
+  bustoutOrder: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TournamentArchiveDetails {
+  players: TournamentArchivePlayerRecord[];
+  summary: TournamentPlayersSummary | null;
+  savedAt: string;
 }
 
 export interface TournamentResultsPlayerRecord {

@@ -31,6 +31,7 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_ADMIN_PASSWORD: ${{ secrets.VITE_ADMIN_PASSWORD }}
+          VITE_ARCHIVE_PASSWORD: ${{ secrets.VITE_ARCHIVE_PASSWORD }}
           VITE_BOT_API_URL: https://web-production-6035.up.railway.app
           VITE_BOT_ADMIN_TOKEN: ${{ secrets.VITE_BOT_ADMIN_TOKEN }}
           VITE_BOT_TOURNAMENT_LIVE_SYNC_URL_TEMPLATE: ${{ secrets.VITE_BOT_TOURNAMENT_LIVE_SYNC_URL_TEMPLATE }}

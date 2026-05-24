@@ -12,7 +12,18 @@ import {
   setKnockoutMarker,
 } from '../blindLevelMarkers';
 import { calcTotalStack } from '../gameStateMath';
-import type { BlindLevel, BlindTemplate, Combination, Card, Suit, Rank, TournamentRecord, GameState } from '../types';
+import type {
+  BlindLevel,
+  BlindTemplate,
+  Combination,
+  Card,
+  Suit,
+  Rank,
+  TournamentArchiveDetails,
+  TournamentArchivePlayerRecord,
+  TournamentRecord,
+  GameState,
+} from '../types';
 import { SUIT_SYMBOLS } from '../types';
 import { deriveTournamentResultsUiState, getDuplicatePlaces, getTournamentResultsButtonLabel } from '../tournamentResultsFlow';
 import { PokerCard } from '../components/PokerCard';
@@ -72,10 +83,12 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: string |
 const BOT_API = import.meta.env.VITE_BOT_API_URL || 'https://web-production-6035.up.railway.app';
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'poker2024';
+const ARCHIVE_PASSWORD = import.meta.env.VITE_ARCHIVE_PASSWORD || 'garage-archive';
 const MAX_BACKGROUND_ITEMS = 24;
 const SHARED_LIBRARY_TIMEOUT_MS = 20_000;
 const SHARED_LIBRARY_RETRY_COUNT = 2;
 const ADMIN_AUTH_STORAGE_KEY = 'admin_authed';
+const ARCHIVE_AUTH_STORAGE_KEY = 'archive_authed';
 
 type BotGameSummary = {
   id: number;
@@ -192,6 +205,37 @@ function useTabletAdminLayout() {
   return tabletLayout;
 }
 
+function formatArchiveArrivalStatus(value: TournamentArchivePlayerRecord['arrivalStatus']) {
+  if (value === 'free') return 'Бесплатно';
+  if (value === 'promo') return 'Промокод';
+  if (value === 'paid') return 'Платно';
+  return 'Не в игре';
+}
+
+function formatArchivePaymentMethod(value: TournamentArchivePlayerRecord['paymentMethod']) {
+  if (value === 'cash') return 'Наличные';
+  if (value === 'card') return 'Карта';
+  return 'Не оплачено';
+}
+
+function formatArchiveStatus(player: TournamentArchivePlayerRecord) {
+  if (player.status === 'out') return 'Выбыл';
+  if (player.arrivalStatus === 'absent') return 'Не в игре';
+  if (player.status === 'waitlist') return 'Waitlist';
+  return 'В игре';
+}
+
+function sortArchivePlayers(players: TournamentArchivePlayerRecord[]) {
+  return [...players].sort((a, b) => {
+    if (a.place !== null && b.place !== null) return a.place - b.place;
+    if (a.place !== null) return -1;
+    if (b.place !== null) return 1;
+    if (a.status === 'out' && b.status !== 'out') return 1;
+    if (a.status !== 'out' && b.status === 'out') return -1;
+    return a.name.localeCompare(b.name, 'ru');
+  });
+}
+
 function loadAdminAuthFlag() {
   try {
     return sessionStorage.getItem(ADMIN_AUTH_STORAGE_KEY) === '1';
@@ -205,6 +249,22 @@ function saveAdminAuthFlag() {
     sessionStorage.setItem(ADMIN_AUTH_STORAGE_KEY, '1');
   } catch (error) {
     console.warn('Failed to persist admin auth flag in sessionStorage', error);
+  }
+}
+
+function loadArchiveAuthFlag() {
+  try {
+    return sessionStorage.getItem(ARCHIVE_AUTH_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveArchiveAuthFlag() {
+  try {
+    sessionStorage.setItem(ARCHIVE_AUTH_STORAGE_KEY, '1');
+  } catch (error) {
+    console.warn('Failed to persist archive auth flag in sessionStorage', error);
   }
 }
 
@@ -431,8 +491,11 @@ export function Admin() {
   const sharedBackgroundLibraryEnabled = isSharedBackgroundLibraryEnabled();
   const sharedBlindTemplateLibraryEnabled = isSharedBlindTemplateLibraryEnabled();
   const [authed, setAuthed] = useState(loadAdminAuthFlag);
+  const [archiveAuthed, setArchiveAuthed] = useState(loadArchiveAuthFlag);
   const [pwInput, setPwInput] = useState('');
   const [pwError, setPwError] = useState(false);
+  const [archivePwInput, setArchivePwInput] = useState('');
+  const [archivePwError, setArchivePwError] = useState(false);
   const [activeTab, setActiveTab] = useState<'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings'>('control');
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
   const [customGameOpen, setCustomGameOpen] = useState(false);
@@ -458,11 +521,14 @@ export function Admin() {
   const {
     gameState, blindLevels, combinations, syncReady, authoritativeReady, syncError, getAuthoritativeNow, retrySync,
     updateGameState, startTimer, pauseTimer, nextLevel, prevLevel, resetTournament,
-    updateBlindLevels, updateCombinations, saveTournament, fetchTournaments, deleteTournament,
+    updateBlindLevels, updateCombinations, saveTournament, fetchTournaments, fetchTournamentArchiveDetails, deleteTournament,
   } = useGameState();
   const gameStateSnapshotRef = useRef(gameState);
 
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([]);
+  const [archiveDetailsById, setArchiveDetailsById] = useState<Record<number, TournamentArchiveDetails | null>>({});
+  const [archiveOpenId, setArchiveOpenId] = useState<number | null>(null);
+  const [archiveDetailsLoadingId, setArchiveDetailsLoadingId] = useState<number | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [finishReviewOpen, setFinishReviewOpen] = useState(false);
@@ -510,6 +576,31 @@ export function Admin() {
     return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'ru');
   });
   const levelsPlayed = gameState.currentLevelIndex + 1;
+  const archiveDetailsPayload: TournamentArchiveDetails | null = tournamentPlayers.length > 0
+    ? {
+        players: tournamentPlayers.map(player => ({
+          id: player.id,
+          name: player.name,
+          username: player.username,
+          source: player.source,
+          registrationSource: player.registrationSource,
+          status: player.status,
+          arrivalStatus: player.arrivalStatus,
+          rebuyCount: player.rebuyCount,
+          addonCount: player.addonCount,
+          bonusCount: player.bonusCount,
+          bounty: player.bounty,
+          paymentDue: player.paymentDue,
+          paymentMethod: player.paymentMethod,
+          place: player.place,
+          bustoutOrder: player.bustoutOrder,
+          createdAt: player.createdAt,
+          updatedAt: player.updatedAt,
+        })),
+        summary: tournamentPlayersSummary,
+        savedAt: new Date().toISOString(),
+      }
+    : null;
   const playersMissingFinalPlace = finishReviewPlayers.filter(player => (
     player.arrivalStatus !== 'absent' && player.status !== 'out'
   )).length;
@@ -731,7 +822,7 @@ export function Admin() {
   const startNewTournamentFlow = async (nextTournament?: PendingTournamentSelection) => {
     setNewTournamentBusy(true);
     try {
-      await saveTournament(gameState, levelsPlayed);
+      await saveTournament(gameState, levelsPlayed, archiveDetailsPayload);
 
       const resetOk = await resetTournament();
       if (!resetOk) {
@@ -847,9 +938,22 @@ export function Admin() {
     }
   };
 
+  const handleArchiveLogin = () => {
+    if (archivePwInput === ARCHIVE_PASSWORD) {
+      setArchiveAuthed(true);
+      saveArchiveAuthFlag();
+      setArchivePwInput('');
+      setArchivePwError(false);
+      setArchiveLoading(true);
+    } else {
+      setArchivePwError(true);
+      setTimeout(() => setArchivePwError(false), 2000);
+    }
+  };
+
   // ── Load archive when tab opens — MUST be before any early return ──────
   useEffect(() => {
-    if (activeTab !== 'archive') return;
+    if (activeTab !== 'archive' || !archiveAuthed) return;
 
     const loadArchive = async () => {
       const data = await fetchTournaments();
@@ -858,7 +962,27 @@ export function Admin() {
     };
 
     void loadArchive();
-  }, [activeTab, fetchTournaments]);
+  }, [activeTab, archiveAuthed, fetchTournaments]);
+
+  const toggleArchiveDetails = async (tournamentId: number) => {
+    if (archiveOpenId === tournamentId) {
+      setArchiveOpenId(null);
+      return;
+    }
+
+    setArchiveOpenId(tournamentId);
+    if (Object.prototype.hasOwnProperty.call(archiveDetailsById, tournamentId)) {
+      return;
+    }
+
+    setArchiveDetailsLoadingId(tournamentId);
+    try {
+      const details = await fetchTournamentArchiveDetails(tournamentId);
+      setArchiveDetailsById(prev => ({ ...prev, [tournamentId]: details }));
+    } finally {
+      setArchiveDetailsLoadingId(current => current === tournamentId ? null : current);
+    }
+  };
 
   const syncBlindTemplateState = useCallback((next: BlindTemplate[]) => {
     const result = saveBlindTemplates(next);
@@ -1307,7 +1431,7 @@ export function Admin() {
   };
 
   const selectTab = (tabId: 'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings') => {
-    if (tabId === 'archive') {
+    if (tabId === 'archive' && archiveAuthed) {
       setArchiveLoading(true);
     }
     setActiveTab(tabId);
@@ -2291,104 +2415,214 @@ export function Admin() {
               История завершённых турниров
             </div>
 
-            {archiveLoading && (
-              <div className="text-[#444] text-sm text-center py-8">Загрузка...</div>
-            )}
-
-            {!archiveLoading && tournaments.length === 0 && (
-              <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-8 text-center">
-                <div className="text-[#444] text-4xl mb-3">📋</div>
-                <div className="text-[#555] text-sm">Архив пуст</div>
-                <div className="text-[#333] text-xs mt-1">
-                  После завершения турнира данные появятся здесь
+            {!archiveAuthed ? (
+              <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-6 sm:p-8 w-full max-w-md">
+                <div className="text-white font-black text-lg">Архив защищён</div>
+                <div className="text-[#666] text-sm mt-2">
+                  Чтобы открыть историю турниров и финансовые детали игроков, введите отдельный пароль архива.
                 </div>
+                <input
+                  type="password"
+                  className="admin-input mt-4"
+                  value={archivePwInput}
+                  onChange={e => setArchivePwInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleArchiveLogin()}
+                  placeholder="Пароль архива"
+                />
+                {archivePwError && (
+                  <div className="text-red-500 text-sm mt-3">Неверный пароль архива</div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleArchiveLogin}
+                  className="admin-btn-primary w-full py-3 mt-4"
+                >
+                  Открыть архив
+                </button>
               </div>
+            ) : (
+              <>
+                {archiveLoading && (
+                  <div className="text-[#444] text-sm text-center py-8">Загрузка...</div>
+                )}
+
+                {!archiveLoading && tournaments.length === 0 && (
+                  <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-8 text-center">
+                    <div className="text-[#444] text-4xl mb-3">📋</div>
+                    <div className="text-[#555] text-sm">Архив пуст</div>
+                    <div className="text-[#333] text-xs mt-1">
+                      После завершения турнира данные появятся здесь
+                    </div>
+                  </div>
+                )}
+
+                {tournaments.map(t => {
+                  const date = new Date(t.finished_at);
+                  const dateStr = date.toLocaleDateString('ru-RU', {
+                    day: 'numeric', month: 'short', year: 'numeric',
+                  });
+                  const timeStr = date.toLocaleTimeString('ru-RU', {
+                    hour: '2-digit', minute: '2-digit',
+                  });
+                  const archiveDetails = archiveDetailsById[t.id] ?? t.archive_details ?? null;
+                  const archivePlayers = archiveDetails ? sortArchivePlayers(archiveDetails.players) : [];
+                  return (
+                    <div key={t.id} className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-white font-bold text-sm uppercase tracking-wide">
+                            {t.title || 'Без названия'}
+                          </div>
+                          <div className="text-[#444] text-xs mt-0.5">{dateStr} · {timeStr}</div>
+                        </div>
+                        <div className="text-[#C0392B] font-black text-lg whitespace-nowrap">
+                          {(t.total_stack ?? 0).toLocaleString('ru-RU')}
+                          <span className="text-[#555] text-xs font-normal ml-1">фишек</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="bg-[#0A0A0A] rounded-xl p-2 text-center">
+                          <div className="text-[#555] text-[10px] uppercase mb-0.5">Игроки</div>
+                          <div className="text-white font-black text-lg">{t.players}</div>
+                        </div>
+                        <div className="bg-[#0A0A0A] rounded-xl p-2 text-center">
+                          <div className="text-[#555] text-[10px] uppercase mb-0.5">Ребаи</div>
+                          <div className="text-white font-black text-lg">{t.rebuys}</div>
+                        </div>
+                        <div className="bg-[#0A0A0A] rounded-xl p-2 text-center">
+                          <div className="text-[#555] text-[10px] uppercase mb-0.5">Аддоны</div>
+                          <div className="text-white font-black text-lg">{t.addon_count}</div>
+                        </div>
+                        <div className="bg-[#0A0A0A] rounded-xl p-2 text-center">
+                          <div className="text-[#555] text-[10px] uppercase mb-0.5">Уровней</div>
+                          <div className="text-white font-black text-lg">{t.levels_played}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <button
+                          type="button"
+                          onClick={() => void toggleArchiveDetails(t.id)}
+                          className="admin-btn-secondary px-4 py-2 text-sm self-start"
+                        >
+                          {archiveOpenId === t.id ? 'Скрыть детали' : 'Открыть детали'}
+                        </button>
+
+                        {confirmDeleteId === t.id ? (
+                          <div className="flex items-center gap-2 sm:ml-auto">
+                            <span className="text-[#888] text-xs">Удалить?</span>
+                            <button
+                              onClick={async () => {
+                                await deleteTournament(t.id);
+                                setTournaments(prev => prev.filter(x => x.id !== t.id));
+                                setArchiveDetailsById(prev => {
+                                  const next = { ...prev };
+                                  delete next[t.id];
+                                  return next;
+                                });
+                                setArchiveOpenId(current => current === t.id ? null : current);
+                                setConfirmDeleteId(null);
+                              }}
+                              className="text-[#C0392B] text-xs font-bold px-3 py-1 border border-[#C0392B] rounded-lg hover:bg-[#1a0a00] transition-colors"
+                            >
+                              Да, удалить
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="text-[#555] text-xs px-3 py-1 border border-[#2D2D2D] rounded-lg hover:text-[#888] transition-colors"
+                            >
+                              Отмена
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmDeleteId(t.id)}
+                            className="text-[#333] text-xs hover:text-[#C0392B] transition-colors sm:ml-auto py-1"
+                          >
+                            Удалить
+                          </button>
+                        )}
+                      </div>
+
+                      {archiveOpenId === t.id && (
+                        <div className="rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] p-4">
+                          {archiveDetailsLoadingId === t.id ? (
+                            <div className="text-[#666] text-sm">Загрузка деталей турнира...</div>
+                          ) : !archiveDetails ? (
+                            <div className="text-[#666] text-sm">
+                              Детализация игроков для этого турнира не найдена. Подробный архив начал сохраняться только после включения новой версии.
+                            </div>
+                          ) : (
+                            <div className="flex flex-col gap-3">
+                              {archiveDetails.summary && (
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                  <div className="bg-[#111] rounded-xl p-3">
+                                    <div className="text-[#666] text-[10px] uppercase">Входов</div>
+                                    <div className="text-white font-black text-lg mt-1">{archiveDetails.summary.entrants}</div>
+                                  </div>
+                                  <div className="bg-[#111] rounded-xl p-3">
+                                    <div className="text-[#666] text-[10px] uppercase">Bounty</div>
+                                    <div className="text-white font-black text-lg mt-1">{archiveDetails.summary.bountyTotal}</div>
+                                  </div>
+                                  <div className="bg-[#111] rounded-xl p-3">
+                                    <div className="text-[#666] text-[10px] uppercase">Оплачено</div>
+                                    <div className="text-white font-black text-lg mt-1">{archiveDetails.summary.totalDue} ₽</div>
+                                  </div>
+                                  <div className="bg-[#111] rounded-xl p-3">
+                                    <div className="text-[#666] text-[10px] uppercase">Сохранено</div>
+                                    <div className="text-white font-black text-sm mt-1">
+                                      {new Date(archiveDetails.savedAt).toLocaleString('ru-RU', {
+                                        day: '2-digit',
+                                        month: '2-digit',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                      })}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="flex flex-col gap-2">
+                                {archivePlayers.map(player => (
+                                  <div key={player.id} className="rounded-xl border border-[#2D2D2D] bg-[#111] px-3 py-3">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                      <div className="min-w-0">
+                                        <div className="text-white font-bold text-sm">{player.name}</div>
+                                        <div className="text-[#666] text-xs mt-1">
+                                          {formatArchiveStatus(player)} · {formatArchiveArrivalStatus(player.arrivalStatus)} · {formatArchivePaymentMethod(player.paymentMethod)}
+                                        </div>
+                                      </div>
+                                      <div className="text-left sm:text-right">
+                                        <div className="text-white font-black text-lg">
+                                          {player.place !== null ? `#${player.place}` : '—'}
+                                        </div>
+                                        <div className="text-[#666] text-[10px] uppercase">Место</div>
+                                      </div>
+                                    </div>
+
+                                    <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                      <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Rebuy: <span className="text-white font-bold">{player.rebuyCount}</span></div>
+                                      <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Addon: <span className="text-white font-bold">{player.addonCount}</span></div>
+                                      <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Бонус: <span className="text-white font-bold">{player.bonusCount}</span></div>
+                                      <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Bounty: <span className="text-white font-bold">{player.bounty}</span></div>
+                                      <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">К оплате: <span className="text-white font-bold">{player.paymentDue} ₽</span></div>
+                                      <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Оплата: <span className="text-white font-bold">{formatArchivePaymentMethod(player.paymentMethod)}</span></div>
+                                      <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Источник: <span className="text-white font-bold">{player.source === 'manual' ? 'Вручную' : 'Бот'}</span></div>
+                                      <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Регистрация: <span className="text-white font-bold">{player.registrationSource === 'waitlist' ? 'Waitlist' : 'Основной'}</span></div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </>
             )}
-
-            {tournaments.map(t => {
-              const date = new Date(t.finished_at);
-              const dateStr = date.toLocaleDateString('ru-RU', {
-                day: 'numeric', month: 'short', year: 'numeric',
-              });
-              const timeStr = date.toLocaleTimeString('ru-RU', {
-                hour: '2-digit', minute: '2-digit',
-              });
-              const activePlayers = t.players - 0; // players who finished
-              return (
-                <div key={t.id} className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-3">
-                  {/* Header */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="text-white font-bold text-sm uppercase tracking-wide">
-                        {t.title || 'Без названия'}
-                      </div>
-                      <div className="text-[#444] text-xs mt-0.5">{dateStr} · {timeStr}</div>
-                    </div>
-                    <div className="text-[#C0392B] font-black text-lg whitespace-nowrap">
-                      {(t.total_stack ?? 0).toLocaleString('ru-RU')}
-                      <span className="text-[#555] text-xs font-normal ml-1">фишек</span>
-                    </div>
-                  </div>
-
-                  {/* Stats grid */}
-                  <div className="grid grid-cols-4 gap-2">
-                    <div className="bg-[#0A0A0A] rounded-xl p-2 text-center">
-                      <div className="text-[#555] text-[10px] uppercase mb-0.5">Игроки</div>
-                      <div className="text-white font-black text-lg">{t.players}</div>
-                    </div>
-                    <div className="bg-[#0A0A0A] rounded-xl p-2 text-center">
-                      <div className="text-[#555] text-[10px] uppercase mb-0.5">Ребаи</div>
-                      <div className="text-white font-black text-lg">{t.rebuys}</div>
-                    </div>
-                    <div className="bg-[#0A0A0A] rounded-xl p-2 text-center">
-                      <div className="text-[#555] text-[10px] uppercase mb-0.5">Аддоны</div>
-                      <div className="text-white font-black text-lg">{t.addon_count}</div>
-                    </div>
-                    <div className="bg-[#0A0A0A] rounded-xl p-2 text-center">
-                      <div className="text-[#555] text-[10px] uppercase mb-0.5">Уровней</div>
-                      <div className="text-white font-black text-lg">{t.levels_played}</div>
-                    </div>
-                  </div>
-
-                  {/* Buy-ins + delete */}
-                  <div className="flex items-center justify-between">
-                    {activePlayers > 0 && (
-                      <div className="text-[#444] text-xs">
-                        Всего buy-in: {t.players + t.rebuys + t.addon_count}
-                      </div>
-                    )}
-                    {confirmDeleteId === t.id ? (
-                      <div className="flex items-center gap-2 ml-auto">
-                        <span className="text-[#888] text-xs">Удалить?</span>
-                        <button
-                          onClick={async () => {
-                            await deleteTournament(t.id);
-                            setTournaments(prev => prev.filter(x => x.id !== t.id));
-                            setConfirmDeleteId(null);
-                          }}
-                          className="text-[#C0392B] text-xs font-bold px-3 py-1 border border-[#C0392B] rounded-lg hover:bg-[#1a0a00] transition-colors"
-                        >
-                          Да, удалить
-                        </button>
-                        <button
-                          onClick={() => setConfirmDeleteId(null)}
-                          className="text-[#555] text-xs px-3 py-1 border border-[#2D2D2D] rounded-lg hover:text-[#888] transition-colors"
-                        >
-                          Отмена
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setConfirmDeleteId(t.id)}
-                        className="text-[#333] text-xs hover:text-[#C0392B] transition-colors ml-auto py-1"
-                      >
-                        Удалить
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
           </div>
         )}
 

@@ -7,13 +7,21 @@ import {
 } from '../gameStateSync';
 import { hasMissingBonusColumns, hasMissingNextGameBotId, hasMissingResetAt, normalizeGameState, toLegacyGameState } from '../gameStateMath';
 import { buildAdvanceLevelPatch, buildAutoAdvanceAnchor } from '../levelAdvance';
-import type { GameState, BlindLevel, Combination, TournamentRecord } from '../types';
+import type {
+  GameState,
+  BlindLevel,
+  Combination,
+  TournamentArchiveDetails,
+  TournamentRecord,
+} from '../types';
 
 const STATE_KEY = 'poker_game_state';
 const BLINDS_KEY = 'poker_blind_levels';
 const COMBINATIONS_KEY = 'poker_combinations';
 const TOURNAMENTS_KEY = 'poker_tournaments';
 const CLOCK_OFFSET_KEY = 'poker_server_clock_offset_ms';
+const ARCHIVE_DETAILS_TABLE = 'blind_templates';
+const ARCHIVE_DETAILS_PREFIX = '__archive_tournament__';
 const LOCAL_WRITE_SYNC_GRACE_MS = 20_000;
 const INITIAL_SYNC_TIMEOUT_MS = 20_000;
 const INITIAL_SYNC_RETRY_COUNT = 2;
@@ -112,6 +120,14 @@ function createClientId() {
   }
 
   return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function archiveDetailsStorageId(tournamentId: number) {
+  return `${ARCHIVE_DETAILS_PREFIX}:${tournamentId}`;
+}
+
+function buildArchiveDetailsStorageName(finishedAt: string) {
+  return `archive_tournament:${finishedAt}`;
 }
 
 function normalizeBlindLevels(levels: BlindLevel[]) {
@@ -1009,7 +1025,11 @@ export function useGameState(readOnly = false) {
     await supabase.from('blind_levels').insert(ordered);
   }, [isSupabaseConfigured]);
 
-  const saveTournament = useCallback(async (gs: GameState, levelsPlayed: number) => {
+  const saveTournament = useCallback(async (
+    gs: GameState,
+    levelsPlayed: number,
+    archiveDetails?: TournamentArchiveDetails | null
+  ) => {
     if (gs.players === 0 && gs.totalStack === 0) return;
     const record = {
       title: gs.tournamentTitle || null,
@@ -1023,18 +1043,42 @@ export function useGameState(readOnly = false) {
     };
     if (!isSupabaseConfigured) {
       const existing = loadLocal<TournamentRecord[]>(TOURNAMENTS_KEY, []);
-      const local: TournamentRecord = { ...record, id: Date.now(), finished_at: new Date().toISOString() };
+      const local: TournamentRecord = {
+        ...record,
+        id: Date.now(),
+        finished_at: new Date().toISOString(),
+        archive_details: archiveDetails ?? null,
+      };
       saveLocal(TOURNAMENTS_KEY, [local, ...existing]);
       return;
     }
 
-    let { error } = await supabase.from('tournaments').insert(record);
-    if (error && hasMissingBonusColumns(error)) {
+    let insertResult = await supabase
+      .from('tournaments')
+      .insert(record)
+      .select('id, finished_at')
+      .single();
+
+    if (insertResult.error && hasMissingBonusColumns(insertResult.error)) {
       const { bonus_count, bonus_stack, ...legacyRecord } = record;
       void bonus_count;
       void bonus_stack;
-      ({ error } = await supabase.from('tournaments').insert(legacyRecord));
+      insertResult = await supabase
+        .from('tournaments')
+        .insert(legacyRecord)
+        .select('id, finished_at')
+        .single();
     }
+
+    if (insertResult.error || !archiveDetails || !insertResult.data) {
+      return;
+    }
+
+    await supabase.from(ARCHIVE_DETAILS_TABLE).upsert({
+      id: archiveDetailsStorageId(Number(insertResult.data.id)),
+      name: buildArchiveDetailsStorageName(insertResult.data.finished_at),
+      levels: archiveDetails,
+    });
   }, [isSupabaseConfigured]);
 
   const fetchTournaments = useCallback(async (): Promise<TournamentRecord[]> => {
@@ -1049,6 +1093,34 @@ export function useGameState(readOnly = false) {
     return data ?? [];
   }, [isSupabaseConfigured]);
 
+  const fetchTournamentArchiveDetails = useCallback(async (id: number): Promise<TournamentArchiveDetails | null> => {
+    if (!isSupabaseConfigured) {
+      const existing = loadLocal<TournamentRecord[]>(TOURNAMENTS_KEY, []);
+      return existing.find(t => t.id === id)?.archive_details ?? null;
+    }
+
+    const { data, error } = await supabase
+      .from(ARCHIVE_DETAILS_TABLE)
+      .select('levels')
+      .eq('id', archiveDetailsStorageId(id))
+      .maybeSingle();
+
+    if (error || !data?.levels || typeof data.levels !== 'object') {
+      return null;
+    }
+
+    const payload = data.levels as Partial<TournamentArchiveDetails>;
+    if (!Array.isArray(payload.players) || typeof payload.savedAt !== 'string') {
+      return null;
+    }
+
+    return {
+      players: payload.players,
+      summary: payload.summary && typeof payload.summary === 'object' ? payload.summary : null,
+      savedAt: payload.savedAt,
+    } as TournamentArchiveDetails;
+  }, [isSupabaseConfigured]);
+
   const deleteTournament = useCallback(async (id: number): Promise<void> => {
     if (!isSupabaseConfigured) {
       const existing = loadLocal<TournamentRecord[]>(TOURNAMENTS_KEY, []);
@@ -1056,6 +1128,7 @@ export function useGameState(readOnly = false) {
       return;
     }
     await supabase.from('tournaments').delete().eq('id', id);
+    await supabase.from(ARCHIVE_DETAILS_TABLE).delete().eq('id', archiveDetailsStorageId(id));
   }, [isSupabaseConfigured]);
 
   const updateCombinations = useCallback(async (combs: Combination[]) => {
@@ -1106,6 +1179,7 @@ export function useGameState(readOnly = false) {
     updateCombinations,
     saveTournament,
     fetchTournaments,
+    fetchTournamentArchiveDetails,
     deleteTournament,
   };
 }
