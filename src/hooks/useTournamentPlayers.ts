@@ -1758,7 +1758,10 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     }));
   }, [applyPlayerMutation, sessionId, tournamentBotId]);
 
-  const markPlayerOut = useCallback(async (playerId: string) => {
+  const markPlayerOut = useCallback(async (
+    playerId: string,
+    options?: { bounty?: number }
+  ) => {
     await applyPlayerMutation(current => {
       const maxOutOrder = current.reduce((max, player) => Math.max(max, player.bustoutOrder ?? 0), 0);
       return current.map(player => {
@@ -1768,6 +1771,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
         return normalizePlayer({
           ...player,
           status: 'out',
+          bounty: options?.bounty != null ? Math.max(0, Math.round(options.bounty)) : player.bounty,
           bustoutOrder: player.bustoutOrder ?? maxOutOrder + 1,
           updatedAt: nowIso(),
         }, sessionId, tournamentBotId);

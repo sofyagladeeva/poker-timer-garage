@@ -494,6 +494,7 @@ export function Admin() {
     updatePlayerField,
     setPlayerArrival,
     markPlayerOut,
+    restorePlayer,
     restorePlayersFromBackup,
     exportTournamentResults,
   } = useTournamentPlayers({
@@ -2034,6 +2035,7 @@ export function Admin() {
             onUpdatePlayerField={updatePlayerField}
             onSetPlayerArrival={setPlayerArrival}
             onMarkPlayerOut={markPlayerOut}
+            onRestorePlayer={restorePlayer}
             onRestorePlayersFromBackup={restorePlayersFromBackup}
           />
         )}
@@ -2596,6 +2598,7 @@ export function Admin() {
                   onUpdatePlayerField={updatePlayerField}
                   onSetPlayerArrival={setPlayerArrival}
                   onMarkPlayerOut={markPlayerOut}
+                  onRestorePlayer={restorePlayer}
                   onRestorePlayersFromBackup={restorePlayersFromBackup}
                 />
               </div>

@@ -42,7 +42,8 @@ type Props = {
   onAddManualPlayer: (name: string) => Promise<boolean>;
   onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<boolean>;
   onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
-  onMarkPlayerOut: (playerId: string) => Promise<void>;
+  onMarkPlayerOut: (playerId: string, options?: { bounty?: number }) => Promise<void>;
+  onRestorePlayer: (playerId: string) => Promise<void>;
   onRestorePlayersFromBackup: (backupId: string) => Promise<boolean>;
 };
 
@@ -61,6 +62,7 @@ export function TournamentPlayersTab({
   onUpdatePlayerField,
   onSetPlayerArrival,
   onMarkPlayerOut,
+  onRestorePlayer,
   onRestorePlayersFromBackup,
 }: Props) {
   const [manualPlayerName, setManualPlayerName] = useState('');
@@ -69,6 +71,9 @@ export function TournamentPlayersTab({
   const [placeConflictNotice, setPlaceConflictNotice] = useState<string | null>(null);
   const [backupRestoreBusyId, setBackupRestoreBusyId] = useState<string | null>(null);
   const [backupRestoreNotice, setBackupRestoreNotice] = useState<string | null>(null);
+  const [outDialogPlayerId, setOutDialogPlayerId] = useState<string | null>(null);
+  const [outDialogBountyDraft, setOutDialogBountyDraft] = useState('0');
+  const [outDialogBusy, setOutDialogBusy] = useState(false);
   const totalPlayers = groupedPlayers.active.length + groupedPlayers.pending.length + groupedPlayers.waitlist.length + groupedPlayers.out.length;
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const rosterPlayers = [
@@ -77,6 +82,9 @@ export function TournamentPlayersTab({
     ...groupedPlayers.waitlist,
     ...groupedPlayers.out,
   ];
+  const outDialogPlayer = outDialogPlayerId
+    ? rosterPlayers.find(player => player.id === outDialogPlayerId) ?? null
+    : null;
 
   const matchesSearch = (player: LiveTournamentPlayer) => {
     if (!normalizedQuery) return true;
@@ -134,6 +142,32 @@ export function TournamentPlayersTab({
     }
   };
 
+  const openOutDialog = (player: LiveTournamentPlayer) => {
+    setPlaceConflictNotice(null);
+    setOutDialogPlayerId(player.id);
+    setOutDialogBountyDraft(String(player.bounty || 0));
+  };
+
+  const closeOutDialog = () => {
+    if (outDialogBusy) return;
+    setOutDialogPlayerId(null);
+    setOutDialogBountyDraft('0');
+  };
+
+  const handleConfirmOut = async () => {
+    if (!outDialogPlayer) return;
+
+    const bounty = Math.max(0, Number(outDialogBountyDraft) || 0);
+    setOutDialogBusy(true);
+    try {
+      await onMarkPlayerOut(outDialogPlayer.id, { bounty });
+      setOutDialogPlayerId(null);
+      setOutDialogBountyDraft('0');
+    } finally {
+      setOutDialogBusy(false);
+    }
+  };
+
   const allPlayers = viewFilter === 'active'
     ? filterPlayers(groupedPlayers.active)
     : viewFilter === 'pending'
@@ -148,6 +182,9 @@ export function TournamentPlayersTab({
           ...filterPlayers(groupedPlayers.waitlist),
           ...filterPlayers(groupedPlayers.out),
         ];
+  const projectedOutPlace = outDialogPlayer
+    ? getProjectedOutPlace(rosterPlayers, outDialogPlayer)
+    : null;
 
   return (
     <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-4">
@@ -408,7 +445,8 @@ export function TournamentPlayersTab({
                     onPlaceConflict={setPlaceConflictNotice}
                     onUpdatePlayerField={onUpdatePlayerField}
                     onSetPlayerArrival={onSetPlayerArrival}
-                    onMarkPlayerOut={onMarkPlayerOut}
+                    onOpenOutDialog={openOutDialog}
+                    onRestorePlayer={onRestorePlayer}
                   />
                 ))}
               </div>
@@ -423,7 +461,8 @@ export function TournamentPlayersTab({
                       onPlaceConflict={setPlaceConflictNotice}
                       onUpdatePlayerField={onUpdatePlayerField}
                       onSetPlayerArrival={onSetPlayerArrival}
-                      onMarkPlayerOut={onMarkPlayerOut}
+                      onOpenOutDialog={openOutDialog}
+                      onRestorePlayer={onRestorePlayer}
                     />
                   ))}
                 </div>
@@ -432,14 +471,13 @@ export function TournamentPlayersTab({
                   <table className="w-full table-fixed border-separate border-spacing-y-1">
                     <thead>
                       <tr className="text-[8px] sm:text-[11px] uppercase tracking-[0.12em] sm:tracking-[0.18em] text-[#666]">
-                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[26%]">Игрок</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[28%]">Игрок</th>
                         <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Rebuy</th>
                         <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Addon</th>
                         <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Бонус</th>
-                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[13%]">Статус</th>
-                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[8%]">Bounty</th>
-                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[7%]">Место</th>
-                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[16%]">Оплата</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[14%]">В игре</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[12%]">Место</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[16%]">Вход / оплата</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -451,7 +489,8 @@ export function TournamentPlayersTab({
                           onPlaceConflict={setPlaceConflictNotice}
                           onUpdatePlayerField={onUpdatePlayerField}
                           onSetPlayerArrival={onSetPlayerArrival}
-                          onMarkPlayerOut={onMarkPlayerOut}
+                          onOpenOutDialog={openOutDialog}
+                          onRestorePlayer={onRestorePlayer}
                         />
                       ))}
                     </tbody>
@@ -462,8 +501,81 @@ export function TournamentPlayersTab({
           </div>
         )}
       </div>
+
+      {outDialogPlayer && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/75 p-3 sm:items-center sm:p-6">
+          <div className="w-full max-w-md rounded-3xl border border-[#2D2D2D] bg-[#111] shadow-2xl">
+            <div className="border-b border-[#2D2D2D] px-5 py-4">
+              <div className="text-white font-black text-lg">
+                {outDialogPlayer.status === 'out' ? 'Правка выбытия' : 'Подтвердить выбытие'}
+              </div>
+              <div className="mt-1 text-sm text-[#777] break-words">{outDialogPlayer.name}</div>
+            </div>
+
+            <div className="px-5 py-4 flex flex-col gap-4">
+              <div className="rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-[#666]">Место игрока</div>
+                <div className="mt-2 text-3xl font-black text-white">
+                  {projectedOutPlace ? `#${projectedOutPlace}` : '—'}
+                </div>
+              </div>
+
+              <label className="block">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-[#666] mb-2">Bounty игрока</div>
+                <input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  value={outDialogBountyDraft}
+                  onChange={event => setOutDialogBountyDraft(event.target.value)}
+                  className="admin-input !py-3 !px-4 !text-base text-center"
+                  placeholder="0"
+                />
+              </label>
+
+              <div className="text-xs text-[#666]">
+                {outDialogPlayer.status === 'out'
+                  ? 'Если bounty нет, оставьте `0`. После сохранения обновятся данные по уже выбывшему игроку.'
+                  : 'Если bounty нет, оставьте `0`. После подтверждения игрок получит это место и перейдёт в список выбывших.'}
+              </div>
+            </div>
+
+            <div className="border-t border-[#2D2D2D] px-5 py-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={closeOutDialog}
+                disabled={outDialogBusy}
+                className="admin-btn-secondary px-4 py-3 text-sm"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmOut()}
+                disabled={outDialogBusy}
+                className="admin-btn-danger px-4 py-3 text-sm"
+              >
+                {outDialogBusy
+                  ? 'Сохранение...'
+                  : outDialogPlayer.status === 'out'
+                    ? 'Сохранить выбытие'
+                    : 'Подтвердить выбытие'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function getProjectedOutPlace(players: LiveTournamentPlayer[], player: LiveTournamentPlayer) {
+  if (player.arrivalStatus === 'absent') return null;
+  if (player.status === 'out') return player.place;
+
+  const entrants = players.filter(item => item.arrivalStatus !== 'absent').length;
+  const maxOutOrder = players.reduce((max, item) => Math.max(max, item.bustoutOrder ?? 0), 0);
+  return Math.max(1, entrants - (maxOutOrder + 1) + 1);
 }
 
 function MobilePlayerCard({
@@ -472,14 +584,16 @@ function MobilePlayerCard({
   onPlaceConflict,
   onUpdatePlayerField,
   onSetPlayerArrival,
-  onMarkPlayerOut,
+  onOpenOutDialog,
+  onRestorePlayer,
 }: {
   player: LiveTournamentPlayer;
   rosterPlayers: LiveTournamentPlayer[];
   onPlaceConflict: (message: string | null) => void;
   onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<boolean>;
   onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
-  onMarkPlayerOut: (playerId: string) => Promise<void>;
+  onOpenOutDialog: (player: LiveTournamentPlayer) => void;
+  onRestorePlayer: (playerId: string) => Promise<void>;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const canEditCounters = player.arrivalStatus !== 'absent';
@@ -491,23 +605,31 @@ function MobilePlayerCard({
     : player.arrivalStatus === 'absent'
       ? 'border-[#4A4A4A] bg-[#161616] text-[#C2C2C2]'
       : 'border-blue-700/70 bg-blue-950/40 text-blue-200';
-  const statusValue = isOut ? 'out' : player.arrivalStatus;
-
-  const handleStatusChange = async (nextValue: string) => {
-    if (nextValue === 'out') {
-      await onMarkPlayerOut(player.id);
-      return;
-    }
-
-    if (nextValue === 'absent' || nextValue === 'paid' || nextValue === 'free' || nextValue === 'promo') {
-      await onSetPlayerArrival(player.id, nextValue);
-    }
-  };
+  const entryTypeValue = player.arrivalStatus === 'promo'
+    ? 'promo'
+    : player.arrivalStatus === 'free'
+      ? 'free'
+      : 'paid';
 
   const handlePaymentChange = async (nextValue: string) => {
     if (nextValue === 'unpaid' || nextValue === 'cash' || nextValue === 'card') {
       await onUpdatePlayerField(player.id, { paymentMethod: nextValue });
     }
+  };
+
+  const handleActiveClick = async () => {
+    if (isOut) {
+      await onRestorePlayer(player.id);
+      return;
+    }
+
+    if (player.arrivalStatus === 'absent') {
+      await onSetPlayerArrival(player.id, 'paid');
+    }
+  };
+
+  const handleAbsentClick = async () => {
+    await onSetPlayerArrival(player.id, 'absent');
   };
 
   const handlePlaceCommit = async (value: number | null, override: boolean) => {
@@ -540,16 +662,62 @@ function MobilePlayerCard({
         <div className="shrink-0 rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-center min-w-[64px]">
           <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Место</div>
           {isOut ? (
-            <PlaceInput
-              value={player.place}
-              disabled={false}
-              className="admin-input mt-2 !w-full !py-1.5 !px-2 !text-center !text-base font-black"
-              onCommit={handlePlaceCommit}
-            />
+            <>
+              <PlaceInput
+                value={player.place}
+                disabled={false}
+                className="admin-input mt-2 !w-full !py-1.5 !px-2 !text-center !text-base font-black"
+                onCommit={handlePlaceCommit}
+              />
+              <button
+                type="button"
+                onClick={() => onOpenOutDialog(player)}
+                className="mt-2 inline-flex w-full items-center justify-center rounded-lg border border-[#2D2D2D] bg-[#1A1A1A] px-2 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[#DDD]"
+              >
+                Править
+              </button>
+            </>
           ) : (
             <div className="mt-1 text-lg font-black text-[#777]">—</div>
           )}
+          {!isOut && (
+            <button
+              type="button"
+              onClick={() => onOpenOutDialog(player)}
+              className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-[#5A1712] px-2 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[#FFD5D0]"
+            >
+              Выбыл
+            </button>
+          )}
         </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => void handleAbsentClick()}
+          disabled={isOut}
+          className={`rounded-xl border px-3 py-3 text-sm font-bold transition-colors ${
+            player.arrivalStatus === 'absent' && !isOut
+              ? 'border-[#4A4A4A] bg-[#1A1A1A] text-white'
+              : 'border-[#2D2D2D] bg-[#141414] text-[#888]'
+          } disabled:opacity-40`}
+        >
+          Не в игре
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleActiveClick()}
+          className={`rounded-xl border px-3 py-3 text-sm font-bold transition-colors ${
+            player.arrivalStatus !== 'absent' && !isOut
+              ? 'border-blue-700/70 bg-blue-950/40 text-blue-200'
+              : isOut
+                ? 'border-emerald-800/70 bg-emerald-950/30 text-emerald-200'
+                : 'border-[#2D2D2D] bg-[#141414] text-[#888]'
+          }`}
+        >
+          {isOut ? 'Вернуть в игру' : 'В игре'}
+        </button>
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2">
@@ -583,7 +751,7 @@ function MobilePlayerCard({
       >
         <div>
           <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Детали</div>
-          <div className="text-sm font-bold text-white">Статус, оплата и bounty</div>
+          <div className="text-sm font-bold text-white">Тип входа и оплата</div>
         </div>
         <div className="text-xs font-bold uppercase tracking-[0.12em] text-[#888]">
           {detailsOpen ? 'Скрыть' : 'Открыть'}
@@ -594,15 +762,18 @@ function MobilePlayerCard({
         <>
           <div className="mt-3 grid gap-2">
             <MobileSelect
-              label="Статус"
-              value={statusValue}
-              onChange={value => { void handleStatusChange(value); }}
+              label="Тип входа"
+              value={entryTypeValue}
+              disabled={player.arrivalStatus === 'absent' && !isOut}
+              onChange={value => {
+                if (value === 'paid' || value === 'free' || value === 'promo') {
+                  void onSetPlayerArrival(player.id, value);
+                }
+              }}
               options={[
-                { value: 'absent', label: 'Не в игре' },
                 { value: 'paid', label: 'Платно' },
                 { value: 'free', label: 'Бесплатно' },
                 { value: 'promo', label: 'Промокод' },
-                { value: 'out', label: 'Выбыл' },
               ]}
             />
             <MobileSelect
@@ -617,20 +788,9 @@ function MobilePlayerCard({
             />
           </div>
 
-          <div className="mt-3 grid grid-cols-[minmax(0,1fr)_96px] gap-2">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1">Bounty</div>
-              <BountyInput
-                value={player.bounty}
-                className="admin-input !w-full !py-2 !px-3 !text-sm text-center"
-                onCommit={value => onUpdatePlayerField(player.id, { bounty: value })}
-              />
-            </div>
-
-            <div className="rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-right">
-              <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">К оплате</div>
-              <div className="mt-2 text-base font-black text-white whitespace-nowrap">{paymentDueLabel}</div>
-            </div>
+          <div className="mt-3 rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-right">
+            <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">К оплате</div>
+            <div className="mt-2 text-base font-black text-white whitespace-nowrap">{paymentDueLabel}</div>
           </div>
         </>
       )}
@@ -644,16 +804,18 @@ function PlayerRow({
   onPlaceConflict,
   onUpdatePlayerField,
   onSetPlayerArrival,
-  onMarkPlayerOut,
+  onOpenOutDialog,
+  onRestorePlayer,
 }: {
   player: LiveTournamentPlayer;
   rosterPlayers: LiveTournamentPlayer[];
   onPlaceConflict: (message: string | null) => void;
   onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<boolean>;
   onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
-  onMarkPlayerOut: (playerId: string) => Promise<void>;
+  onOpenOutDialog: (player: LiveTournamentPlayer) => void;
+  onRestorePlayer: (playerId: string) => Promise<void>;
 }) {
-  const [openField, setOpenField] = useState<'status' | 'payment' | null>(null);
+  const [openField, setOpenField] = useState<'entry' | 'payment' | null>(null);
   const canEditCounters = player.arrivalStatus !== 'absent';
   const isOut = player.status === 'out';
   const paymentMethodLabel = player.paymentMethod === 'cash'
@@ -662,26 +824,33 @@ function PlayerRow({
       ? 'Карта'
       : 'Не оплачено';
   const paymentDueLabel = player.paymentDue > 0 ? `${player.paymentDue} ₽` : '0 ₽';
+  const entryTypeLabel = player.arrivalStatus === 'promo'
+    ? 'Промокод'
+    : player.arrivalStatus === 'free'
+      ? 'Бесплатно'
+      : 'Платно';
 
   const toggleField = (field: typeof openField) => {
     setOpenField(current => current === field ? null : field);
   };
 
-  const statusLabel = isOut
-    ? 'Выбыл'
-    : player.arrivalStatus === 'paid'
-      ? 'Платно'
-      : player.arrivalStatus === 'free'
-        ? 'Бесплатно'
-        : player.arrivalStatus === 'promo'
-          ? 'Промокод'
-          : 'Не в игре';
   const nameBadgeLabel = isOut ? 'Выбыл' : player.arrivalStatus === 'absent' ? 'Не в игре' : 'В игре';
   const nameBadgeTone = isOut
     ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
     : player.arrivalStatus === 'absent'
       ? 'border-[#4A4A4A] bg-[#161616] text-[#C2C2C2]'
       : 'border-blue-700/70 bg-blue-950/40 text-blue-200';
+
+  const handleActiveClick = async () => {
+    if (isOut) {
+      await onRestorePlayer(player.id);
+      return;
+    }
+
+    if (player.arrivalStatus === 'absent') {
+      await onSetPlayerArrival(player.id, 'paid');
+    }
+  };
 
   const handlePlaceCommit = async (value: number | null, override: boolean) => {
     if (value !== null) {
@@ -781,77 +950,99 @@ function PlayerRow({
         <div className="min-w-0 flex flex-col gap-1">
           <button
             type="button"
-            onClick={() => toggleField('status')}
+            onClick={() => void onSetPlayerArrival(player.id, 'absent')}
+            disabled={isOut}
             className={`inline-flex w-full items-center justify-center whitespace-normal sm:whitespace-nowrap rounded-lg border px-1 py-1 text-center text-[9px] leading-tight sm:px-1.5 sm:text-[11px] font-bold transition-colors ${
-              openField === 'status'
-                ? 'border-[#555] bg-[#1A1A1A] text-white'
+              player.arrivalStatus === 'absent' && !isOut
+                ? 'border-[#4A4A4A] bg-[#1A1A1A] text-white'
                 : 'border-[#2D2D2D] bg-[#141414] text-[#EEE] hover:border-[#555]'
+            } disabled:opacity-40`}
+          >
+            Не в игре
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleActiveClick()}
+            className={`inline-flex w-full items-center justify-center whitespace-normal sm:whitespace-nowrap rounded-lg border px-1 py-1 text-center text-[9px] leading-tight sm:px-1.5 sm:text-[11px] font-bold transition-colors ${
+              player.arrivalStatus !== 'absent' && !isOut
+                ? 'border-blue-700/70 bg-blue-950/40 text-blue-200'
+                : isOut
+                  ? 'border-emerald-800/70 bg-emerald-950/30 text-emerald-200'
+                  : 'border-[#2D2D2D] bg-[#141414] text-[#EEE] hover:border-[#555]'
             }`}
           >
-            {statusLabel}
+            {isOut ? 'Вернуть в игру' : 'В игре'}
           </button>
-          {openField === 'status' && (
+        </div>
+      </td>
+
+      <td className="px-1 py-1 sm:px-1.5 sm:py-1.5 align-top border-y border-[#2D2D2D]">
+        <div className="min-w-0 flex flex-col gap-1">
+          {isOut ? (
+            <>
+              <PlaceInput
+                value={player.place}
+                disabled={false}
+                className="admin-input !w-full !py-1 !px-1 !text-[10px] sm:!text-[11px] text-center font-black"
+                onCommit={handlePlaceCommit}
+              />
+              <button
+                type="button"
+                onClick={() => onOpenOutDialog(player)}
+                className="inline-flex w-full items-center justify-center rounded-lg border border-[#2D2D2D] bg-[#1A1A1A] px-1 py-1 text-[9px] sm:px-1.5 sm:text-[11px] font-bold text-[#DDD]"
+              >
+                Править
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="inline-flex w-full items-center justify-center whitespace-nowrap rounded-lg border border-[#2D2D2D] bg-[#141414] px-1 py-1 text-[9px] text-[#777] sm:px-1.5 sm:text-[11px] font-bold">
+                —
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenOutDialog(player)}
+                className="inline-flex w-full items-center justify-center rounded-lg bg-[#5A1712] px-1 py-1 text-[9px] sm:px-1.5 sm:text-[11px] font-bold text-[#FFD5D0]"
+              >
+                Выбыл
+              </button>
+            </>
+          )}
+        </div>
+      </td>
+
+      <td className="px-1 py-1 sm:px-1.5 sm:py-1.5 align-top border-y border-[#2D2D2D] rounded-r-2xl border-r border-[#2D2D2D]">
+        <div className="min-w-0 flex flex-col gap-1">
+          <button
+            type="button"
+            onClick={() => toggleField('entry')}
+            disabled={player.arrivalStatus === 'absent' && !isOut}
+            className="inline-flex w-full items-center justify-center sm:justify-start whitespace-normal sm:whitespace-nowrap rounded-lg border border-[#2D2D2D] bg-[#141414] px-1 py-1 text-center sm:px-1.5 sm:text-left text-[9px] leading-tight sm:text-[11px] font-bold text-white hover:border-[#555] disabled:opacity-40"
+          >
+            {entryTypeLabel}
+          </button>
+          {openField === 'entry' && (
             <div className="grid grid-cols-1 gap-1">
-              <MiniChoice centered active={player.arrivalStatus === 'absent'} onClick={async () => {
-                await onSetPlayerArrival(player.id, 'absent');
-                setOpenField(null);
-              }}>
-                Не в игре
-              </MiniChoice>
-              <MiniChoice centered active={player.arrivalStatus === 'paid'} onClick={async () => {
+              <MiniChoice active={player.arrivalStatus === 'paid'} onClick={async () => {
                 await onSetPlayerArrival(player.id, 'paid');
                 setOpenField(null);
               }}>
                 Платно
               </MiniChoice>
-              <MiniChoice centered active={player.arrivalStatus === 'free'} onClick={async () => {
+              <MiniChoice active={player.arrivalStatus === 'free'} onClick={async () => {
                 await onSetPlayerArrival(player.id, 'free');
                 setOpenField(null);
               }}>
                 Бесплатно
               </MiniChoice>
-              <MiniChoice centered active={player.arrivalStatus === 'promo'} onClick={async () => {
+              <MiniChoice active={player.arrivalStatus === 'promo'} onClick={async () => {
                 await onSetPlayerArrival(player.id, 'promo');
                 setOpenField(null);
               }}>
                 Промокод
               </MiniChoice>
-              <MiniChoice centered active={isOut} onClick={async () => {
-                await onMarkPlayerOut(player.id);
-                setOpenField(null);
-              }}>
-                Выбыл
-              </MiniChoice>
             </div>
           )}
-        </div>
-      </td>
-
-      <td className="px-1 py-1 sm:px-1.5 sm:py-1.5 align-top border-y border-[#2D2D2D]">
-        <BountyInput
-          value={player.bounty}
-          className="admin-input !w-full !py-1 !px-1 !text-[10px] sm:!text-[11px] text-center"
-          onCommit={value => onUpdatePlayerField(player.id, { bounty: value })}
-        />
-      </td>
-
-      <td className="px-1 py-1 sm:px-1.5 sm:py-1.5 align-top border-y border-[#2D2D2D]">
-        {isOut ? (
-          <PlaceInput
-            value={player.place}
-            disabled={false}
-            className="admin-input !w-full !py-1 !px-1 !text-[10px] sm:!text-[11px] text-center font-black"
-            onCommit={handlePlaceCommit}
-          />
-        ) : (
-          <div className="inline-flex w-full items-center justify-center whitespace-nowrap rounded-lg border border-[#2D2D2D] bg-[#141414] px-1 py-1 text-[9px] text-[#777] sm:px-1.5 sm:text-[11px] font-bold">
-            —
-          </div>
-        )}
-      </td>
-
-      <td className="px-1 py-1 sm:px-1.5 sm:py-1.5 align-top border-y border-[#2D2D2D] rounded-r-2xl border-r border-[#2D2D2D]">
-        <div className="min-w-0 flex flex-col gap-1">
           <button
             type="button"
             onClick={() => toggleField('payment')}
@@ -887,44 +1078,6 @@ function PlayerRow({
         </div>
       </td>
     </tr>
-  );
-}
-
-function BountyInput({
-  value,
-  className,
-  onCommit,
-}: {
-  value: number;
-  className: string;
-  onCommit: (value: number) => Promise<boolean>;
-}) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const focusedRef = useRef(false);
-
-  useEffect(() => {
-    if (focusedRef.current || !inputRef.current) return;
-    inputRef.current.value = value > 0 ? String(value) : '';
-  }, [value]);
-
-  return (
-    <input
-      ref={inputRef}
-      type="number"
-      defaultValue={value > 0 ? String(value) : ''}
-      onFocus={() => {
-        focusedRef.current = true;
-      }}
-      onBlur={event => {
-        focusedRef.current = false;
-        const nextValue = Math.max(0, Number(event.currentTarget.value) || 0);
-        event.currentTarget.value = nextValue > 0 ? String(nextValue) : '';
-        void onCommit(nextValue);
-      }}
-      className={className}
-      placeholder="0"
-      inputMode="numeric"
-    />
   );
 }
 
@@ -1039,11 +1192,13 @@ function MobileSelect({
   label,
   value,
   options,
+  disabled = false,
   onChange,
 }: {
   label: string;
   value: string;
   options: Array<{ value: string; label: string }>;
+  disabled?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
@@ -1051,8 +1206,9 @@ function MobileSelect({
       <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1">{label}</div>
       <select
         value={value}
+        disabled={disabled}
         onChange={event => onChange(event.target.value)}
-        className="admin-input !w-full !py-2 !px-3 !text-sm"
+        className="admin-input !w-full !py-2 !px-3 !text-sm disabled:opacity-40"
       >
         {options.map(option => (
           <option key={option.value} value={option.value}>
