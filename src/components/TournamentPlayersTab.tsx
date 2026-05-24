@@ -19,6 +19,14 @@ type Props = {
     lastSyncedAt: string | null;
     shared: boolean;
   };
+  playerBackups: {
+    id: string;
+    updatedAt: string | null;
+    revision: number | null;
+    playerCount: number;
+    entrants: number;
+    bustouts: number;
+  }[];
   botSyncState: {
     loading: boolean;
     error: string | null;
@@ -34,11 +42,13 @@ type Props = {
   onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<boolean>;
   onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
   onMarkPlayerOut: (playerId: string) => Promise<void>;
+  onRestorePlayersFromBackup: (backupId: string) => Promise<boolean>;
 };
 
 export function TournamentPlayersTab({
   groupedPlayers,
   playerSyncState,
+  playerBackups,
   botSyncState,
   tournamentBotId,
   isTournamentEnded,
@@ -49,11 +59,14 @@ export function TournamentPlayersTab({
   onUpdatePlayerField,
   onSetPlayerArrival,
   onMarkPlayerOut,
+  onRestorePlayersFromBackup,
 }: Props) {
   const [manualPlayerName, setManualPlayerName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewFilter, setViewFilter] = useState<'all' | 'active' | 'pending' | 'waitlist' | 'out' | 'unpaid'>('all');
   const [placeConflictNotice, setPlaceConflictNotice] = useState<string | null>(null);
+  const [backupRestoreBusyId, setBackupRestoreBusyId] = useState<string | null>(null);
+  const [backupRestoreNotice, setBackupRestoreNotice] = useState<string | null>(null);
   const totalPlayers = groupedPlayers.active.length + groupedPlayers.pending.length + groupedPlayers.waitlist.length + groupedPlayers.out.length;
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const rosterPlayers = [
@@ -99,6 +112,24 @@ export function TournamentPlayersTab({
   const handleAddManualPlayer = async () => {
     const ok = await onAddManualPlayer(manualPlayerName);
     if (ok) setManualPlayerName('');
+  };
+
+  const handleRestoreBackup = async (backupId: string) => {
+    if (!confirm('Восстановить список игроков из этой резервной копии? Текущее состояние игроков будет заменено выбранным снимком.')) {
+      return;
+    }
+
+    setBackupRestoreBusyId(backupId);
+    setBackupRestoreNotice(null);
+    try {
+      const ok = await onRestorePlayersFromBackup(backupId);
+      setBackupRestoreNotice(ok
+        ? 'Резервная копия восстановлена. Проверьте список игроков и продолжайте вести турнир.'
+        : 'Не удалось восстановить резервную копию. Попробуйте ещё раз.'
+      );
+    } finally {
+      setBackupRestoreBusyId(null);
+    }
   };
 
   const allPlayers = viewFilter === 'active'
@@ -277,6 +308,73 @@ export function TournamentPlayersTab({
         {placeConflictNotice && (
           <div className="rounded-xl border border-red-900/70 bg-red-950/40 px-3 py-2 text-red-300 text-sm">
             {placeConflictNotice}
+          </div>
+        )}
+
+        {(playerSyncState.shared || playerBackups.length > 0) && (
+          <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-3">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="text-white text-sm font-bold">Резервные копии игроков</div>
+                <div className="text-[#777] text-xs mt-1">
+                  Каждое live-изменение игроков сохраняется в общем облачном снимке. Если список слетел или откатился, его можно поднять отсюда.
+                </div>
+              </div>
+              {playerBackups[0]?.updatedAt && (
+                <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">
+                  Последняя: {new Date(playerBackups[0].updatedAt).toLocaleString('ru-RU', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  })}
+                </div>
+              )}
+            </div>
+
+            {backupRestoreNotice && (
+              <div className="mt-3 rounded-lg border border-[#2D2D2D] bg-[#111] px-3 py-2 text-sm text-[#DDD]">
+                {backupRestoreNotice}
+              </div>
+            )}
+
+            {playerBackups.length === 0 ? (
+              <div className="mt-3 text-xs text-[#666]">
+                Резервные копии ещё не появились. После первых сохранений игроков они будут доступны здесь.
+              </div>
+            ) : (
+              <div className="mt-3 flex flex-col gap-2">
+                {playerBackups.slice(0, 6).map(backup => (
+                  <div key={backup.id} className="flex flex-col gap-2 rounded-lg border border-[#2D2D2D] bg-[#111] px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="text-white text-sm font-bold">
+                        {backup.updatedAt
+                          ? new Date(backup.updatedAt).toLocaleString('ru-RU', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                            })
+                          : 'Без времени'}
+                      </div>
+                      <div className="text-[#777] text-xs mt-1">
+                        Игроков: {backup.playerCount} · Входов: {backup.entrants} · Выбыли: {backup.bustouts}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleRestoreBackup(backup.id)}
+                      disabled={backupRestoreBusyId !== null}
+                      className="admin-btn-secondary px-3 py-2 text-xs whitespace-nowrap"
+                    >
+                      {backupRestoreBusyId === backup.id ? 'Восстановление...' : 'Восстановить'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

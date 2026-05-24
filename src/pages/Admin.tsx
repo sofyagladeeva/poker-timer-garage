@@ -435,6 +435,7 @@ export function Admin() {
     groupedPlayers,
     summary: tournamentPlayersSummary,
     playerSyncState,
+    playerBackups,
     botSyncState,
     resultsSubmission,
     currentResultsSignature,
@@ -443,6 +444,7 @@ export function Admin() {
     updatePlayerField,
     setPlayerArrival,
     markPlayerOut,
+    restorePlayersFromBackup,
     exportTournamentResults,
   } = useTournamentPlayers({
     gameState,
@@ -1970,6 +1972,7 @@ export function Admin() {
           <TournamentPlayersTab
             groupedPlayers={groupedPlayers}
             playerSyncState={playerSyncState}
+            playerBackups={playerBackups}
             botSyncState={botSyncState}
             tournamentBotId={gameState.tournamentBotId}
             isTournamentEnded={false}
@@ -1980,6 +1983,7 @@ export function Admin() {
             onUpdatePlayerField={updatePlayerField}
             onSetPlayerArrival={setPlayerArrival}
             onMarkPlayerOut={markPlayerOut}
+            onRestorePlayersFromBackup={restorePlayersFromBackup}
           />
         )}
 
@@ -2529,6 +2533,7 @@ export function Admin() {
                 <TournamentPlayersTab
                   groupedPlayers={groupedPlayers}
                   playerSyncState={playerSyncState}
+                  playerBackups={playerBackups}
                   botSyncState={botSyncState}
                   tournamentBotId={gameState.tournamentBotId}
                   isTournamentEnded={false}
@@ -2539,6 +2544,7 @@ export function Admin() {
                   onUpdatePlayerField={updatePlayerField}
                   onSetPlayerArrival={setPlayerArrival}
                   onMarkPlayerOut={markPlayerOut}
+                  onRestorePlayersFromBackup={restorePlayersFromBackup}
                 />
               </div>
             </div>
