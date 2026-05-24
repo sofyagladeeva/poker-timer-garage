@@ -83,7 +83,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: string |
 const BOT_API = import.meta.env.VITE_BOT_API_URL || 'https://web-production-6035.up.railway.app';
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'poker2024';
-const ARCHIVE_PASSWORD = import.meta.env.VITE_ARCHIVE_PASSWORD || 'garage-archive';
+const ARCHIVE_PASSWORD = import.meta.env.VITE_ARCHIVE_PASSWORD || 'garage1409';
 const MAX_BACKGROUND_ITEMS = 24;
 const SHARED_LIBRARY_TIMEOUT_MS = 20_000;
 const SHARED_LIBRARY_RETRY_COUNT = 2;
@@ -102,7 +102,7 @@ type BotGameSummary = {
 };
 
 type TournamentResultsNotice = {
-  tone: 'success' | 'error';
+  tone: 'success' | 'error' | 'warning';
   text: string;
 } | null;
 
@@ -112,6 +112,8 @@ type TournamentResultsDispatchOutcome = {
   cancelled: boolean;
   error: string | null;
   resent: boolean;
+  financeError: string | null;
+  financeSkipped: boolean;
 };
 
 type PendingTournamentSelection = {
@@ -676,6 +678,8 @@ export function Admin() {
           cancelled: true,
           error: null,
           resent: true,
+          financeError: null,
+          financeSkipped: true,
         };
       }
     }
@@ -690,6 +694,8 @@ export function Admin() {
           cancelled: false,
           error: exportResult.error ?? 'Не удалось отправить итоги турнира в бот.',
           resent: resultsNeedResubmit,
+          financeError: null,
+          financeSkipped: true,
         };
       }
 
@@ -699,6 +705,8 @@ export function Admin() {
         cancelled: false,
         error: null,
         resent: resultsNeedResubmit,
+        financeError: exportResult.financeError,
+        financeSkipped: exportResult.financeSkipped,
       };
     } finally {
       setResultsBusy(false);
@@ -735,11 +743,21 @@ export function Admin() {
       return true;
     }
 
+    if (dispatchResult.financeError) {
+      setResultsNotice({
+        tone: 'warning',
+        text: `Итоги турнира отправлены в бот, но отдельный финансовый отчёт не ушёл: ${dispatchResult.financeError}`,
+      });
+      return true;
+    }
+
     setResultsNotice({
       tone: 'success',
       text: dispatchResult.resent
-        ? 'Обновлённые итоги турнира отправлены в бот.'
-        : 'Итоги турнира отправлены в бот. Теперь можно запускать новый турнир.',
+        ? `Обновлённые итоги турнира отправлены в бот${dispatchResult.financeSkipped ? '.' : ', финансовый отчёт отправлен отдельно.'}`
+        : dispatchResult.financeSkipped
+          ? 'Итоги турнира отправлены в бот. Теперь можно запускать новый турнир.'
+          : 'Итоги турнира и отдельный финансовый отчёт отправлены в бот. Теперь можно запускать новый турнир.',
     });
     return true;
   };
@@ -2798,7 +2816,9 @@ export function Admin() {
                 <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
                   visibleResultsNotice.tone === 'success'
                     ? 'border-green-900/60 bg-green-950/30 text-green-200'
-                    : 'border-red-900/60 bg-red-950/40 text-red-300'
+                    : visibleResultsNotice.tone === 'warning'
+                      ? 'border-amber-900/60 bg-amber-950/30 text-amber-200'
+                      : 'border-red-900/60 bg-red-950/40 text-red-300'
                 }`}>
                   {visibleResultsNotice.text}
                 </div>

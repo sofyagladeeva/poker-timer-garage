@@ -1,13 +1,19 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../supabase.ts';
 import { calcTotalStack } from '../gameStateMath.ts';
-import { fetchBotTournamentRoster, submitBotTournamentResults, type ImportedTournamentPlayer } from '../tournamentBotApi.ts';
+import {
+  fetchBotTournamentRoster,
+  submitBotTournamentFinance,
+  submitBotTournamentResults,
+  type ImportedTournamentPlayer,
+} from '../tournamentBotApi.ts';
 import type {
   GameState,
   LiveTournamentArrivalStatus,
   LiveTournamentPlayer,
   LiveTournamentPlayerStatus,
   LiveTournamentRegistrationSource,
+  TournamentFinancePayload,
   TournamentPlayersSummary,
   TournamentResultsPayload,
 } from '../types.ts';
@@ -649,6 +655,62 @@ export function buildTournamentResultsPayload(params: {
       paymentDue: player.paymentDue,
       rebuyCount: player.rebuyCount,
       addonCount: player.addonCount,
+      bounty: player.bounty,
+      status: player.status,
+      place: player.place,
+      bustoutOrder: player.bustoutOrder,
+    })),
+  };
+}
+
+export function buildTournamentFinancePayload(params: {
+  sessionId: number;
+  tournamentBotId: number | null;
+  tournamentTitle: string;
+  finishedAt: string;
+  levelsPlayed: number;
+  players: LiveTournamentPlayer[];
+}): TournamentFinancePayload {
+  const { sessionId, tournamentBotId, tournamentTitle, finishedAt, levelsPlayed, players } = params;
+  const eligiblePlayers = players.filter(player => player.arrivalStatus !== 'absent');
+  const summary = summarizePlayers(eligiblePlayers);
+
+  return {
+    sessionId,
+    tournamentBotId,
+    tournamentTitle,
+    tournamentMode: 'garage',
+    finishedAt,
+    levelsPlayed,
+    gameStatus: 'completed',
+    summary: {
+      entrants: summary.entrants,
+      active: summary.active,
+      bustouts: summary.bustouts,
+      pending: summary.pending,
+      waitlist: summary.waitlist,
+      rebuys: summary.rebuys,
+      addons: summary.addons,
+      bonusCount: summary.bonuses,
+      bountyTotal: summary.bountyTotal,
+      paidEntries: summary.paidEntries,
+      freeEntries: summary.freeEntries,
+      totalDue: summary.totalDue,
+    },
+    players: eligiblePlayers.map(player => ({
+      id: player.id,
+      botRegistrationId: player.botRegistrationId,
+      telegramId: player.telegramId,
+      name: player.name,
+      username: player.username,
+      source: player.source,
+      registrationSource: player.registrationSource,
+      arrivalStatus: player.arrivalStatus,
+      paymentMethod: player.paymentMethod,
+      paymentDue: player.paymentDue,
+      rebuyCount: player.rebuyCount,
+      addonCount: player.addonCount,
+      bonusCount: player.bonusCount,
       bounty: player.bounty,
       status: player.status,
       place: player.place,
@@ -1829,12 +1891,20 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
 
   const exportTournamentResults = useCallback(async (levelsPlayed: number) => {
     if (playersRef.current.length === 0 || gameState.tournamentBotId == null) {
-      return { ok: true as const, skipped: true as const, error: null, signature: null, sentAt: null };
+      return {
+        ok: true as const,
+        skipped: true as const,
+        error: null,
+        signature: null,
+        sentAt: null,
+        financeError: null,
+        financeSkipped: true as const,
+      };
     }
 
     const orderedPlayers = sortPlayersForResults(playersRef.current);
     const finishedAt = new Date().toISOString();
-    const payload = buildTournamentResultsPayload({
+    const resultsPayload = buildTournamentResultsPayload({
       sessionId: sessionIdRef.current,
       tournamentBotId: gameState.tournamentBotId,
       tournamentTitle: gameState.tournamentTitle,
@@ -1843,10 +1913,19 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       totalStack: gameState.totalStack,
       players: orderedPlayers,
     });
-    const signature = buildTournamentResultsSignature(payload);
+    const financePayload = buildTournamentFinancePayload({
+      sessionId: sessionIdRef.current,
+      tournamentBotId: gameState.tournamentBotId,
+      tournamentTitle: gameState.tournamentTitle,
+      finishedAt,
+      levelsPlayed,
+      players: orderedPlayers,
+    });
+    const signature = buildTournamentResultsSignature(resultsPayload);
 
-    const result = await submitBotTournamentResults(payload);
+    const result = await submitBotTournamentResults(resultsPayload);
     if (result.ok) {
+      const financeResult = await submitBotTournamentFinance(financePayload);
       const baseSnapshot = await syncLatestSharedPlayersSnapshot();
       await commitPlayersSnapshot(
         baseSnapshot.players,
@@ -1856,13 +1935,26 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
         },
         getNextSnapshotRevision(baseSnapshot.revision)
       );
+
+      return {
+        ok: true as const,
+        skipped: false as const,
+        error: null,
+        signature,
+        sentAt: finishedAt,
+        financeError: financeResult.ok ? null : financeResult.error,
+        financeSkipped: financeResult.skipped,
+      };
     }
+
     return {
       ok: result.ok,
       skipped: false as const,
       error: result.ok ? null : result.error,
       signature,
       sentAt: result.ok ? finishedAt : null,
+      financeError: null,
+      financeSkipped: true as const,
     };
   }, [commitPlayersSnapshot, gameState.totalStack, gameState.tournamentBotId, gameState.tournamentTitle, syncLatestSharedPlayersSnapshot]);
 

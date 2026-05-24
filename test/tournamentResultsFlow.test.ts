@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  buildTournamentFinancePayload,
   buildTournamentResultsPayload,
   buildStoredPlayersPayload,
   buildTournamentResultsSignature,
@@ -185,6 +186,48 @@ test('buildTournamentResultsPayload excludes absent players from exported result
   assert.equal(payload.summary.pending, 0);
   assert.equal(payload.players.length, 1);
   assert.equal(payload.players[0]?.id, 'out-1');
+});
+
+test('buildTournamentFinancePayload includes only participating players and keeps payment details', () => {
+  const payload = buildTournamentFinancePayload({
+    sessionId: 100,
+    tournamentBotId: 77,
+    tournamentTitle: 'Friday',
+    finishedAt: '2026-05-19T10:00:00.000Z',
+    levelsPlayed: 8,
+    players: [
+      createPlayer({
+        id: 'absent-1',
+        name: 'Absent',
+        arrivalStatus: 'absent',
+        status: 'registered',
+        paymentDue: 0,
+        paymentMethod: 'unpaid',
+      }),
+      createPlayer({
+        id: 'paid-1',
+        name: 'Paid',
+        arrivalStatus: 'paid',
+        status: 'out',
+        place: 1,
+        bustoutOrder: 10,
+        paymentDue: 3000,
+        paymentMethod: 'card',
+        rebuyCount: 1,
+        addonCount: 1,
+        bonusCount: 1,
+        bounty: 500,
+      }),
+    ],
+  });
+
+  assert.equal(payload.summary.entrants, 1);
+  assert.equal(payload.summary.totalDue, 3000);
+  assert.equal(payload.summary.bonusCount, 1);
+  assert.equal(payload.players.length, 1);
+  assert.equal(payload.players[0]?.id, 'paid-1');
+  assert.equal(payload.players[0]?.paymentMethod, 'card');
+  assert.equal(payload.players[0]?.paymentDue, 3000);
 });
 
 test('stored players payload round-trips results submission metadata', () => {

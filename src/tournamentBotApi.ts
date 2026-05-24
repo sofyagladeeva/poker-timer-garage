@@ -1,10 +1,15 @@
-import type { LiveTournamentRegistrationSource, TournamentResultsPayload } from './types.ts';
+import type {
+  LiveTournamentRegistrationSource,
+  TournamentFinancePayload,
+  TournamentResultsPayload,
+} from './types.ts';
 
 const ENV = (import.meta as ImportMeta & {
   env?: {
     VITE_BOT_API_URL?: string;
     VITE_BOT_TOURNAMENT_PLAYERS_URL_TEMPLATE?: string;
     VITE_BOT_TOURNAMENT_RESULTS_URL_TEMPLATE?: string;
+    VITE_BOT_TOURNAMENT_FINANCE_URL_TEMPLATE?: string;
     VITE_BOT_ADMIN_TOKEN?: string;
   };
 }).env;
@@ -12,6 +17,7 @@ const ENV = (import.meta as ImportMeta & {
 const BOT_API = ENV?.VITE_BOT_API_URL || 'https://web-production-6035.up.railway.app';
 const ROSTER_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_PLAYERS_URL_TEMPLATE || `${BOT_API}/api/games/{id}/players`;
 const RESULTS_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_RESULTS_URL_TEMPLATE || `${BOT_API}/api/games/{id}/results`;
+const FINANCE_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_FINANCE_URL_TEMPLATE || `${BOT_API}/api/games/{id}/finance`;
 const BOT_ADMIN_TOKEN = ENV?.VITE_BOT_ADMIN_TOKEN || '';
 
 export interface ImportedTournamentPlayer {
@@ -288,6 +294,65 @@ export async function submitBotTournamentResults(payload: TournamentResultsPaylo
       ok: false as const,
       error: error instanceof Error ? error.message : 'Не удалось отправить итоги турнира.',
       unsupported: false,
+    };
+  }
+}
+
+export async function submitBotTournamentFinance(payload: TournamentFinancePayload) {
+  const url = fillUrlTemplate(FINANCE_URL_TEMPLATE, payload.tournamentBotId);
+  if (!url) {
+    return {
+      ok: true as const,
+      skipped: true as const,
+      unsupported: true as const,
+      error: null,
+    };
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(BOT_ADMIN_TOKEN ? { 'X-Admin-Token': BOT_ADMIN_TOKEN } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (response.status === 404) {
+      return {
+        ok: true as const,
+        skipped: true as const,
+        unsupported: true as const,
+        error: null,
+      };
+    }
+
+    if (!response.ok) {
+      const details = await readBotErrorDetails(response);
+      return {
+        ok: false as const,
+        skipped: false as const,
+        unsupported: false as const,
+        error: details
+          ? `Бот не принял финансовый отчёт турнира (HTTP ${response.status}): ${details}.`
+          : `Бот не принял финансовый отчёт турнира (HTTP ${response.status}).`,
+      };
+    }
+
+    return {
+      ok: true as const,
+      skipped: false as const,
+      unsupported: false as const,
+      error: null,
+      url,
+    };
+  } catch (error) {
+    return {
+      ok: false as const,
+      skipped: false as const,
+      unsupported: false as const,
+      error: error instanceof Error ? error.message : 'Не удалось отправить финансовый отчёт турнира.',
     };
   }
 }

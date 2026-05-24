@@ -165,6 +165,51 @@ export interface TournamentArchiveDetails {
   savedAt: string;
 }
 
+export interface TournamentFinancePlayerRecord {
+  id: string;
+  botRegistrationId: string | null;
+  telegramId: number | null;
+  name: string;
+  username: string | null;
+  source: LiveTournamentPlayerSource;
+  registrationSource: LiveTournamentRegistrationSource;
+  arrivalStatus: LiveTournamentArrivalStatus;
+  paymentMethod: LiveTournamentPaymentMethod;
+  paymentDue: number;
+  rebuyCount: number;
+  addonCount: number;
+  bonusCount: number;
+  bounty: number;
+  status: LiveTournamentPlayerStatus;
+  place: number | null;
+  bustoutOrder: number | null;
+}
+
+export interface TournamentFinancePayload {
+  sessionId: number;
+  tournamentBotId: number | null;
+  tournamentTitle: string;
+  tournamentMode?: string;
+  finishedAt: string;
+  levelsPlayed: number;
+  gameStatus: string;
+  summary: {
+    entrants: number;
+    active: number;
+    bustouts: number;
+    pending: number;
+    waitlist: number;
+    rebuys: number;
+    addons: number;
+    bonusCount: number;
+    bountyTotal: number;
+    paidEntries: number;
+    freeEntries: number;
+    totalDue: number;
+  };
+  players: TournamentFinancePlayerRecord[];
+}
+
 export interface TournamentResultsPlayerRecord {
   id: string;
   botRegistrationId: string | null;
