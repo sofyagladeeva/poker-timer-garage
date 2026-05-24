@@ -484,13 +484,13 @@ export function TournamentPlayersTab({
                   <table className="w-full table-fixed border-separate border-spacing-y-1">
                     <thead>
                       <tr className="text-[8px] sm:text-[11px] uppercase tracking-[0.12em] sm:tracking-[0.18em] text-[#666]">
-                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[28%]">Игрок</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[26%]">Игрок</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[14%]">В игре</th>
                         <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Rebuy</th>
                         <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Addon</th>
                         <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Бонус</th>
-                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[14%]">В игре</th>
                         <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[12%]">Место</th>
-                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[16%]">Вход / оплата</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[18%]">Вход / оплата</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -672,36 +672,35 @@ function MobilePlayerCard({
           </div>
         </div>
 
-        <div className="shrink-0 rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-center min-w-[64px]">
-          <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Место</div>
-          {isOut ? (
-            <>
+        <div className="shrink-0 grid grid-cols-2 gap-2 min-w-[156px]">
+          <div className="rounded-xl border border-[#2D2D2D] bg-[#141414] px-2 py-2 text-center">
+            <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Выбыл</div>
+            <button
+              type="button"
+              onClick={() => onOpenOutDialog(player)}
+              className={`mt-2 inline-flex min-h-[44px] w-full items-center justify-center rounded-lg px-2 py-2 text-[11px] font-bold uppercase tracking-[0.08em] ${
+                isOut
+                  ? 'border border-[#2D2D2D] bg-[#1A1A1A] text-[#DDD]'
+                  : 'bg-[#5A1712] text-[#FFD5D0]'
+              }`}
+            >
+              {isOut ? 'Править' : 'Выбыл'}
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-[#2D2D2D] bg-[#141414] px-2 py-2 text-center">
+            <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Место</div>
+            {isOut ? (
               <PlaceInput
                 value={player.place}
                 disabled={false}
                 className="admin-input mt-2 !w-full !py-1.5 !px-2 !text-center !text-base font-black"
                 onCommit={handlePlaceCommit}
               />
-              <button
-                type="button"
-                onClick={() => onOpenOutDialog(player)}
-                className="mt-2 inline-flex w-full items-center justify-center rounded-lg border border-[#2D2D2D] bg-[#1A1A1A] px-2 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[#DDD]"
-              >
-                Править
-              </button>
-            </>
-          ) : (
-            <div className="mt-1 text-lg font-black text-[#777]">—</div>
-          )}
-          {!isOut && (
-            <button
-              type="button"
-              onClick={() => onOpenOutDialog(player)}
-              className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-[#5A1712] px-2 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[#FFD5D0]"
-            >
-              Выбыл
-            </button>
-          )}
+            ) : (
+              <div className="mt-3 text-lg font-black text-[#777]">—</div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -894,6 +893,36 @@ function PlayerRow({
       </td>
 
       <td className="px-1 py-1 sm:px-1.5 sm:py-1.5 align-top border-y border-[#2D2D2D]">
+        <div className="min-w-0 flex flex-col gap-1">
+          <button
+            type="button"
+            onClick={() => void onSetPlayerArrival(player.id, 'absent')}
+            disabled={isOut}
+            className={`inline-flex w-full items-center justify-center whitespace-normal sm:whitespace-nowrap rounded-lg border px-1 py-1 text-center text-[9px] leading-tight sm:px-1.5 sm:text-[11px] font-bold transition-colors ${
+              player.arrivalStatus === 'absent' && !isOut
+                ? 'border-[#4A4A4A] bg-[#1A1A1A] text-white'
+                : 'border-[#2D2D2D] bg-[#141414] text-[#EEE] hover:border-[#555]'
+            } disabled:opacity-40`}
+          >
+            Не в игре
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleActiveClick()}
+            className={`inline-flex w-full items-center justify-center whitespace-normal sm:whitespace-nowrap rounded-lg border px-1 py-1 text-center text-[9px] leading-tight sm:px-1.5 sm:text-[11px] font-bold transition-colors ${
+              player.arrivalStatus !== 'absent' && !isOut
+                ? 'border-blue-700/70 bg-blue-950/40 text-blue-200'
+                : isOut
+                  ? 'border-emerald-800/70 bg-emerald-950/30 text-emerald-200'
+                  : 'border-[#2D2D2D] bg-[#141414] text-[#EEE] hover:border-[#555]'
+            }`}
+          >
+            {isOut ? 'Вернуть в игру' : 'В игре'}
+          </button>
+        </div>
+      </td>
+
+      <td className="px-1 py-1 sm:px-1.5 sm:py-1.5 align-top border-y border-[#2D2D2D]">
         <div className="min-w-0 flex items-center gap-0.5">
           <button
             type="button"
@@ -955,36 +984,6 @@ function PlayerRow({
             className="h-[18px] w-[18px] sm:h-6 sm:w-6 rounded-md sm:rounded-lg bg-[#C0392B] text-white text-[10px] sm:text-xs font-bold disabled:opacity-30"
           >
             +
-          </button>
-        </div>
-      </td>
-
-      <td className="px-1 py-1 sm:px-1.5 sm:py-1.5 align-top border-y border-[#2D2D2D]">
-        <div className="min-w-0 flex flex-col gap-1">
-          <button
-            type="button"
-            onClick={() => void onSetPlayerArrival(player.id, 'absent')}
-            disabled={isOut}
-            className={`inline-flex w-full items-center justify-center whitespace-normal sm:whitespace-nowrap rounded-lg border px-1 py-1 text-center text-[9px] leading-tight sm:px-1.5 sm:text-[11px] font-bold transition-colors ${
-              player.arrivalStatus === 'absent' && !isOut
-                ? 'border-[#4A4A4A] bg-[#1A1A1A] text-white'
-                : 'border-[#2D2D2D] bg-[#141414] text-[#EEE] hover:border-[#555]'
-            } disabled:opacity-40`}
-          >
-            Не в игре
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleActiveClick()}
-            className={`inline-flex w-full items-center justify-center whitespace-normal sm:whitespace-nowrap rounded-lg border px-1 py-1 text-center text-[9px] leading-tight sm:px-1.5 sm:text-[11px] font-bold transition-colors ${
-              player.arrivalStatus !== 'absent' && !isOut
-                ? 'border-blue-700/70 bg-blue-950/40 text-blue-200'
-                : isOut
-                  ? 'border-emerald-800/70 bg-emerald-950/30 text-emerald-200'
-                  : 'border-[#2D2D2D] bg-[#141414] text-[#EEE] hover:border-[#555]'
-            }`}
-          >
-            {isOut ? 'Вернуть в игру' : 'В игре'}
           </button>
         </div>
       </td>
