@@ -143,6 +143,55 @@ function wait(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function getTabletAdminLayoutMatch() {
+  if (typeof window === 'undefined') return false;
+
+  const width = window.innerWidth;
+  const inTabletWidthRange = width >= 768 && width <= 1180;
+  const coarsePointer = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(pointer: coarse)').matches
+    : false;
+
+  return inTabletWidthRange || (coarsePointer && width >= 768 && width <= 1366);
+}
+
+function useTabletAdminLayout() {
+  const [tabletLayout, setTabletLayout] = useState(getTabletAdminLayoutMatch);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const coarsePointerQuery = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(pointer: coarse)')
+      : null;
+    const update = () => setTabletLayout(getTabletAdminLayoutMatch());
+
+    update();
+    window.addEventListener('resize', update);
+
+    if (coarsePointerQuery) {
+      if (typeof coarsePointerQuery.addEventListener === 'function') {
+        coarsePointerQuery.addEventListener('change', update);
+      } else if (typeof coarsePointerQuery.addListener === 'function') {
+        coarsePointerQuery.addListener(update);
+      }
+    }
+
+    return () => {
+      window.removeEventListener('resize', update);
+      if (!coarsePointerQuery) return;
+
+      if (typeof coarsePointerQuery.removeEventListener === 'function') {
+        coarsePointerQuery.removeEventListener('change', update);
+      } else if (typeof coarsePointerQuery.removeListener === 'function') {
+        coarsePointerQuery.removeListener(update);
+      }
+    };
+  }, []);
+
+  return tabletLayout;
+}
+
 function loadAdminAuthFlag() {
   try {
     return sessionStorage.getItem(ADMIN_AUTH_STORAGE_KEY) === '1';
@@ -378,6 +427,7 @@ function BlindRow({
 
 // ─── Main Admin page ───────────────────────────────────────────────────────
 export function Admin() {
+  const tabletAdminLayout = useTabletAdminLayout();
   const sharedBackgroundLibraryEnabled = isSharedBackgroundLibraryEnabled();
   const sharedBlindTemplateLibraryEnabled = isSharedBlindTemplateLibraryEnabled();
   const [authed, setAuthed] = useState(loadAdminAuthFlag);
@@ -1397,7 +1447,7 @@ export function Admin() {
 
   return (
     <ErrorBoundary>
-    <div className="min-h-screen bg-[#0A0A0A] text-white">
+    <div className={`admin-shell min-h-screen bg-[#0A0A0A] text-white ${tabletAdminLayout ? 'admin-tablet-shell' : ''}`}>
 
       {/* Header */}
       <div className="bg-[#111] border-b border-[#2D2D2D] px-3 sm:px-6 py-3 flex items-center justify-between gap-2">
@@ -1414,7 +1464,7 @@ export function Admin() {
             href={displayHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="bg-[#C0392B] text-white text-xs font-bold rounded-lg px-2 py-1.5 hover:bg-[#E31E24] transition-colors whitespace-nowrap"
+            className="admin-header-link bg-[#C0392B] text-white text-xs font-bold rounded-lg px-2 py-1.5 hover:bg-[#E31E24] transition-colors whitespace-nowrap"
           >
             ↗ Табло
           </a>
@@ -1427,7 +1477,7 @@ export function Admin() {
           <button
             key={tab.id}
             onClick={() => selectTab(tab.id)}
-            className={`px-3 py-2 text-xs sm:text-sm rounded-t-lg transition-colors whitespace-nowrap flex-shrink-0 ${
+            className={`admin-tab-trigger px-3 py-2 text-xs sm:text-sm rounded-t-lg transition-colors whitespace-nowrap flex-shrink-0 ${
               activeTab === tab.id
                 ? 'bg-[#1A1A1A] text-white border border-b-0 border-[#2D2D2D]'
                 : 'text-[#666] hover:text-white'
@@ -1438,7 +1488,7 @@ export function Admin() {
         ))}
       </div>
 
-      <div className="p-3 sm:p-6 max-w-4xl">
+      <div className="w-full max-w-5xl mx-auto p-3 sm:p-6">
 
         {/* ─── CONTROL TAB ─────────────────────────────────────────────── */}
         {activeTab === 'control' && (
@@ -1976,6 +2026,7 @@ export function Admin() {
             botSyncState={botSyncState}
             tournamentBotId={gameState.tournamentBotId}
             isTournamentEnded={false}
+            preferMobileCards={tabletAdminLayout}
             reviewPlayers={[]}
             onOpenControlTab={() => {}}
             onRefreshFromBot={refreshFromBot}
@@ -2537,6 +2588,7 @@ export function Admin() {
                   botSyncState={botSyncState}
                   tournamentBotId={gameState.tournamentBotId}
                   isTournamentEnded={false}
+                  preferMobileCards={tabletAdminLayout}
                   reviewPlayers={[]}
                   onOpenControlTab={() => {}}
                   onRefreshFromBot={refreshFromBot}

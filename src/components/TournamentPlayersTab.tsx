@@ -35,6 +35,7 @@ type Props = {
   };
   tournamentBotId: number | null;
   isTournamentEnded: boolean;
+  preferMobileCards?: boolean;
   reviewPlayers: LiveTournamentPlayer[];
   onOpenControlTab: () => void;
   onRefreshFromBot: (force?: boolean) => Promise<boolean>;
@@ -52,6 +53,7 @@ export function TournamentPlayersTab({
   botSyncState,
   tournamentBotId,
   isTournamentEnded,
+  preferMobileCards = false,
   reviewPlayers,
   onOpenControlTab,
   onRefreshFromBot,
@@ -395,38 +397,26 @@ export function TournamentPlayersTab({
             По текущему фильтру игроков нет.
           </div>
         ) : (
-          <div className="overflow-x-hidden sm:max-h-[72vh] sm:overflow-y-auto">
-            <div className="flex flex-col gap-3 sm:hidden">
-              {allPlayers.map(player => (
-                <MobilePlayerCard
-                  key={player.id}
-                  player={player}
-                  rosterPlayers={rosterPlayers}
-                  onPlaceConflict={setPlaceConflictNotice}
-                  onUpdatePlayerField={onUpdatePlayerField}
-                  onSetPlayerArrival={onSetPlayerArrival}
-                  onMarkPlayerOut={onMarkPlayerOut}
-                />
-              ))}
-            </div>
-
-            <div className="hidden sm:block">
-              <table className="w-full table-fixed border-separate border-spacing-y-1">
-                <thead>
-                  <tr className="text-[8px] sm:text-[11px] uppercase tracking-[0.12em] sm:tracking-[0.18em] text-[#666]">
-                    <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[26%]">Игрок</th>
-                    <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Rebuy</th>
-                    <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Addon</th>
-                    <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Бонус</th>
-                    <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[13%]">Статус</th>
-                    <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[8%]">Bounty</th>
-                    <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[7%]">Место</th>
-                    <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[16%]">Оплата</th>
-                  </tr>
-                </thead>
-                <tbody>
+          <div className={preferMobileCards ? '' : 'overflow-x-hidden sm:max-h-[72vh] sm:overflow-y-auto'}>
+            {preferMobileCards ? (
+              <div className="flex flex-col gap-3">
+                {allPlayers.map(player => (
+                  <MobilePlayerCard
+                    key={player.id}
+                    player={player}
+                    rosterPlayers={rosterPlayers}
+                    onPlaceConflict={setPlaceConflictNotice}
+                    onUpdatePlayerField={onUpdatePlayerField}
+                    onSetPlayerArrival={onSetPlayerArrival}
+                    onMarkPlayerOut={onMarkPlayerOut}
+                  />
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col gap-3 sm:hidden">
                   {allPlayers.map(player => (
-                    <PlayerRow
+                    <MobilePlayerCard
                       key={player.id}
                       player={player}
                       rosterPlayers={rosterPlayers}
@@ -436,9 +426,39 @@ export function TournamentPlayersTab({
                       onMarkPlayerOut={onMarkPlayerOut}
                     />
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </div>
+
+                <div className="hidden sm:block">
+                  <table className="w-full table-fixed border-separate border-spacing-y-1">
+                    <thead>
+                      <tr className="text-[8px] sm:text-[11px] uppercase tracking-[0.12em] sm:tracking-[0.18em] text-[#666]">
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[26%]">Игрок</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Rebuy</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Addon</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Бонус</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[13%]">Статус</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[8%]">Bounty</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[7%]">Место</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[16%]">Оплата</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allPlayers.map(player => (
+                        <PlayerRow
+                          key={player.id}
+                          player={player}
+                          rosterPlayers={rosterPlayers}
+                          onPlaceConflict={setPlaceConflictNotice}
+                          onUpdatePlayerField={onUpdatePlayerField}
+                          onSetPlayerArrival={onSetPlayerArrival}
+                          onMarkPlayerOut={onMarkPlayerOut}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -997,16 +1017,16 @@ function MobileCounter({
           type="button"
           onClick={onDecrease}
           disabled={disabled}
-          className="h-8 w-8 rounded-lg bg-[#2D2D2D] text-[#AAA] text-sm font-bold disabled:opacity-30"
+          className="mobile-counter-button h-8 w-8 rounded-lg bg-[#2D2D2D] text-[#AAA] text-sm font-bold disabled:opacity-30"
         >
           −
         </button>
-        <div className="min-w-[24px] text-center text-white font-black text-base leading-none">{value}</div>
+        <div className="mobile-counter-value min-w-[24px] text-center text-white font-black text-base leading-none">{value}</div>
         <button
           type="button"
           onClick={onIncrease}
           disabled={disabled}
-          className="h-8 w-8 rounded-lg bg-[#C0392B] text-white text-sm font-bold disabled:opacity-30"
+          className="mobile-counter-button h-8 w-8 rounded-lg bg-[#C0392B] text-white text-sm font-bold disabled:opacity-30"
         >
           +
         </button>
@@ -1057,7 +1077,7 @@ function FilterButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${
+      className={`admin-filter-button rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${
         active
           ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
           : 'border-[#2D2D2D] bg-[#141414] text-[#888] hover:border-[#555] hover:text-white'
