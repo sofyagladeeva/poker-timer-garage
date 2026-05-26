@@ -83,6 +83,11 @@ export function TournamentPlayersTab({
     ...groupedPlayers.waitlist,
     ...groupedPlayers.out,
   ];
+  const arrivedPlayers = rosterPlayers.filter(p => p.arrivalStatus !== 'absent');
+  const payTotalDue = arrivedPlayers.reduce((s, p) => s + p.paymentDue, 0);
+  const payCash = arrivedPlayers.reduce((s, p) => p.paymentMethod === 'cash' ? s + p.paymentDue : s, 0);
+  const payCard = arrivedPlayers.reduce((s, p) => p.paymentMethod === 'card' ? s + p.paymentDue : s, 0);
+  const payUnpaid = payTotalDue - payCash - payCard;
   const outDialogPlayer = outDialogPlayerId
     ? rosterPlayers.find(player => player.id === outDialogPlayerId) ?? null
     : null;
@@ -348,6 +353,32 @@ export function TournamentPlayersTab({
         {placeConflictNotice && (
           <div className="rounded-xl border border-red-900/70 bg-red-950/40 px-3 py-2 text-red-300 text-sm">
             {placeConflictNotice}
+          </div>
+        )}
+
+        {arrivedPlayers.length > 0 && (
+          <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-3">
+            <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-2">Касса</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="rounded-lg bg-[#111] px-3 py-2">
+                <div className="text-[#555] text-[10px] uppercase">К оплате</div>
+                <div className="text-white font-black text-base mt-0.5">{payTotalDue.toLocaleString('ru-RU')} ₽</div>
+              </div>
+              <div className="rounded-lg bg-[#111] px-3 py-2">
+                <div className="text-[#555] text-[10px] uppercase">Наличными</div>
+                <div className="text-white font-black text-base mt-0.5">{payCash.toLocaleString('ru-RU')} ₽</div>
+              </div>
+              <div className="rounded-lg bg-[#111] px-3 py-2">
+                <div className="text-[#555] text-[10px] uppercase">Картой</div>
+                <div className="text-white font-black text-base mt-0.5">{payCard.toLocaleString('ru-RU')} ₽</div>
+              </div>
+              <div className={`rounded-lg px-3 py-2 ${payUnpaid > 0 ? 'bg-amber-950/30 border border-amber-900/50' : 'bg-[#111]'}`}>
+                <div className="text-[#555] text-[10px] uppercase">Не оплачено</div>
+                <div className={`font-black text-base mt-0.5 ${payUnpaid > 0 ? 'text-amber-300' : 'text-white'}`}>
+                  {payUnpaid.toLocaleString('ru-RU')} ₽
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

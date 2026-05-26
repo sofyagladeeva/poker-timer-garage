@@ -1,6 +1,7 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../supabase.ts';
 import { calcTotalStack } from '../gameStateMath.ts';
+import { isPromoUsername } from '../promoPlayerList.ts';
 import {
   fetchBotTournamentRoster,
   submitBotTournamentFinance,
@@ -571,9 +572,14 @@ export function mergeImportedRoster(
         matchedExistingBotIds.add(existing.id);
       }
       const baseStatus = deriveBaseStatus(imported.registrationSource);
+      // Auto-apply promo only if admin hasn't touched the arrival status yet
+      const nextArrivalStatus: typeof existing.arrivalStatus =
+        existing.arrivalStatus === 'absent' && isPromoUsername(imported.username)
+          ? 'promo'
+          : existing.arrivalStatus;
       const nextStatus = existing.status === 'out'
         ? 'out'
-        : existing.arrivalStatus === 'absent'
+        : nextArrivalStatus === 'absent'
           ? baseStatus
           : 'active';
       const nextBotRegistrationId = imported.botRegistrationId ?? existing.botRegistrationId;
@@ -586,7 +592,8 @@ export function mergeImportedRoster(
         existing.username !== imported.username ||
         existing.source !== 'bot' ||
         existing.registrationSource !== imported.registrationSource ||
-        existing.status !== nextStatus;
+        existing.status !== nextStatus ||
+        existing.arrivalStatus !== nextArrivalStatus;
 
       if (!hasChanges) {
         continue;
@@ -602,6 +609,7 @@ export function mergeImportedRoster(
         source: 'bot',
         registrationSource: imported.registrationSource,
         status: nextStatus,
+        arrivalStatus: nextArrivalStatus,
         updatedAt: nowIso(),
       });
       continue;
@@ -618,12 +626,13 @@ export function mergeImportedRoster(
       source: 'bot',
       registrationSource: imported.registrationSource,
       status: deriveBaseStatus(imported.registrationSource),
-      arrivalStatus: 'absent',
+      arrivalStatus: isPromoUsername(imported.username) ? 'promo' : 'absent',
       rebuyCount: 0,
       addonCount: 0,
       bonusCount: 0,
       bounty: 0,
       paymentDue: 0,
+      paymentDueOverride: false,
       paymentMethod: 'unpaid',
       place: null,
       placeOverride: false,
