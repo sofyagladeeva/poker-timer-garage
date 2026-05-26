@@ -1790,12 +1790,21 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
         return false;
       }
 
-      const rebasedPlayers = mergeChangedPlayersOntoSnapshot(latestSnapshot.players, merged.changedRows);
-      await commitPlayersSnapshot(
-        rebasedPlayers,
-        latestSnapshot.resultsSubmission,
-        getNextSnapshotRevision(latestSnapshot.revision)
-      );
+      // Re-merge the bot import onto the latest snapshot rather than applying
+      // changedRows from a potentially stale base. This prevents a race condition
+      // where two concurrent refreshes (e.g. regular poll + sanitization) both
+      // start from an empty base, each create N players with different IDs, and
+      // then mergeChangedPlayersOntoSnapshot combines both sets → 2N players.
+      // Re-merging uses name/username matching to find already-committed players
+      // and update rather than duplicate them.
+      const latestMerge = mergeImportedRoster(latestSnapshot.players, imported, sessionIdRef.current, tournamentBotIdRef.current);
+      if (latestMerge.changedRows.length > 0 || latestMerge.players.length !== latestSnapshot.players.length) {
+        await commitPlayersSnapshot(
+          latestMerge.players,
+          latestSnapshot.resultsSubmission,
+          getNextSnapshotRevision(latestSnapshot.revision)
+        );
+      }
     }
     setBotSyncState({
       loading: false,
