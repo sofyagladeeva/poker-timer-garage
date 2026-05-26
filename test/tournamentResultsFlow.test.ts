@@ -554,6 +554,41 @@ test('mergeImportedRoster replaces stale unmatched bot roster from another game'
   assert.equal(merged.players.some(player => player.id === 'old-manual-1'), true);
 });
 
+test('mergeImportedRoster does not duplicate same bot player when registration id changes between syncs', () => {
+  const previous = [
+    createPlayer({
+      id: 'bot-alpha',
+      source: 'bot',
+      botRegistrationId: 'registration-row-1',
+      telegramId: null,
+      username: 'alpha_user',
+      name: 'Alpha Player',
+      arrivalStatus: 'absent',
+      status: 'registered',
+    }),
+  ];
+
+  const merged = mergeImportedRoster(
+    previous,
+    [
+      {
+        botRegistrationId: 'registration-row-2',
+        telegramId: null,
+        username: 'alpha_user',
+        name: 'Alpha Player',
+        registrationSource: 'registered',
+        sortOrder: 0,
+      },
+    ],
+    100,
+    77,
+  );
+
+  assert.equal(merged.players.length, 1);
+  assert.equal(merged.players[0]?.id, 'bot-alpha');
+  assert.equal(merged.players[0]?.botRegistrationId, 'registration-row-2');
+});
+
 test('deriveTournamentResultsUiState and button labels reflect first send, resend and locked states', () => {
   const firstSend = deriveTournamentResultsUiState({
     hasBotResultsTarget: true,

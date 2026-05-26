@@ -593,6 +593,7 @@ export function Admin() {
   const [newTournamentBusy, setNewTournamentBusy] = useState(false);
   const [resultsNotice, setResultsNotice] = useState<TournamentResultsNotice>(null);
   const rosterSanitizedSelectionRef = useRef<string | null>(null);
+  const initialIdleSelectionResetRef = useRef(false);
 
   // ── Bot games list ─────────────────────────────────────────────────────
   const [botGames, setBotGames] = useState<BotGameSummary[]>([]);
@@ -625,6 +626,50 @@ export function Admin() {
     gameState,
     updateGameState,
   });
+
+  useEffect(() => {
+    if (!authed || !authoritativeReady) return;
+    if (initialIdleSelectionResetRef.current) return;
+
+    const idleBlankState =
+      gameState.status === 'idle' &&
+      gameState.players === 0 &&
+      gameState.outs === 0 &&
+      gameState.rebuys === 0 &&
+      gameState.addonCount === 0 &&
+      gameState.bonusCount === 0 &&
+      gameState.totalStack === 0;
+
+    if (!idleBlankState) {
+      initialIdleSelectionResetRef.current = true;
+      return;
+    }
+
+    if (!gameState.tournamentTitle && gameState.tournamentBotId == null) {
+      initialIdleSelectionResetRef.current = true;
+      return;
+    }
+
+    initialIdleSelectionResetRef.current = true;
+    void (async () => {
+      await prepareTournamentPlayersContext(null, '');
+      await updateGameState({ tournamentTitle: '', tournamentBotId: null }, true);
+    })();
+  }, [
+    authed,
+    authoritativeReady,
+    gameState.addonCount,
+    gameState.bonusCount,
+    gameState.outs,
+    gameState.players,
+    gameState.rebuys,
+    gameState.status,
+    gameState.totalStack,
+    gameState.tournamentBotId,
+    gameState.tournamentTitle,
+    prepareTournamentPlayersContext,
+    updateGameState,
+  ]);
   const managedPlayerCountsActive = tournamentPlayers.length > 0;
 
   const finishReviewPlayers = [...tournamentPlayers].sort((a, b) => {

@@ -485,8 +485,9 @@ function playersEqual(a: LiveTournamentPlayer | undefined, b: LiveTournamentPlay
 
 function findImportedMatch(players: LiveTournamentPlayer[], importedPlayer: ImportedTournamentPlayer) {
   const normalizedName = importedPlayer.name.trim().toLowerCase();
+  const normalizedUsername = importedPlayer.username?.trim().toLowerCase() ?? null;
 
-  return players.find(player => (
+  const exactMatch = players.find(player => (
     (importedPlayer.botRegistrationId && player.botRegistrationId === importedPlayer.botRegistrationId) ||
     (importedPlayer.telegramId !== null && player.telegramId === importedPlayer.telegramId) ||
     (
@@ -495,6 +496,24 @@ function findImportedMatch(players: LiveTournamentPlayer[], importedPlayer: Impo
       player.name.trim().toLowerCase() === normalizedName
     )
   ));
+
+  if (exactMatch) return exactMatch;
+
+  const botPlayers = players.filter(player => player.source === 'bot');
+
+  if (normalizedUsername) {
+    const usernameMatches = botPlayers.filter(player => player.username?.trim().toLowerCase() === normalizedUsername);
+    if (usernameMatches.length === 1) {
+      return usernameMatches[0];
+    }
+  }
+
+  const nameMatches = botPlayers.filter(player => player.name.trim().toLowerCase() === normalizedName);
+  if (nameMatches.length === 1) {
+    return nameMatches[0];
+  }
+
+  return undefined;
 }
 
 function diffPlayers(previous: LiveTournamentPlayer[], next: LiveTournamentPlayer[]) {
