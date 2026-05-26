@@ -488,12 +488,16 @@ export function mergeImportedRoster(
   let nextSortOrder = getNextPlayerSortOrder(previousPlayers);
   const mutable = previousPlayers.map(player => ({ ...player }));
   const matchedExistingIds = new Set<string>();
+  const matchedExistingBotIds = new Set<string>();
 
   for (const imported of importedPlayers) {
     const existing = findImportedMatch(mutable, imported);
 
     if (existing) {
       matchedExistingIds.add(existing.id);
+      if (existing.source === 'bot') {
+        matchedExistingBotIds.add(existing.id);
+      }
       const baseStatus = deriveBaseStatus(imported.registrationSource);
       const nextStatus = existing.status === 'out'
         ? 'out'
@@ -560,9 +564,21 @@ export function mergeImportedRoster(
     mutable.push(createdPlayer);
   }
 
+  const previousBotPlayers = previousPlayers.filter(player => player.source === 'bot');
+  const staleBotRosterDetected = importedPlayers.length > 0 &&
+    previousBotPlayers.length > 0 &&
+    matchedExistingBotIds.size === 0;
+
   const nextPlayers = mutable.filter(player => !(
-    isTransientBotRosterPlayer(player) &&
-    !matchedExistingIds.has(player.id)
+    (
+      staleBotRosterDetected &&
+      player.source === 'bot' &&
+      !matchedExistingIds.has(player.id)
+    ) ||
+    (
+      isTransientBotRosterPlayer(player) &&
+      !matchedExistingIds.has(player.id)
+    )
   ));
 
   const recalculated = recalculatePlayers(nextPlayers);

@@ -511,6 +511,49 @@ test('transient absent bot player disappears when bot roster no longer contains 
   assert.deepEqual(merged.players.map(player => player.id), ['active-1']);
 });
 
+test('mergeImportedRoster replaces stale unmatched bot roster from another game', () => {
+  const previous = [
+    createPlayer({
+      id: 'old-bot-1',
+      source: 'bot',
+      botRegistrationId: 'old-reg-1',
+      telegramId: 101,
+      name: 'Old One',
+      arrivalStatus: 'paid',
+      status: 'active',
+    }),
+    createPlayer({
+      id: 'old-manual-1',
+      source: 'manual',
+      botRegistrationId: null,
+      telegramId: null,
+      name: 'Manual Keeper',
+      arrivalStatus: 'paid',
+      status: 'active',
+    }),
+  ];
+
+  const merged = mergeImportedRoster(
+    previous,
+    [
+      {
+        botRegistrationId: 'new-reg-1',
+        telegramId: 201,
+        name: 'New One',
+        username: null,
+        registrationSource: 'registered',
+        sortOrder: 0,
+      },
+    ],
+    100,
+    77,
+  );
+
+  assert.equal(merged.players.some(player => player.id === 'old-bot-1'), false);
+  assert.equal(merged.players.some(player => player.name === 'New One'), true);
+  assert.equal(merged.players.some(player => player.id === 'old-manual-1'), true);
+});
+
 test('deriveTournamentResultsUiState and button labels reflect first send, resend and locked states', () => {
   const firstSend = deriveTournamentResultsUiState({
     hasBotResultsTarget: true,
