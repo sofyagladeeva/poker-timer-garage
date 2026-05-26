@@ -229,6 +229,15 @@ export function isIncomingPlayersSnapshotStale(
   return incomingTs < currentTs;
 }
 
+export function shouldIgnoreBotRosterResponse(
+  requestedSessionId: number,
+  requestedTournamentBotId: number | null,
+  currentSessionId: number,
+  currentTournamentBotId: number | null
+) {
+  return requestedSessionId !== currentSessionId || requestedTournamentBotId !== currentTournamentBotId;
+}
+
 function createId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -1617,6 +1626,9 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
   const refreshFromBot = useCallback(async (force = false) => {
     if (tournamentBotId == null) return false;
     if (!playersHydratedRef.current) return false;
+    const requestedSessionId = sessionIdRef.current;
+    const requestedTournamentBotId = tournamentBotId;
+
     if (force) {
       botSyncUnsupported.current = false;
       setBotSyncState(prev => ({ ...prev, disabled: false }));
@@ -1624,7 +1636,16 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     if (botSyncUnsupported.current) return false;
 
     setBotSyncState(prev => ({ ...prev, loading: true, error: null }));
-    const result = await fetchBotTournamentRoster(tournamentBotId);
+    const result = await fetchBotTournamentRoster(requestedTournamentBotId);
+
+    if (shouldIgnoreBotRosterResponse(
+      requestedSessionId,
+      requestedTournamentBotId,
+      sessionIdRef.current,
+      tournamentBotIdRef.current
+    )) {
+      return false;
+    }
 
     if (!result.ok) {
       if (result.unsupported) {
@@ -1644,9 +1665,29 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       ...result.waitlist.map(player => ({ ...player, registrationSource: 'waitlist' as const })),
     ];
     const baseSnapshot = await syncLatestSharedPlayersSnapshot();
+
+    if (shouldIgnoreBotRosterResponse(
+      requestedSessionId,
+      requestedTournamentBotId,
+      sessionIdRef.current,
+      tournamentBotIdRef.current
+    )) {
+      return false;
+    }
+
     const merged = mergeImportedRoster(baseSnapshot.players, imported, sessionIdRef.current, tournamentBotIdRef.current);
     if (merged.changedRows.length > 0 || merged.players.length !== baseSnapshot.players.length) {
       const latestSnapshot = await syncLatestSharedPlayersSnapshot();
+
+      if (shouldIgnoreBotRosterResponse(
+        requestedSessionId,
+        requestedTournamentBotId,
+        sessionIdRef.current,
+        tournamentBotIdRef.current
+      )) {
+        return false;
+      }
+
       const rebasedPlayers = mergeChangedPlayersOntoSnapshot(latestSnapshot.players, merged.changedRows);
       await commitPlayersSnapshot(
         rebasedPlayers,

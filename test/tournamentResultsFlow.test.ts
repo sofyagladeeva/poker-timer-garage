@@ -16,6 +16,7 @@ import {
   rosterGroupSort,
   resolveHydratedPlayersSnapshot,
   sortPlayersForResults,
+  shouldIgnoreBotRosterResponse,
   trustLoadedPlayersSnapshot,
 } from '../src/hooks/useTournamentPlayers.ts';
 import {
@@ -228,6 +229,21 @@ test('buildTournamentFinancePayload includes only participating players and keep
   assert.equal(payload.players[0]?.id, 'paid-1');
   assert.equal(payload.players[0]?.paymentMethod, 'card');
   assert.equal(payload.players[0]?.paymentDue, 3000);
+});
+
+test('shouldIgnoreBotRosterResponse rejects stale roster from previous game context', () => {
+  assert.equal(
+    shouldIgnoreBotRosterResponse(100, 77, 101, 88),
+    true
+  );
+  assert.equal(
+    shouldIgnoreBotRosterResponse(100, 77, 100, 88),
+    true
+  );
+  assert.equal(
+    shouldIgnoreBotRosterResponse(100, 77, 100, 77),
+    false
+  );
 });
 
 test('stored players payload round-trips results submission metadata', () => {
