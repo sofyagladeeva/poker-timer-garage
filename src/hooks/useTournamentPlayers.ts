@@ -144,6 +144,22 @@ function playersSharedBackupId(
   return `${playersSharedBackupPrefix(sessionId, tournamentBotId)}:${revision}:${updatedAt}`;
 }
 
+function buildPlayersSnapshotContext(
+  sessionId: number,
+  tournamentBotId: number | null,
+  tournamentTitle: string
+): PlayersSnapshotContext {
+  return {
+    sessionId,
+    tournamentBotId,
+    tournamentTitle,
+    storageKey: playersLocalKey(sessionId, tournamentBotId),
+    emergencyStorageKey: playersEmergencyKey(tournamentBotId, tournamentTitle),
+    sharedStorageId: playersSharedKey(sessionId, tournamentBotId),
+    sharedBackupPrefix: playersSharedBackupPrefix(sessionId, tournamentBotId),
+  };
+}
+
 function buildSharedPlayersName(updatedAt = new Date().toISOString()) {
   return `${SHARED_PLAYERS_NAME_PREFIX}:${updatedAt}`;
 }
@@ -1997,6 +2013,47 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     return true;
   }, [commitPlayersSnapshot, loadSharedPlayersBackups, sharedEnabled]);
 
+  const prepareTournamentPlayersContext = useCallback(async (
+    nextTournamentBotId: number | null,
+    nextTournamentTitle: string
+  ) => {
+    const context = buildPlayersSnapshotContext(
+      sessionIdRef.current,
+      nextTournamentBotId,
+      nextTournamentTitle
+    );
+    const updatedAt = nowIso();
+    const emptyResultsSubmission = { sentAt: null, signature: null } satisfies TournamentResultsSubmissionState;
+    const payload = buildStoredPlayersPayload(
+      [],
+      context.sessionId,
+      context.tournamentBotId,
+      context.tournamentTitle,
+      updatedAt,
+      emptyResultsSubmission,
+      1
+    );
+
+    saveLocal(context.storageKey, payload);
+    saveLocal(context.emergencyStorageKey, payload);
+
+    if (!sharedEnabled) return true;
+
+    const { error } = await supabase.from(SHARED_PLAYERS_TABLE).upsert({
+      id: context.sharedStorageId,
+      name: buildSharedPlayersName(updatedAt),
+      levels: payload,
+    });
+    if (error) return false;
+
+    await supabase
+      .from(SHARED_PLAYERS_TABLE)
+      .delete()
+      .like('id', `${context.sharedBackupPrefix}:%`);
+
+    return true;
+  }, [sharedEnabled]);
+
   const exportTournamentResults = useCallback(async (levelsPlayed: number) => {
     if (playersRef.current.length === 0 || gameState.tournamentBotId == null) {
       return {
@@ -2083,6 +2140,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     markPlayerOut,
     restorePlayer,
     restorePlayersFromBackup,
+    prepareTournamentPlayersContext,
     exportTournamentResults,
   };
 }

@@ -564,6 +564,7 @@ export function Admin() {
     markPlayerOut,
     restorePlayer,
     restorePlayersFromBackup,
+    prepareTournamentPlayersContext,
     exportTournamentResults,
   } = useTournamentPlayers({
     gameState,
@@ -893,6 +894,7 @@ export function Admin() {
       return;
     }
 
+    await prepareTournamentPlayersContext(botId, title);
     await updateGameState({ tournamentTitle: title, tournamentBotId: botId });
     setGamePickerOpen(false);
     setCustomGameOpen(false);
