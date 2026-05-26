@@ -85,6 +85,7 @@ export interface LiveTournamentPlayer {
   bonusCount: number;
   bounty: number;
   paymentDue: number;
+  paymentDueOverride: boolean;
   paymentMethod: LiveTournamentPaymentMethod;
   place: number | null;
   placeOverride: boolean;

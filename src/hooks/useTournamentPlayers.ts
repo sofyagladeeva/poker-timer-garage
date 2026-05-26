@@ -363,7 +363,10 @@ function normalizePlayer(
     addonCount,
     bonusCount,
     bounty: clampWhole(raw.bounty),
-    paymentDue: calcPaymentDue(arrivalStatus, rebuyCount, addonCount, tournamentBuyIn),
+    paymentDue: (raw.paymentDueOverride === true && arrivalStatus !== 'absent')
+      ? clampWhole(raw.paymentDue)
+      : calcPaymentDue(arrivalStatus, rebuyCount, addonCount, tournamentBuyIn),
+    paymentDueOverride: raw.paymentDueOverride === true && arrivalStatus !== 'absent',
     paymentMethod: raw.paymentMethod === 'cash' || raw.paymentMethod === 'card' ? raw.paymentMethod : 'unpaid',
     place: raw.place == null ? null : clampWhole(raw.place),
     placeOverride: raw.placeOverride === true,

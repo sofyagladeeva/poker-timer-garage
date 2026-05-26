@@ -611,7 +611,6 @@ function MobilePlayerCard({
   const [detailsOpen, setDetailsOpen] = useState(false);
   const canEditCounters = player.arrivalStatus !== 'absent';
   const isOut = player.status === 'out';
-  const paymentDueLabel = player.paymentDue > 0 ? `${player.paymentDue} ₽` : '0 ₽';
   const nameBadgeLabel = isOut ? 'Выбыл' : player.arrivalStatus === 'absent' ? 'Не в игре' : 'В игре';
   const nameBadgeTone = isOut
     ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
@@ -800,9 +799,18 @@ function MobilePlayerCard({
             />
           </div>
 
-          <div className="mt-3 rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2 text-right">
-            <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">К оплате</div>
-            <div className="mt-2 text-base font-black text-white whitespace-nowrap">{paymentDueLabel}</div>
+          <div className="mt-3 rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2">
+            <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">
+              К оплате{player.paymentDueOverride && <span className="ml-1 text-amber-400">✎</span>}
+            </div>
+            <PaymentDueInput
+              value={player.paymentDue}
+              disabled={player.arrivalStatus === 'absent'}
+              className="mt-1 w-full bg-transparent text-base font-black text-right focus:outline-none placeholder:text-[#444] disabled:text-[#444] text-white"
+              onCommit={async (value, override) =>
+                await onUpdatePlayerField(player.id, { paymentDue: value, paymentDueOverride: override })
+              }
+            />
           </div>
         </>
       )}
@@ -835,7 +843,6 @@ function PlayerRow({
     : player.paymentMethod === 'card'
       ? 'Карта'
       : 'Не оплачено';
-  const paymentDueLabel = player.paymentDue > 0 ? `${player.paymentDue} ₽` : '0 ₽';
   const entryTypeLabel = player.arrivalStatus === 'promo'
     ? 'Промокод'
     : player.arrivalStatus === 'free'
@@ -1063,7 +1070,15 @@ function PlayerRow({
             {paymentMethodLabel}
           </button>
           <div className="text-[8px] sm:text-[10px] leading-tight text-center sm:text-left uppercase tracking-[0.08em] sm:tracking-widest text-[#777]">
-            {paymentDueLabel}
+            <PaymentDueInput
+              value={player.paymentDue}
+              disabled={player.arrivalStatus === 'absent'}
+              className="w-full bg-transparent text-center sm:text-left font-bold text-white focus:outline-none placeholder:text-[#444] disabled:text-[#555]"
+              onCommit={async (value, override) =>
+                await onUpdatePlayerField(player.id, { paymentDue: value, paymentDueOverride: override })
+              }
+            />
+            {player.paymentDueOverride && <span className="text-amber-400 text-[8px]">✎</span>}
           </div>
           {openField === 'payment' && (
             <div className="grid grid-cols-1 gap-1">
@@ -1090,6 +1105,57 @@ function PlayerRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+function PaymentDueInput({
+  value,
+  disabled,
+  className,
+  onCommit,
+}: {
+  value: number;
+  disabled: boolean;
+  className: string;
+  onCommit: (value: number, override: boolean) => Promise<boolean>;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (focusedRef.current || !inputRef.current) return;
+    inputRef.current.value = value > 0 ? String(value) : '';
+  }, [value]);
+
+  useEffect(() => {
+    if (!inputRef.current || focusedRef.current) return;
+    if (disabled) inputRef.current.value = '';
+  }, [disabled]);
+
+  return (
+    <input
+      ref={inputRef}
+      type="number"
+      disabled={disabled}
+      defaultValue={value > 0 ? String(value) : ''}
+      onFocus={() => { focusedRef.current = true; }}
+      onBlur={async event => {
+        focusedRef.current = false;
+        if (disabled) { event.currentTarget.value = ''; return; }
+        const raw = event.currentTarget.value.trim();
+        if (!raw || Number(raw) <= 0) {
+          const ok = await onCommit(0, false);
+          event.currentTarget.value = ok ? '' : (value > 0 ? String(value) : '');
+          return;
+        }
+        const nextValue = Math.round(Math.max(0, Number(raw)));
+        const ok = await onCommit(nextValue, true);
+        event.currentTarget.value = ok ? String(nextValue) : (value > 0 ? String(value) : '');
+      }}
+      className={className}
+      placeholder={disabled ? '—' : String(value > 0 ? value : '—')}
+      inputMode="numeric"
+    />
   );
 }
 
