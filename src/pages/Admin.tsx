@@ -149,6 +149,32 @@ function isPassiveBotPlayerForUpcomingGame(player: {
   );
 }
 
+function hasLiveTournamentProgress(player: {
+  arrivalStatus: string;
+  status: string;
+  rebuyCount: number;
+  addonCount: number;
+  bonusCount: number;
+  bounty: number;
+  paymentDue: number;
+  paymentMethod: string;
+  place: number | null;
+  bustoutOrder: number | null;
+}) {
+  return (
+    player.arrivalStatus !== 'absent' ||
+    player.status === 'out' ||
+    player.rebuyCount > 0 ||
+    player.addonCount > 0 ||
+    player.bonusCount > 0 ||
+    player.bounty > 0 ||
+    player.paymentDue > 0 ||
+    player.paymentMethod !== 'unpaid' ||
+    player.place !== null ||
+    player.bustoutOrder !== null
+  );
+}
+
 function formatNextGameFallback(game: { title: string; date: string; confirmed: number; max_players: number }) {
   const d = new Date(game.date);
   const dateStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
@@ -967,9 +993,20 @@ export function Admin() {
 
     const selectionKey = `${gameState.resetAt}:${gameState.tournamentBotId}:${gameState.tournamentTitle}`;
     const allPlayersPassive = tournamentPlayers.every(isPassiveBotPlayerForUpcomingGame);
+    const gameStateLooksBlank =
+      gameState.players === 0 &&
+      gameState.outs === 0 &&
+      gameState.rebuys === 0 &&
+      gameState.addonCount === 0 &&
+      gameState.bonusCount === 0 &&
+      gameState.totalStack === 0;
+    const snapshotCarriesFinishedTournamentData =
+      selectedGame.status === 'upcoming' &&
+      gameStateLooksBlank &&
+      tournamentPlayers.some(hasLiveTournamentProgress);
     const looksLikeStaleUpcomingRoster = allPlayersPassive && tournamentPlayers.length > selectedGame.confirmed;
 
-    if (!looksLikeStaleUpcomingRoster) {
+    if (!snapshotCarriesFinishedTournamentData && !looksLikeStaleUpcomingRoster) {
       if (rosterSanitizedSelectionRef.current === selectionKey) {
         rosterSanitizedSelectionRef.current = null;
       }
@@ -985,7 +1022,13 @@ export function Admin() {
     })();
   }, [
     botGames,
+    gameState.addonCount,
+    gameState.bonusCount,
+    gameState.outs,
+    gameState.players,
     gameState.resetAt,
+    gameState.rebuys,
+    gameState.totalStack,
     gameState.tournamentBotId,
     gameState.tournamentTitle,
     prepareTournamentPlayersContext,
