@@ -121,6 +121,34 @@ type PendingTournamentSelection = {
   botId: number | null;
 };
 
+function isPassiveBotPlayerForUpcomingGame(player: {
+  source: string;
+  arrivalStatus: string;
+  status: string;
+  rebuyCount: number;
+  addonCount: number;
+  bonusCount: number;
+  bounty: number;
+  paymentDue: number;
+  paymentMethod: string;
+  place: number | null;
+  bustoutOrder: number | null;
+}) {
+  return (
+    player.source === 'bot' &&
+    player.arrivalStatus === 'absent' &&
+    player.status !== 'out' &&
+    player.rebuyCount === 0 &&
+    player.addonCount === 0 &&
+    player.bonusCount === 0 &&
+    player.bounty === 0 &&
+    player.paymentDue === 0 &&
+    player.paymentMethod === 'unpaid' &&
+    player.place === null &&
+    player.bustoutOrder === null
+  );
+}
+
 function formatNextGameFallback(game: { title: string; date: string; confirmed: number; max_players: number }) {
   const d = new Date(game.date);
   const dateStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
@@ -538,6 +566,7 @@ export function Admin() {
   const [resultsBusy, setResultsBusy] = useState(false);
   const [newTournamentBusy, setNewTournamentBusy] = useState(false);
   const [resultsNotice, setResultsNotice] = useState<TournamentResultsNotice>(null);
+  const rosterSanitizedSelectionRef = useRef<string | null>(null);
 
   // ── Bot games list ─────────────────────────────────────────────────────
   const [botGames, setBotGames] = useState<BotGameSummary[]>([]);
@@ -882,6 +911,10 @@ export function Admin() {
   const handleSelectTournament = async (title: string, botId: number | null) => {
     const sameSelection = gameState.tournamentTitle === title && gameState.tournamentBotId === botId;
     if (sameSelection) {
+      await prepareTournamentPlayersContext(botId, title);
+      if (botId != null) {
+        void refreshFromBot(true);
+      }
       setGamePickerOpen(false);
       setCustomGameOpen(false);
       return;
@@ -899,6 +932,42 @@ export function Admin() {
     setGamePickerOpen(false);
     setCustomGameOpen(false);
   };
+
+  useEffect(() => {
+    if (gameState.tournamentBotId == null) return;
+    if (botGames.length === 0) return;
+    if (tournamentPlayers.length === 0) return;
+
+    const selectedGame = botGames.find(game => game.id === gameState.tournamentBotId);
+    if (!selectedGame) return;
+
+    const selectionKey = `${gameState.resetAt}:${gameState.tournamentBotId}:${gameState.tournamentTitle}`;
+    const allPlayersPassive = tournamentPlayers.every(isPassiveBotPlayerForUpcomingGame);
+    const looksLikeStaleUpcomingRoster = allPlayersPassive && tournamentPlayers.length > selectedGame.confirmed;
+
+    if (!looksLikeStaleUpcomingRoster) {
+      if (rosterSanitizedSelectionRef.current === selectionKey) {
+        rosterSanitizedSelectionRef.current = null;
+      }
+      return;
+    }
+
+    if (rosterSanitizedSelectionRef.current === selectionKey) return;
+    rosterSanitizedSelectionRef.current = selectionKey;
+
+    void (async () => {
+      await prepareTournamentPlayersContext(gameState.tournamentBotId, gameState.tournamentTitle);
+      await refreshFromBot(true);
+    })();
+  }, [
+    botGames,
+    gameState.resetAt,
+    gameState.tournamentBotId,
+    gameState.tournamentTitle,
+    prepareTournamentPlayersContext,
+    refreshFromBot,
+    tournamentPlayers,
+  ]);
 
   const playersInGame = managedPlayerCountsActive
     ? tournamentPlayersSummary.active
