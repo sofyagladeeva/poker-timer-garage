@@ -2672,6 +2672,10 @@ export function Admin() {
                   });
                   const archiveDetails = archiveDetailsById[t.id] ?? t.archive_details ?? null;
                   const archivePlayers = archiveDetails ? sortArchivePlayers(archiveDetails.players) : [];
+                  const archiveCashTotal = archivePlayers.reduce((sum, p) => p.paymentMethod === 'cash' ? sum + p.paymentDue : sum, 0);
+                  const archiveCardTotal = archivePlayers.reduce((sum, p) => p.paymentMethod === 'card' ? sum + p.paymentDue : sum, 0);
+                  const archiveFullTotal = archivePlayers.reduce((sum, p) => sum + (p.arrivalStatus === 'promo' ? p.paymentDue * 2 : p.paymentDue), 0);
+                  const archiveDiscountTotal = archiveFullTotal - (archiveDetails?.summary?.totalDue ?? 0);
                   return (
                     <div key={t.id} className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-3">
                       <div className="flex items-start justify-between gap-2">
@@ -2762,29 +2766,53 @@ export function Admin() {
                           ) : (
                             <div className="flex flex-col gap-3">
                               {archiveDetails.summary && (
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                  <div className="bg-[#111] rounded-xl p-3">
-                                    <div className="text-[#666] text-[10px] uppercase">Входов</div>
-                                    <div className="text-white font-black text-lg mt-1">{archiveDetails.summary.entrants}</div>
-                                  </div>
-                                  <div className="bg-[#111] rounded-xl p-3">
-                                    <div className="text-[#666] text-[10px] uppercase">Bounty</div>
-                                    <div className="text-white font-black text-lg mt-1">{archiveDetails.summary.bountyTotal}</div>
-                                  </div>
-                                  <div className="bg-[#111] rounded-xl p-3">
-                                    <div className="text-[#666] text-[10px] uppercase">Оплачено</div>
-                                    <div className="text-white font-black text-lg mt-1">{archiveDetails.summary.totalDue} ₽</div>
-                                  </div>
-                                  <div className="bg-[#111] rounded-xl p-3">
-                                    <div className="text-[#666] text-[10px] uppercase">Сохранено</div>
-                                    <div className="text-white font-black text-sm mt-1">
-                                      {new Date(archiveDetails.savedAt).toLocaleString('ru-RU', {
-                                        day: '2-digit',
-                                        month: '2-digit',
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                      })}
+                                <div className="flex flex-col gap-2">
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                    <div className="bg-[#111] rounded-xl p-3">
+                                      <div className="text-[#666] text-[10px] uppercase">Входов</div>
+                                      <div className="text-white font-black text-lg mt-1">{archiveDetails.summary.entrants}</div>
                                     </div>
+                                    <div className="bg-[#111] rounded-xl p-3">
+                                      <div className="text-[#666] text-[10px] uppercase">Bounty</div>
+                                      <div className="text-white font-black text-lg mt-1">{archiveDetails.summary.bountyTotal}</div>
+                                    </div>
+                                    <div className="bg-[#111] rounded-xl p-3">
+                                      <div className="text-[#666] text-[10px] uppercase">Оплачено</div>
+                                      <div className="text-white font-black text-lg mt-1">{archiveDetails.summary.totalDue} ₽</div>
+                                    </div>
+                                    <div className="bg-[#111] rounded-xl p-3">
+                                      <div className="text-[#666] text-[10px] uppercase">Сохранено</div>
+                                      <div className="text-white font-black text-sm mt-1">
+                                        {new Date(archiveDetails.savedAt).toLocaleString('ru-RU', {
+                                          day: '2-digit',
+                                          month: '2-digit',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                        })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className={`grid gap-2 grid-cols-2${archiveDiscountTotal > 0 ? ' sm:grid-cols-4' : ''}`}>
+                                    <div className="bg-[#111] rounded-xl p-3">
+                                      <div className="text-[#666] text-[10px] uppercase">Наличными</div>
+                                      <div className="text-white font-black text-lg mt-1">{archiveCashTotal} ₽</div>
+                                    </div>
+                                    <div className="bg-[#111] rounded-xl p-3">
+                                      <div className="text-[#666] text-[10px] uppercase">Картой</div>
+                                      <div className="text-white font-black text-lg mt-1">{archiveCardTotal} ₽</div>
+                                    </div>
+                                    {archiveDiscountTotal > 0 && (
+                                      <>
+                                        <div className="bg-[#111] rounded-xl p-3">
+                                          <div className="text-[#666] text-[10px] uppercase">Без скидок</div>
+                                          <div className="text-white font-black text-lg mt-1">{archiveFullTotal} ₽</div>
+                                        </div>
+                                        <div className="bg-[#111] rounded-xl p-3">
+                                          <div className="text-[#666] text-[10px] uppercase">Скидок на</div>
+                                          <div className="text-[#C0392B] font-black text-lg mt-1">−{archiveDiscountTotal} ₽</div>
+                                        </div>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
                               )}
@@ -2812,7 +2840,12 @@ export function Admin() {
                                       <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Addon: <span className="text-white font-bold">{player.addonCount}</span></div>
                                       <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Бонус: <span className="text-white font-bold">{player.bonusCount}</span></div>
                                       <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Bounty: <span className="text-white font-bold">{player.bounty}</span></div>
-                                      <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">К оплате: <span className="text-white font-bold">{player.paymentDue} ₽</span></div>
+                                      <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">
+                                        К оплате: <span className="text-white font-bold">{player.paymentDue} ₽</span>
+                                        {player.arrivalStatus === 'promo' && (
+                                          <div className="text-[#555] text-[10px] mt-0.5">без скидки: {player.paymentDue * 2} ₽</div>
+                                        )}
+                                      </div>
                                       <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Оплата: <span className="text-white font-bold">{formatArchivePaymentMethod(player.paymentMethod)}</span></div>
                                       <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Источник: <span className="text-white font-bold">{player.source === 'manual' ? 'Вручную' : 'Бот'}</span></div>
                                       <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Регистрация: <span className="text-white font-bold">{player.registrationSource === 'waitlist' ? 'Waitlist' : 'Основной'}</span></div>
