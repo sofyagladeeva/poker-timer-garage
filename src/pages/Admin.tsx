@@ -774,11 +774,21 @@ export function Admin() {
     }
 
     if (dispatchResult.financeError) {
+      if (gameState.status === 'ended') {
+        const resetOk = await startNewTournamentFlow();
+        if (!resetOk) return false;
+      }
+
       setResultsNotice({
         tone: 'warning',
-        text: `Итоги турнира отправлены в бот, но отдельный финансовый отчёт не ушёл: ${dispatchResult.financeError}`,
+        text: `Итоги турнира отправлены в бот, турнир закрыт, но отдельный финансовый отчёт не ушёл: ${dispatchResult.financeError}`,
       });
       return true;
+    }
+
+    if (gameState.status === 'ended') {
+      const resetOk = await startNewTournamentFlow();
+      if (!resetOk) return false;
     }
 
     setResultsNotice({
@@ -786,8 +796,8 @@ export function Admin() {
       text: dispatchResult.resent
         ? `Обновлённые итоги турнира отправлены в бот${dispatchResult.financeSkipped ? '.' : ', финансовый отчёт отправлен отдельно.'}`
         : dispatchResult.financeSkipped
-          ? 'Итоги турнира отправлены в бот. Теперь можно запускать новый турнир.'
-          : 'Итоги турнира и отдельный финансовый отчёт отправлены в бот. Теперь можно запускать новый турнир.',
+          ? 'Итоги турнира отправлены в бот, турнир закрыт.'
+          : 'Итоги турнира и отдельный финансовый отчёт отправлены в бот, турнир закрыт.',
     });
     return true;
   };
@@ -851,15 +861,26 @@ export function Admin() {
         return false;
       }
 
+      const resetOk = await startNewTournamentFlow();
+      if (!resetOk) {
+        setResultsNotice({
+          tone: 'error',
+          text: requiresBotResults
+            ? 'Итоги отправлены, но завершённый турнир не удалось сбросить. Не закрывайте страницу и попробуйте ещё раз.'
+            : 'Турнир завершён, но не удалось сбросить его состояние. Не закрывайте страницу и попробуйте ещё раз.',
+        });
+        return false;
+      }
+
       setResultsNotice({
         tone: 'success',
         text: !requiresBotResults
-          ? 'Турнир завершён.'
+          ? 'Турнир завершён и закрыт.'
           : resultsAlreadyCurrent && !dispatchedResults
-            ? 'Турнир завершён. Актуальные итоги уже были отправлены в бот.'
+            ? 'Турнир закрыт. Актуальные итоги уже были отправлены в бот.'
             : resentResults
-              ? 'Обновлённые итоги отправлены в бот, турнир завершён.'
-              : 'Итоги отправлены в бот, турнир завершён.',
+              ? 'Обновлённые итоги отправлены в бот, турнир закрыт.'
+              : 'Итоги отправлены в бот, турнир закрыт.',
       });
       return true;
     } finally {
@@ -875,7 +896,7 @@ export function Admin() {
       const resetOk = await resetTournament();
       if (!resetOk) {
         alert('Не удалось сохранить завершение турнира в Supabase. Не закрывайте страницу и попробуйте ещё раз.');
-        return;
+        return false;
       }
 
       if (nextTournament) {
@@ -890,8 +911,11 @@ export function Admin() {
       }
 
       setFinishReviewOpen(false);
+      setGamePickerOpen(false);
+      setCustomGameOpen(false);
       setResultsNotice(null);
       setActiveTab('control');
+      return true;
     } finally {
       setNewTournamentBusy(false);
     }
