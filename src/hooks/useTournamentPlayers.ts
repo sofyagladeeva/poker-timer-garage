@@ -78,6 +78,16 @@ type TournamentResultsSubmissionState = {
   signature: string | null;
 };
 
+type PlayersSnapshotContext = {
+  sessionId: number;
+  tournamentBotId: number | null;
+  tournamentTitle: string;
+  storageKey: string;
+  emergencyStorageKey: string;
+  sharedStorageId: string;
+  sharedBackupPrefix: string;
+};
+
 type LoadedPlayersSnapshot = {
   players: LiveTournamentPlayer[];
   updatedAt: string | null;
@@ -91,6 +101,7 @@ type QueuedSharedPlayersSnapshot = {
   resultsSubmission: TournamentResultsSubmissionState;
   updatedAt: string;
   revision: number;
+  context: PlayersSnapshotContext;
 };
 
 type HydratedPlayersSnapshotResolution = {
@@ -236,6 +247,18 @@ export function shouldIgnoreBotRosterResponse(
   currentTournamentBotId: number | null
 ) {
   return requestedSessionId !== currentSessionId || requestedTournamentBotId !== currentTournamentBotId;
+}
+
+function hasTournamentContextChanged(
+  requestedContext: Pick<PlayersSnapshotContext, 'sessionId' | 'tournamentBotId' | 'tournamentTitle'>,
+  currentContext: Pick<PlayersSnapshotContext, 'sessionId' | 'tournamentBotId' | 'tournamentTitle'>
+) {
+  if (requestedContext.sessionId !== currentContext.sessionId) return true;
+  if (requestedContext.tournamentBotId !== currentContext.tournamentBotId) return true;
+  if (requestedContext.tournamentBotId === null && currentContext.tournamentBotId === null) {
+    return normalizeTournamentTitle(requestedContext.tournamentTitle) !== normalizeTournamentTitle(currentContext.tournamentTitle);
+  }
+  return false;
 }
 
 function createId() {
@@ -1017,6 +1040,16 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
   const sharedPersistInFlightRef = useRef(false);
   const queuedSharedPersistRef = useRef<QueuedSharedPlayersSnapshot | null>(null);
 
+  const getCurrentSnapshotContext = useCallback((): PlayersSnapshotContext => ({
+    sessionId: sessionIdRef.current,
+    tournamentBotId: tournamentBotIdRef.current,
+    tournamentTitle: tournamentTitleRef.current,
+    storageKey: storageKeyRef.current,
+    emergencyStorageKey: emergencyStorageKeyRef.current,
+    sharedStorageId: sharedStorageIdRef.current,
+    sharedBackupPrefix: sharedBackupPrefixRef.current,
+  }), []);
+
   const summary = useMemo(() => summarizePlayers(players), [players]);
   const currentResultsSignature = useMemo(() => {
     if (players.length === 0 || gameState.tournamentBotId == null) return null;
@@ -1058,8 +1091,13 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     nextPlayers: LiveTournamentPlayer[],
     nextResultsSubmission: TournamentResultsSubmissionState = resultsSubmissionRef.current,
     updatedAt = nowIso(),
-    revision = snapshotRevisionRef.current
+    revision = snapshotRevisionRef.current,
+    context: PlayersSnapshotContext = getCurrentSnapshotContext()
   ) => {
+    if (hasTournamentContextChanged(context, getCurrentSnapshotContext())) {
+      return playersRef.current;
+    }
+
     const normalized = recalculatePlayers(nextPlayers);
     const normalizedRevision = normalizeSnapshotRevision(revision);
     playersRef.current = normalized;
@@ -1070,17 +1108,17 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     setResultsSubmission(nextResultsSubmission);
     const payload = buildStoredPlayersPayload(
       normalized,
-      sessionIdRef.current,
-      tournamentBotIdRef.current,
-      tournamentTitleRef.current,
+      context.sessionId,
+      context.tournamentBotId,
+      context.tournamentTitle,
       updatedAt,
       nextResultsSubmission,
       normalizedRevision
     );
-    saveLocal(storageKeyRef.current, payload);
-    saveLocal(emergencyStorageKeyRef.current, payload);
+    saveLocal(context.storageKey, payload);
+    saveLocal(context.emergencyStorageKey, payload);
     return normalized;
-  }, []);
+  }, [getCurrentSnapshotContext, setPlayers, setResultsSubmission]);
 
   const loadSharedPlayersSnapshot = useCallback(async () => {
     if (!sharedEnabled) return null;
@@ -1186,13 +1224,14 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     nextPlayers: LiveTournamentPlayer[],
     nextResultsSubmission: TournamentResultsSubmissionState,
     updatedAt: string,
-    revision: number
+    revision: number,
+    context: PlayersSnapshotContext
   ) => {
     if (!sharedEnabled) return false;
 
     const backupId = playersSharedBackupId(
-      sessionIdRef.current,
-      tournamentBotIdRef.current,
+      context.sessionId,
+      context.tournamentBotId,
       revision,
       updatedAt
     );
@@ -1202,9 +1241,9 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       name: buildSharedPlayersBackupName(updatedAt),
       levels: buildStoredPlayersPayload(
         nextPlayers,
-        sessionIdRef.current,
-        tournamentBotIdRef.current,
-        tournamentTitleRef.current,
+        context.sessionId,
+        context.tournamentBotId,
+        context.tournamentTitle,
         updatedAt,
         nextResultsSubmission,
         revision
@@ -1301,7 +1340,8 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     nextPlayers: LiveTournamentPlayer[],
     nextResultsSubmission: TournamentResultsSubmissionState = resultsSubmissionRef.current,
     updatedAt = nowIso(),
-    revision = getNextSnapshotRevision(snapshotRevisionRef.current)
+    revision = getNextSnapshotRevision(snapshotRevisionRef.current),
+    context: PlayersSnapshotContext = getCurrentSnapshotContext()
   ) => {
     if (!sharedEnabled) return false;
 
@@ -1310,6 +1350,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       resultsSubmission: nextResultsSubmission,
       updatedAt,
       revision,
+      context,
     };
 
     if (sharedPersistInFlightRef.current) return true;
@@ -1323,13 +1364,13 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
         queuedSharedPersistRef.current = null;
 
         const payload = {
-          id: sharedStorageIdRef.current,
+          id: pending.context.sharedStorageId,
           name: buildSharedPlayersName(pending.updatedAt),
           levels: buildStoredPlayersPayload(
             pending.players,
-            sessionIdRef.current,
-            tournamentBotIdRef.current,
-            tournamentTitleRef.current,
+            pending.context.sessionId,
+            pending.context.tournamentBotId,
+            pending.context.tournamentTitle,
             pending.updatedAt,
             pending.resultsSubmission,
             pending.revision
@@ -1352,7 +1393,8 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
           pending.players,
           pending.resultsSubmission,
           pending.updatedAt,
-          pending.revision
+          pending.revision,
+          pending.context
         );
       }
     } finally {
@@ -1371,18 +1413,19 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       shared: true,
     }));
     return true;
-  }, [persistSharedPlayersBackup, sharedEnabled]);
+  }, [getCurrentSnapshotContext, persistSharedPlayersBackup, sharedEnabled]);
 
   const commitPlayersSnapshot = useCallback(async (
     nextPlayers: LiveTournamentPlayer[],
     nextResultsSubmission: TournamentResultsSubmissionState = resultsSubmissionRef.current,
-    nextRevision = getNextSnapshotRevision(snapshotRevisionRef.current)
+    nextRevision = getNextSnapshotRevision(snapshotRevisionRef.current),
+    context: PlayersSnapshotContext = getCurrentSnapshotContext()
   ) => {
     const updatedAt = nowIso();
-    const normalized = applyPlayersSnapshot(nextPlayers, nextResultsSubmission, updatedAt, nextRevision);
-    void persistSharedPlayersSnapshot(normalized, nextResultsSubmission, updatedAt, nextRevision);
+    const normalized = applyPlayersSnapshot(nextPlayers, nextResultsSubmission, updatedAt, nextRevision, context);
+    void persistSharedPlayersSnapshot(normalized, nextResultsSubmission, updatedAt, nextRevision, context);
     return normalized;
-  }, [applyPlayersSnapshot, persistSharedPlayersSnapshot]);
+  }, [applyPlayersSnapshot, getCurrentSnapshotContext, persistSharedPlayersSnapshot]);
 
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -1618,7 +1661,11 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
   const applyPlayerMutation = useCallback(async (
     mutate: (current: LiveTournamentPlayer[]) => LiveTournamentPlayer[]
   ) => {
+    const requestedContext = getCurrentSnapshotContext();
     const baseSnapshot = await syncLatestSharedPlayersSnapshot();
+    if (hasTournamentContextChanged(requestedContext, getCurrentSnapshotContext())) {
+      return playersRef.current;
+    }
     const mutated = recalculatePlayers(mutate(baseSnapshot.players).map(player => ({
       ...player,
       updatedAt: player.updatedAt || nowIso(),
@@ -1630,14 +1677,18 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     }
 
     const latestSnapshot = await syncLatestSharedPlayersSnapshot();
+    if (hasTournamentContextChanged(requestedContext, getCurrentSnapshotContext())) {
+      return playersRef.current;
+    }
     const rebasedPlayers = mergeChangedPlayersOntoSnapshot(latestSnapshot.players, changedPlayers);
     await commitPlayersSnapshot(
       rebasedPlayers,
       latestSnapshot.resultsSubmission,
-      getNextSnapshotRevision(latestSnapshot.revision)
+      getNextSnapshotRevision(latestSnapshot.revision),
+      requestedContext
     );
     return rebasedPlayers;
-  }, [commitPlayersSnapshot, syncLatestSharedPlayersSnapshot]);
+  }, [commitPlayersSnapshot, getCurrentSnapshotContext, syncLatestSharedPlayersSnapshot]);
 
   const refreshFromBot = useCallback(async (force = false) => {
     if (tournamentBotId == null) return false;
