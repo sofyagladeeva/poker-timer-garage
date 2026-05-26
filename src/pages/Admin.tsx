@@ -119,6 +119,7 @@ type TournamentResultsDispatchOutcome = {
 type PendingTournamentSelection = {
   title: string;
   botId: number | null;
+  buyIn?: number | null;
 };
 
 function isPassiveBotPlayerForUpcomingGame(player: {
@@ -974,6 +975,7 @@ export function Admin() {
         const selectionOk = await updateGameState({
           tournamentTitle: nextTournament.title,
           tournamentBotId: nextTournament.botId,
+          tournamentBuyIn: nextTournament.buyIn ?? null,
         }, true);
 
         if (selectionOk === false) {
@@ -1004,6 +1006,9 @@ export function Admin() {
   };
 
   const handleSelectTournament = async (title: string, botId: number | null) => {
+    const selectedGame = botId != null ? botGames.find(g => g.id === botId) : undefined;
+    const buyIn = selectedGame?.buy_in ?? null;
+
     const sameSelection = gameState.tournamentTitle === title && gameState.tournamentBotId === botId;
     if (sameSelection) {
       await prepareTournamentPlayersContext(botId, title);
@@ -1016,14 +1021,14 @@ export function Admin() {
     }
 
     if (gameState.status === 'ended') {
-      await confirmStartNewTournament({ title, botId });
+      await confirmStartNewTournament({ title, botId, buyIn });
       setGamePickerOpen(false);
       setCustomGameOpen(false);
       return;
     }
 
     await prepareTournamentPlayersContext(botId, title);
-    await updateGameState({ tournamentTitle: title, tournamentBotId: botId });
+    await updateGameState({ tournamentTitle: title, tournamentBotId: botId, tournamentBuyIn: buyIn });
     setGamePickerOpen(false);
     setCustomGameOpen(false);
   };

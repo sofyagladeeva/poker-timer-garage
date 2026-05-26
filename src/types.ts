@@ -58,6 +58,7 @@ export interface GameState {
   tournamentTitle: string; // название текущей игры
   tournamentBotId: number | null; // id игры в боте
   nextGameBotId: number | null; // id следующей игры (выбирается вручную в админке)
+  tournamentBuyIn: number | null; // стоимость входа из бота (null = использовать дефолт 1000)
   resetAt: number; // unix ms timestamp of last resetTournament() — used to detect stale admin devices
 }
 

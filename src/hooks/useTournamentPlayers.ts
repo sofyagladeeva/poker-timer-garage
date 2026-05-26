@@ -302,21 +302,32 @@ function normalizePlayerStatus(value: unknown, fallback: LiveTournamentPlayerSta
     : fallback;
 }
 
-export function calcPaymentDue(arrivalStatus: LiveTournamentArrivalStatus, rebuyCount: number, addonCount: number) {
+export function calcPaymentDue(
+  arrivalStatus: LiveTournamentArrivalStatus,
+  rebuyCount: number,
+  addonCount: number,
+  tournamentBuyIn: number | null = null
+) {
   if (arrivalStatus === 'absent') return 0;
 
-  const entryUnits = arrivalStatus === 'free' ? 0 : 1;
-  const totalUnits = entryUnits + clampWhole(rebuyCount) + clampWhole(addonCount);
-  const fullPrice = totalUnits * TOURNAMENT_UNIT_PRICE;
+  // If buy_in is null — use hardcoded default for all actions.
+  // If buy_in is 0 (free entry) — entry is free, rebuys/addons cost the default.
+  // If buy_in > 0 — entry, rebuys and addons all cost buy_in.
+  const entryPrice = tournamentBuyIn !== null ? tournamentBuyIn : TOURNAMENT_UNIT_PRICE;
+  const rebuyAddonPrice = (tournamentBuyIn !== null && tournamentBuyIn > 0) ? tournamentBuyIn : TOURNAMENT_UNIT_PRICE;
+
+  const entryAmount = arrivalStatus === 'free' ? 0 : entryPrice;
+  const total = entryAmount + (clampWhole(rebuyCount) + clampWhole(addonCount)) * rebuyAddonPrice;
   return arrivalStatus === 'promo'
-    ? Math.round(fullPrice * PROMO_DISCOUNT_FACTOR)
-    : fullPrice;
+    ? Math.round(total * PROMO_DISCOUNT_FACTOR)
+    : total;
 }
 
 function normalizePlayer(
   raw: Partial<LiveTournamentPlayer>,
   sessionId: number,
-  tournamentBotId: number | null
+  tournamentBotId: number | null,
+  tournamentBuyIn: number | null = null
 ): LiveTournamentPlayer {
   const registrationSource = normalizeRegistrationSource(raw.registrationSource);
   const arrivalStatus = normalizeArrivalStatus(raw.arrivalStatus);
@@ -352,7 +363,7 @@ function normalizePlayer(
     addonCount,
     bonusCount,
     bounty: clampWhole(raw.bounty),
-    paymentDue: calcPaymentDue(arrivalStatus, rebuyCount, addonCount),
+    paymentDue: calcPaymentDue(arrivalStatus, rebuyCount, addonCount, tournamentBuyIn),
     paymentMethod: raw.paymentMethod === 'cash' || raw.paymentMethod === 'card' ? raw.paymentMethod : 'unpaid',
     place: raw.place == null ? null : clampWhole(raw.place),
     placeOverride: raw.placeOverride === true,
@@ -375,8 +386,8 @@ export function rosterGroupSort(a: LiveTournamentPlayer, b: LiveTournamentPlayer
   return b.sortOrder - a.sortOrder || b.updatedAt.localeCompare(a.updatedAt) || b.createdAt.localeCompare(a.createdAt) || a.name.localeCompare(b.name, 'ru');
 }
 
-function recalculatePlayers(players: LiveTournamentPlayer[]) {
-  const normalized = players.map(player => normalizePlayer(player, player.sessionId, player.tournamentBotId));
+function recalculatePlayers(players: LiveTournamentPlayer[], tournamentBuyIn: number | null = null) {
+  const normalized = players.map(player => normalizePlayer(player, player.sessionId, player.tournamentBotId, tournamentBuyIn));
   const entrants = normalized.filter(player => player.arrivalStatus !== 'absent').length;
   const sortedOut = normalized
     .filter(player => player.status === 'out')
@@ -1133,7 +1144,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       return playersRef.current;
     }
 
-    const normalized = recalculatePlayers(nextPlayers);
+    const normalized = recalculatePlayers(nextPlayers, gameStateRef.current.tournamentBuyIn);
     const normalizedRevision = normalizeSnapshotRevision(revision);
     playersRef.current = normalized;
     resultsSubmissionRef.current = nextResultsSubmission;
@@ -1704,7 +1715,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
     const mutated = recalculatePlayers(mutate(baseSnapshot.players).map(player => ({
       ...player,
       updatedAt: player.updatedAt || nowIso(),
-    })));
+    })), gameStateRef.current.tournamentBuyIn);
     const changedPlayers = diffPlayers(baseSnapshot.players, mutated);
 
     if (changedPlayers.length === 0 && mutated.length === baseSnapshot.players.length) {

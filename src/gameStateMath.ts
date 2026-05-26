@@ -69,6 +69,7 @@ export function normalizeGameState(raw: unknown, fallback: GameState): GameState
     tournamentTitle: toStringValue(source.tournamentTitle, fallback.tournamentTitle),
     tournamentBotId: toNullableNumber(source.tournamentBotId, fallback.tournamentBotId),
     nextGameBotId: toNullableNumber(source.nextGameBotId, fallback.nextGameBotId),
+    tournamentBuyIn: toNullableNumber(source.tournamentBuyIn, fallback.tournamentBuyIn),
     resetAt: toWholeNumber(source.resetAt, fallback.resetAt ?? 0),
   };
 
