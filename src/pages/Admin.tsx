@@ -998,6 +998,14 @@ export function Admin() {
       // Flow completed — clear the pending save guard.
       pendingTournamentSaveRef.current = null;
 
+      // After resetTournament, sessionIdRef has updated (React ran effects during the DB write
+      // await). Explicitly initialise an empty players slot for the new session so the Players
+      // tab never shows stale data from an earlier session under the same key.
+      await prepareTournamentPlayersContext(
+        nextTournament?.botId ?? null,
+        nextTournament?.title ?? '',
+      );
+
       if (nextTournament) {
         const selectionOk = await updateGameState({
           tournamentTitle: nextTournament.title,
