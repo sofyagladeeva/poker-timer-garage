@@ -11,6 +11,7 @@ import {
 import type {
   GameState,
   LiveTournamentArrivalStatus,
+  LiveTournamentPaymentMethod,
   LiveTournamentPlayer,
   LiveTournamentPlayerStatus,
   LiveTournamentRegistrationSource,
@@ -324,8 +325,15 @@ export function calcPaymentDue(
     : total;
 }
 
+function derivePaymentMethod(cashPaid: number, cardPaid: number): LiveTournamentPaymentMethod {
+  if (cashPaid > 0 && cardPaid > 0) return 'split';
+  if (cashPaid > 0) return 'cash';
+  if (cardPaid > 0) return 'card';
+  return 'unpaid';
+}
+
 function normalizePlayer(
-  raw: Partial<LiveTournamentPlayer>,
+  raw: Partial<LiveTournamentPlayer> & { paymentMethod?: string },
   sessionId: number,
   tournamentBotId: number | null,
   tournamentBuyIn: number | null = null
@@ -365,11 +373,21 @@ function normalizePlayer(
     bonusCount,
     bounty: clampWhole(raw.bounty),
     bonusRcPoints: clampWhole(raw.bonusRcPoints),
+    ...(() => {
+      let cashPaid = clampWhole(raw.cashPaid);
+      let cardPaid = clampWhole(raw.cardPaid);
+      // Migrate legacy paymentMethod → cashPaid/cardPaid for old stored snapshots
+      if (cashPaid === 0 && cardPaid === 0 && raw.paymentMethod) {
+        const legacyDue = clampWhole(raw.paymentDue);
+        if (raw.paymentMethod === 'cash') cashPaid = legacyDue;
+        else if (raw.paymentMethod === 'card') cardPaid = legacyDue;
+      }
+      return { cashPaid, cardPaid };
+    })(),
     paymentDue: (raw.paymentDueOverride === true && arrivalStatus !== 'absent')
       ? clampWhole(raw.paymentDue)
       : calcPaymentDue(arrivalStatus, rebuyCount, addonCount, tournamentBuyIn),
     paymentDueOverride: raw.paymentDueOverride === true && arrivalStatus !== 'absent',
-    paymentMethod: raw.paymentMethod === 'cash' || raw.paymentMethod === 'card' ? raw.paymentMethod : 'unpaid',
     place: raw.place == null ? null : clampWhole(raw.place),
     placeOverride: raw.placeOverride === true,
     bustoutOrder: raw.bustoutOrder == null ? null : clampWhole(raw.bustoutOrder),
@@ -447,12 +465,13 @@ function isTransientBotRosterPlayer(player: LiveTournamentPlayer) {
     player.source === 'bot' &&
     player.arrivalStatus === 'absent' &&
     player.status !== 'out' &&
-    player.paymentMethod === 'unpaid' &&
     player.rebuyCount === 0 &&
     player.addonCount === 0 &&
     player.bonusCount === 0 &&
     player.bounty === 0 &&
     player.bonusRcPoints === 0 &&
+    player.cashPaid === 0 &&
+    player.cardPaid === 0 &&
     player.place === null &&
     !player.placeOverride &&
     player.bustoutOrder === null
@@ -490,8 +509,9 @@ function playersEqual(a: LiveTournamentPlayer | undefined, b: LiveTournamentPlay
     a.bonusCount === b.bonusCount &&
     a.bounty === b.bounty &&
     a.bonusRcPoints === b.bonusRcPoints &&
+    a.cashPaid === b.cashPaid &&
+    a.cardPaid === b.cardPaid &&
     a.paymentDue === b.paymentDue &&
-    a.paymentMethod === b.paymentMethod &&
     a.place === b.place &&
     a.placeOverride === b.placeOverride &&
     a.bustoutOrder === b.bustoutOrder &&
@@ -634,9 +654,10 @@ export function mergeImportedRoster(
       addonCount: 0,
       bonusCount: 0,
       bounty: 0,
+      cashPaid: 0,
+      cardPaid: 0,
       paymentDue: 0,
       paymentDueOverride: false,
-      paymentMethod: 'unpaid',
       place: null,
       placeOverride: false,
       bustoutOrder: null,
@@ -760,7 +781,9 @@ export function buildTournamentResultsPayload(params: {
       source: player.source,
       registrationSource: player.registrationSource,
       arrivalStatus: player.arrivalStatus,
-      paymentMethod: player.paymentMethod,
+      paymentMethod: derivePaymentMethod(player.cashPaid, player.cardPaid),
+      cashPaid: player.cashPaid,
+      cardPaid: player.cardPaid,
       paymentDue: player.paymentDue,
       rebuyCount: player.rebuyCount,
       addonCount: player.addonCount,
@@ -816,7 +839,9 @@ export function buildTournamentFinancePayload(params: {
       source: player.source,
       registrationSource: player.registrationSource,
       arrivalStatus: player.arrivalStatus,
-      paymentMethod: player.paymentMethod,
+      paymentMethod: derivePaymentMethod(player.cashPaid, player.cardPaid),
+      cashPaid: player.cashPaid,
+      cardPaid: player.cardPaid,
       paymentDue: player.paymentDue,
       rebuyCount: player.rebuyCount,
       addonCount: player.addonCount,
@@ -1934,8 +1959,9 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
           addonCount: 0,
           bonusCount: 0,
           bounty: 0,
+          cashPaid: 0,
+          cardPaid: 0,
           paymentDue: TOURNAMENT_UNIT_PRICE,
-          paymentMethod: 'unpaid',
           place: null,
           placeOverride: false,
           bustoutOrder: null,
@@ -1989,7 +2015,8 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
         ...player,
         arrivalStatus,
         status: nextStatus,
-        paymentMethod: arrivalStatus === 'free' ? 'unpaid' : player.paymentMethod,
+        cashPaid: arrivalStatus === 'free' ? 0 : player.cashPaid,
+        cardPaid: arrivalStatus === 'free' ? 0 : player.cardPaid,
         place: arrivalStatus === 'absent' ? null : player.place,
         placeOverride: arrivalStatus === 'absent' ? false : player.placeOverride,
         bustoutOrder: arrivalStatus === 'absent' ? null : player.bustoutOrder,

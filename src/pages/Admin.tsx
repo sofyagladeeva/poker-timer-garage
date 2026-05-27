@@ -131,7 +131,8 @@ function isPassiveBotPlayerForUpcomingGame(player: {
   bonusCount: number;
   bounty: number;
   paymentDue: number;
-  paymentMethod: string;
+  cashPaid: number;
+  cardPaid: number;
   place: number | null;
   bustoutOrder: number | null;
 }) {
@@ -144,7 +145,8 @@ function isPassiveBotPlayerForUpcomingGame(player: {
     player.bonusCount === 0 &&
     player.bounty === 0 &&
     player.paymentDue === 0 &&
-    player.paymentMethod === 'unpaid' &&
+    player.cashPaid === 0 &&
+    player.cardPaid === 0 &&
     player.place === null &&
     player.bustoutOrder === null
   );
@@ -158,7 +160,8 @@ function hasLiveTournamentProgress(player: {
   bonusCount: number;
   bounty: number;
   paymentDue: number;
-  paymentMethod: string;
+  cashPaid: number;
+  cardPaid: number;
   place: number | null;
   bustoutOrder: number | null;
 }) {
@@ -170,7 +173,8 @@ function hasLiveTournamentProgress(player: {
     player.bonusCount > 0 ||
     player.bounty > 0 ||
     player.paymentDue > 0 ||
-    player.paymentMethod !== 'unpaid' ||
+    player.cashPaid > 0 ||
+    player.cardPaid > 0 ||
     player.place !== null ||
     player.bustoutOrder !== null
   );
@@ -269,9 +273,18 @@ function formatArchiveArrivalStatus(value: TournamentArchivePlayerRecord['arriva
   return 'Не в игре';
 }
 
-function formatArchivePaymentMethod(value: TournamentArchivePlayerRecord['paymentMethod']) {
-  if (value === 'cash') return 'Наличные';
-  if (value === 'card') return 'Карта';
+function formatArchivePayment(player: TournamentArchivePlayerRecord) {
+  if (player.cashPaid != null || player.cardPaid != null) {
+    const cash = player.cashPaid ?? 0;
+    const card = player.cardPaid ?? 0;
+    if (cash > 0 && card > 0) return `нал ${cash.toLocaleString('ru-RU')} ₽ + карта ${card.toLocaleString('ru-RU')} ₽`;
+    if (cash > 0) return `нал ${cash.toLocaleString('ru-RU')} ₽`;
+    if (card > 0) return `карта ${card.toLocaleString('ru-RU')} ₽`;
+    return 'Не оплачено';
+  }
+  // legacy fallback
+  if (player.paymentMethod === 'cash') return 'Наличные';
+  if (player.paymentMethod === 'card') return 'Карта';
   return 'Не оплачено';
 }
 
@@ -701,8 +714,9 @@ export function Admin() {
           bonusCount: player.bonusCount,
           bounty: player.bounty,
           bonusRcPoints: player.bonusRcPoints,
+          cashPaid: player.cashPaid,
+          cardPaid: player.cardPaid,
           paymentDue: player.paymentDue,
-          paymentMethod: player.paymentMethod,
           place: player.place,
           bustoutOrder: player.bustoutOrder,
           createdAt: player.createdAt,
@@ -2728,8 +2742,14 @@ export function Admin() {
                   });
                   const archiveDetails = archiveDetailsById[t.id] ?? t.archive_details ?? null;
                   const archivePlayers = archiveDetails ? sortArchivePlayers(archiveDetails.players) : [];
-                  const archiveCashTotal = archivePlayers.reduce((sum, p) => p.paymentMethod === 'cash' ? sum + p.paymentDue : sum, 0);
-                  const archiveCardTotal = archivePlayers.reduce((sum, p) => p.paymentMethod === 'card' ? sum + p.paymentDue : sum, 0);
+                  const archiveCashTotal = archivePlayers.reduce((sum, p) => {
+                    if (p.cashPaid != null) return sum + p.cashPaid;
+                    return sum + (p.paymentMethod === 'cash' ? p.paymentDue : 0);
+                  }, 0);
+                  const archiveCardTotal = archivePlayers.reduce((sum, p) => {
+                    if (p.cardPaid != null) return sum + p.cardPaid;
+                    return sum + (p.paymentMethod === 'card' ? p.paymentDue : 0);
+                  }, 0);
                   const archiveFullTotal = archivePlayers.reduce((sum, p) => sum + (p.arrivalStatus === 'promo' ? p.paymentDue * 2 : p.paymentDue), 0);
                   const archiveDiscountTotal = archiveFullTotal - (archiveDetails?.summary?.totalDue ?? 0);
                   return (
@@ -2880,7 +2900,7 @@ export function Admin() {
                                       <div className="min-w-0">
                                         <div className="text-white font-bold text-sm">{player.name}</div>
                                         <div className="text-[#666] text-xs mt-1">
-                                          {formatArchiveStatus(player)} · {formatArchiveArrivalStatus(player.arrivalStatus)} · {formatArchivePaymentMethod(player.paymentMethod)}
+                                          {formatArchiveStatus(player)} · {formatArchiveArrivalStatus(player.arrivalStatus)} · {formatArchivePayment(player)}
                                         </div>
                                       </div>
                                       <div className="text-left sm:text-right">
@@ -2902,7 +2922,7 @@ export function Admin() {
                                           <div className="text-[#555] text-[10px] mt-0.5">без скидки: {player.paymentDue * 2} ₽</div>
                                         )}
                                       </div>
-                                      <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Оплата: <span className="text-white font-bold">{formatArchivePaymentMethod(player.paymentMethod)}</span></div>
+                                      <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Оплата: <span className="text-white font-bold">{formatArchivePayment(player)}</span></div>
                                       <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Источник: <span className="text-white font-bold">{player.source === 'manual' ? 'Вручную' : 'Бот'}</span></div>
                                       <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Регистрация: <span className="text-white font-bold">{player.registrationSource === 'waitlist' ? 'Waitlist' : 'Основной'}</span></div>
                                     </div>

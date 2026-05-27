@@ -67,7 +67,7 @@ export type LiveTournamentPlayerSource = 'bot' | 'manual';
 export type LiveTournamentRegistrationSource = 'registered' | 'waitlist';
 export type LiveTournamentPlayerStatus = 'registered' | 'waitlist' | 'active' | 'out';
 export type LiveTournamentArrivalStatus = 'absent' | 'paid' | 'free' | 'promo';
-export type LiveTournamentPaymentMethod = 'unpaid' | 'cash' | 'card';
+export type LiveTournamentPaymentMethod = 'unpaid' | 'cash' | 'card' | 'split';
 
 export interface LiveTournamentPlayer {
   id: string;
@@ -86,9 +86,10 @@ export interface LiveTournamentPlayer {
   bonusCount: number;
   bounty: number;
   bonusRcPoints: number;
+  cashPaid: number;
+  cardPaid: number;
   paymentDue: number;
   paymentDueOverride: boolean;
-  paymentMethod: LiveTournamentPaymentMethod;
   place: number | null;
   placeOverride: boolean;
   bustoutOrder: number | null;
@@ -156,8 +157,10 @@ export interface TournamentArchivePlayerRecord {
   bonusCount: number;
   bounty: number;
   bonusRcPoints: number;
+  cashPaid?: number;
+  cardPaid?: number;
+  paymentMethod?: LiveTournamentPaymentMethod;
   paymentDue: number;
-  paymentMethod: LiveTournamentPaymentMethod;
   place: number | null;
   bustoutOrder: number | null;
   createdAt: string;
@@ -180,6 +183,8 @@ export interface TournamentFinancePlayerRecord {
   registrationSource: LiveTournamentRegistrationSource;
   arrivalStatus: LiveTournamentArrivalStatus;
   paymentMethod: LiveTournamentPaymentMethod;
+  cashPaid: number;
+  cardPaid: number;
   paymentDue: number;
   rebuyCount: number;
   addonCount: number;
@@ -225,6 +230,8 @@ export interface TournamentResultsPlayerRecord {
   registrationSource: LiveTournamentRegistrationSource;
   arrivalStatus: LiveTournamentArrivalStatus;
   paymentMethod: LiveTournamentPaymentMethod;
+  cashPaid: number;
+  cardPaid: number;
   paymentDue: number;
   rebuyCount: number;
   addonCount: number;

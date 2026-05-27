@@ -85,8 +85,8 @@ export function TournamentPlayersTab({
   ];
   const arrivedPlayers = rosterPlayers.filter(p => p.arrivalStatus !== 'absent');
   const payTotalDue = arrivedPlayers.reduce((s, p) => s + p.paymentDue, 0);
-  const payCash = arrivedPlayers.reduce((s, p) => p.paymentMethod === 'cash' ? s + p.paymentDue : s, 0);
-  const payCard = arrivedPlayers.reduce((s, p) => p.paymentMethod === 'card' ? s + p.paymentDue : s, 0);
+  const payCash = arrivedPlayers.reduce((s, p) => s + p.cashPaid, 0);
+  const payCard = arrivedPlayers.reduce((s, p) => s + p.cardPaid, 0);
   const payUnpaid = payTotalDue - payCash - payCard;
   const outDialogPlayer = outDialogPlayerId
     ? rosterPlayers.find(player => player.id === outDialogPlayerId) ?? null
@@ -108,7 +108,7 @@ export function TournamentPlayersTab({
       case 'out':
         return player.status === 'out';
       case 'unpaid':
-        return player.paymentMethod === 'unpaid';
+        return player.arrivalStatus !== 'absent' && player.cashPaid === 0 && player.cardPaid === 0;
       default:
         return true;
     }
@@ -655,12 +655,6 @@ function MobilePlayerCard({
       ? 'free'
       : 'paid';
 
-  const handlePaymentChange = async (nextValue: string) => {
-    if (nextValue === 'unpaid' || nextValue === 'cash' || nextValue === 'card') {
-      await onUpdatePlayerField(player.id, { paymentMethod: nextValue });
-    }
-  };
-
   const handleActiveClick = async () => {
     if (isOut) {
       await onRestorePlayer(player.id);
@@ -819,16 +813,26 @@ function MobilePlayerCard({
                 { value: 'promo', label: 'Промокод' },
               ]}
             />
-            <MobileSelect
-              label="Оплата"
-              value={player.paymentMethod}
-              onChange={value => { void handlePaymentChange(value); }}
-              options={[
-                { value: 'unpaid', label: 'Не оплачено' },
-                { value: 'cash', label: 'Наличные' },
-                { value: 'card', label: 'Карта' },
-              ]}
-            />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Наличными</div>
+                <PaidAmountInput
+                  value={player.cashPaid}
+                  disabled={player.arrivalStatus === 'absent'}
+                  className="mt-1 w-full bg-transparent text-base font-black text-right focus:outline-none placeholder:text-[#444] disabled:text-[#444] text-white"
+                  onCommit={async (value) => await onUpdatePlayerField(player.id, { cashPaid: value })}
+                />
+              </div>
+              <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Картой</div>
+                <PaidAmountInput
+                  value={player.cardPaid}
+                  disabled={player.arrivalStatus === 'absent'}
+                  className="mt-1 w-full bg-transparent text-base font-black text-right focus:outline-none placeholder:text-[#444] disabled:text-[#444] text-white"
+                  onCommit={async (value) => await onUpdatePlayerField(player.id, { cardPaid: value })}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="mt-3 rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2">
@@ -879,14 +883,9 @@ function PlayerRow({
   onOpenOutDialog: (player: LiveTournamentPlayer) => void;
   onRestorePlayer: (playerId: string) => Promise<void>;
 }) {
-  const [openField, setOpenField] = useState<'entry' | 'payment' | null>(null);
+  const [openField, setOpenField] = useState<'entry' | null>(null);
   const canEditCounters = player.arrivalStatus !== 'absent';
   const isOut = player.status === 'out';
-  const paymentMethodLabel = player.paymentMethod === 'cash'
-    ? 'Наличные'
-    : player.paymentMethod === 'card'
-      ? 'Карта'
-      : 'Не оплачено';
   const entryTypeLabel = player.arrivalStatus === 'promo'
     ? 'Промокод'
     : player.arrivalStatus === 'free'
@@ -1115,13 +1114,26 @@ function PlayerRow({
               </MiniChoice>
             </div>
           )}
-          <button
-            type="button"
-            onClick={() => toggleField('payment')}
-            className="inline-flex w-full items-center justify-center sm:justify-start whitespace-normal sm:whitespace-nowrap rounded-lg border border-[#2D2D2D] bg-[#141414] px-1 py-1 text-center sm:px-1.5 sm:text-left text-[9px] leading-tight sm:text-[11px] font-bold text-white hover:border-[#555]"
-          >
-            {paymentMethodLabel}
-          </button>
+          <div className="flex items-end gap-0.5">
+            <div className="flex-1 min-w-0">
+              <div className="text-[7px] sm:text-[8px] uppercase text-[#555] text-center mb-0.5">нал</div>
+              <PaidAmountInput
+                value={player.cashPaid}
+                disabled={player.arrivalStatus === 'absent'}
+                className="admin-input !w-full !py-0.5 !px-1 !text-[9px] sm:!text-[10px] text-center disabled:opacity-40"
+                onCommit={async (v) => await onUpdatePlayerField(player.id, { cashPaid: v })}
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[7px] sm:text-[8px] uppercase text-[#555] text-center mb-0.5">карта</div>
+              <PaidAmountInput
+                value={player.cardPaid}
+                disabled={player.arrivalStatus === 'absent'}
+                className="admin-input !w-full !py-0.5 !px-1 !text-[9px] sm:!text-[10px] text-center disabled:opacity-40"
+                onCommit={async (v) => await onUpdatePlayerField(player.id, { cardPaid: v })}
+              />
+            </div>
+          </div>
           <div className="text-[8px] sm:text-[10px] leading-tight text-center sm:text-left uppercase tracking-[0.08em] sm:tracking-widest text-[#777]">
             <PaymentDueInput
               value={player.paymentDue}
@@ -1133,31 +1145,56 @@ function PlayerRow({
             />
             {player.paymentDueOverride && <span className="text-amber-400 text-[8px]">✎</span>}
           </div>
-          {openField === 'payment' && (
-            <div className="grid grid-cols-1 gap-1">
-              <MiniChoice active={player.paymentMethod === 'unpaid'} onClick={async () => {
-                await onUpdatePlayerField(player.id, { paymentMethod: 'unpaid' });
-                setOpenField(null);
-              }}>
-                Не оплачено
-              </MiniChoice>
-              <MiniChoice active={player.paymentMethod === 'cash'} onClick={async () => {
-                await onUpdatePlayerField(player.id, { paymentMethod: 'cash' });
-                setOpenField(null);
-              }}>
-                Наличные
-              </MiniChoice>
-              <MiniChoice active={player.paymentMethod === 'card'} onClick={async () => {
-                await onUpdatePlayerField(player.id, { paymentMethod: 'card' });
-                setOpenField(null);
-              }}>
-                Карта
-              </MiniChoice>
-            </div>
-          )}
         </div>
       </td>
     </tr>
+  );
+}
+
+function PaidAmountInput({
+  value,
+  disabled,
+  className,
+  onCommit,
+}: {
+  value: number;
+  disabled: boolean;
+  className: string;
+  onCommit: (value: number) => Promise<boolean>;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (focusedRef.current || !inputRef.current) return;
+    inputRef.current.value = value > 0 ? String(value) : '';
+  }, [value]);
+
+  useEffect(() => {
+    if (!inputRef.current || focusedRef.current) return;
+    if (disabled) inputRef.current.value = '';
+  }, [disabled]);
+
+  return (
+    <input
+      ref={inputRef}
+      type="number"
+      min="0"
+      disabled={disabled}
+      defaultValue={value > 0 ? String(value) : ''}
+      onFocus={() => { focusedRef.current = true; }}
+      onBlur={async event => {
+        focusedRef.current = false;
+        if (disabled) { event.currentTarget.value = ''; return; }
+        const raw = event.currentTarget.value.trim();
+        const nextValue = raw ? Math.max(0, Math.round(Number(raw) || 0)) : 0;
+        const ok = await onCommit(nextValue);
+        event.currentTarget.value = ok && nextValue > 0 ? String(nextValue) : (value > 0 ? String(value) : '');
+      }}
+      className={className}
+      placeholder={disabled ? '—' : '0'}
+      inputMode="numeric"
+    />
   );
 }
 
