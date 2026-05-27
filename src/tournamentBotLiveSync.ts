@@ -5,10 +5,12 @@ const ENV = (import.meta as ImportMeta & {
   env?: {
     VITE_BOT_API_URL?: string;
     VITE_BOT_TOURNAMENT_LIVE_SYNC_URL_TEMPLATE?: string;
+    VITE_BOT_ADMIN_TOKEN?: string;
   };
 }).env;
 const BOT_API = ENV?.VITE_BOT_API_URL || 'https://web-production-6035.up.railway.app';
-const LIVE_SYNC_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_LIVE_SYNC_URL_TEMPLATE || `${BOT_API}/api/games/{id}/live-state`;
+const LIVE_SYNC_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_LIVE_SYNC_URL_TEMPLATE || `${BOT_API}/api/admin/games/{id}/live`;
+const BOT_ADMIN_TOKEN = ENV?.VITE_BOT_ADMIN_TOKEN || '';
 
 export const BOT_LIVE_SYNC_INTERVAL_MS = 15_000;
 
@@ -128,11 +130,16 @@ export function buildTournamentBotLiveSyncSignature(payload: TournamentBotLiveSy
 
 export async function pushTournamentBotLiveSync(url: string, payload: TournamentBotLiveSyncPayload) {
   try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (BOT_ADMIN_TOKEN.trim()) {
+      headers['X-Admin-Token'] = BOT_ADMIN_TOKEN.trim();
+    }
+
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(payload),
     });
 
