@@ -272,14 +272,20 @@ export function Display() {
         <FullscreenButton />
         <div
           style={{ position: 'absolute', width: W, height: H, transform: `translate(${x}px,${y}px) scale(${k})`, transformOrigin: 'top left' }}
-          className="flex items-center justify-center"
+          className="flex flex-col items-center justify-center gap-8"
         >
           <img
             src={logoUrl}
             alt="Garage Game Club"
-            style={{ width: '60%', height: 'auto', maxHeight: '70%', objectFit: 'contain' }}
+            style={{ width: '48%', height: 'auto', maxHeight: '58%', objectFit: 'contain' }}
             className="opacity-95 select-none pointer-events-none"
           />
+          <div
+            className="uppercase font-black tracking-[0.35em] select-none"
+            style={{ color: '#FFFFFF', fontSize: '38px', textShadow: '0 0 60px rgba(255,255,255,0.12)' }}
+          >
+            GARAGE GAME CLUB
+          </div>
         </div>
       </div>
     );
@@ -293,8 +299,24 @@ export function Display() {
         <FullscreenButton />
         <div style={{ position: 'absolute', width: W, height: H, transform: `translate(${x}px,${y}px) scale(${k})`, transformOrigin: 'top left' }}
              className="flex flex-col items-center justify-center gap-8 px-12">
-          <div className="text-[#444] uppercase tracking-[0.4em] text-sm">
-            Рейтинг · {new Date().toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
+          <div className="flex flex-col items-center gap-2">
+            <div className="flex items-center gap-4">
+              <img
+                src={logoUrl}
+                alt="Garage Game Club"
+                style={{ height: 42, width: 'auto' }}
+                className="opacity-90 select-none pointer-events-none"
+              />
+              <span
+                className="uppercase font-black tracking-[0.25em] select-none"
+                style={{ color: '#FFFFFF', fontSize: '26px' }}
+              >
+                GARAGE GAME CLUB
+              </span>
+            </div>
+            <div className="text-[#444] uppercase tracking-[0.4em] text-sm">
+              Рейтинг · {new Date().toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
+            </div>
           </div>
           <div className="flex items-end justify-center gap-6 w-full max-w-4xl">
             {top3[1] && <RatingCard player={top3[1]} medal={2} big={false} />}
