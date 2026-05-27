@@ -595,6 +595,12 @@ export function Admin() {
   const [resultsNotice, setResultsNotice] = useState<TournamentResultsNotice>(null);
   const rosterSanitizedSelectionRef = useRef<string | null>(null);
   const initialIdleSelectionResetRef = useRef(false);
+  const pendingTournamentSaveRef = useRef<{
+    saved: boolean;
+    gs: typeof gameState;
+    levels: number;
+    details: TournamentArchiveDetails | null;
+  } | null>(null);
 
   // ── Bot games list ─────────────────────────────────────────────────────
   const [botGames, setBotGames] = useState<BotGameSummary[]>([]);
@@ -961,15 +967,36 @@ export function Admin() {
   };
 
   const startNewTournamentFlow = async (nextTournament?: PendingTournamentSelection) => {
+    // Capture save data on the first call only — prevents duplicate archive entries if
+    // resetTournament fails and the admin retries (gameState may have partially reset by then).
+    if (!pendingTournamentSaveRef.current) {
+      pendingTournamentSaveRef.current = {
+        saved: false,
+        gs: gameState,
+        levels: levelsPlayed,
+        details: archiveDetailsPayload,
+      };
+    }
+
     setNewTournamentBusy(true);
     try {
-      await saveTournament(gameState, levelsPlayed, archiveDetailsPayload);
+      if (!pendingTournamentSaveRef.current.saved) {
+        await saveTournament(
+          pendingTournamentSaveRef.current.gs,
+          pendingTournamentSaveRef.current.levels,
+          pendingTournamentSaveRef.current.details,
+        );
+        pendingTournamentSaveRef.current.saved = true;
+      }
 
       const resetOk = await resetTournament();
       if (!resetOk) {
         alert('Не удалось сохранить завершение турнира в Supabase. Не закрывайте страницу и попробуйте ещё раз.');
         return false;
       }
+
+      // Flow completed — clear the pending save guard.
+      pendingTournamentSaveRef.current = null;
 
       if (nextTournament) {
         const selectionOk = await updateGameState({
