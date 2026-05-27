@@ -364,6 +364,7 @@ function normalizePlayer(
     addonCount,
     bonusCount,
     bounty: clampWhole(raw.bounty),
+    bonusRcPoints: clampWhole(raw.bonusRcPoints),
     paymentDue: (raw.paymentDueOverride === true && arrivalStatus !== 'absent')
       ? clampWhole(raw.paymentDue)
       : calcPaymentDue(arrivalStatus, rebuyCount, addonCount, tournamentBuyIn),
@@ -451,6 +452,7 @@ function isTransientBotRosterPlayer(player: LiveTournamentPlayer) {
     player.addonCount === 0 &&
     player.bonusCount === 0 &&
     player.bounty === 0 &&
+    player.bonusRcPoints === 0 &&
     player.place === null &&
     !player.placeOverride &&
     player.bustoutOrder === null
@@ -487,6 +489,7 @@ function playersEqual(a: LiveTournamentPlayer | undefined, b: LiveTournamentPlay
     a.addonCount === b.addonCount &&
     a.bonusCount === b.bonusCount &&
     a.bounty === b.bounty &&
+    a.bonusRcPoints === b.bonusRcPoints &&
     a.paymentDue === b.paymentDue &&
     a.paymentMethod === b.paymentMethod &&
     a.place === b.place &&
@@ -762,6 +765,7 @@ export function buildTournamentResultsPayload(params: {
       rebuyCount: player.rebuyCount,
       addonCount: player.addonCount,
       bounty: player.bounty,
+      bonusRcPoints: player.bonusRcPoints,
       status: player.status,
       place: player.place,
       bustoutOrder: player.bustoutOrder,

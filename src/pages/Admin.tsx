@@ -700,6 +700,7 @@ export function Admin() {
           addonCount: player.addonCount,
           bonusCount: player.bonusCount,
           bounty: player.bounty,
+          bonusRcPoints: player.bonusRcPoints,
           paymentDue: player.paymentDue,
           paymentMethod: player.paymentMethod,
           place: player.place,

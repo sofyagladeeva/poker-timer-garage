@@ -515,11 +515,12 @@ export function TournamentPlayersTab({
                   <table className="w-full table-fixed border-separate border-spacing-y-1">
                     <thead>
                       <tr className="text-[8px] sm:text-[11px] uppercase tracking-[0.12em] sm:tracking-[0.18em] text-[#666]">
-                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[26%]">Игрок</th>
-                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[14%]">В игре</th>
-                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Rebuy</th>
-                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Addon</th>
-                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[10%]">Бонус</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[22%]">Игрок</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[13%]">В игре</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[9%]">Rebuy</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[9%]">Addon</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[9%]">Бонус</th>
+                        <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[8%]">RC</th>
                         <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[12%]">Место</th>
                         <th className="sticky top-0 z-20 text-left font-normal px-1 py-1 sm:px-1.5 sm:py-1.5 bg-[#111] shadow-[0_1px_0_#2D2D2D] w-[18%]">Вход / оплата</th>
                       </tr>
@@ -843,6 +844,18 @@ function MobilePlayerCard({
               }
             />
           </div>
+
+          <div className="mt-3 rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2">
+            <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Бонус RC</div>
+            <BonusRcInput
+              value={player.bonusRcPoints}
+              disabled={player.arrivalStatus === 'absent'}
+              className="mt-1 w-full bg-transparent text-base font-black text-right focus:outline-none placeholder:text-[#444] disabled:text-[#444] text-white"
+              onCommit={async (value) =>
+                await onUpdatePlayerField(player.id, { bonusRcPoints: value })
+              }
+            />
+          </div>
         </>
       )}
     </div>
@@ -1027,6 +1040,15 @@ function PlayerRow({
       </td>
 
       <td className="px-1 py-1 sm:px-1.5 sm:py-1.5 align-top border-y border-[#2D2D2D]">
+        <BonusRcInput
+          value={player.bonusRcPoints}
+          disabled={!canEditCounters}
+          className="admin-input !w-full !py-1 !px-1 !text-[10px] sm:!text-[11px] text-center font-black disabled:opacity-30"
+          onCommit={async (value) => await onUpdatePlayerField(player.id, { bonusRcPoints: value })}
+        />
+      </td>
+
+      <td className="px-1 py-1 sm:px-1.5 sm:py-1.5 align-top border-y border-[#2D2D2D]">
         <div className="min-w-0 flex flex-col gap-1">
           {isOut ? (
             <>
@@ -1136,6 +1158,53 @@ function PlayerRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+function BonusRcInput({
+  value,
+  disabled,
+  className,
+  onCommit,
+}: {
+  value: number;
+  disabled: boolean;
+  className: string;
+  onCommit: (value: number) => Promise<boolean>;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (focusedRef.current || !inputRef.current) return;
+    inputRef.current.value = value > 0 ? String(value) : '';
+  }, [value]);
+
+  useEffect(() => {
+    if (!inputRef.current || focusedRef.current) return;
+    if (disabled) inputRef.current.value = '';
+  }, [disabled]);
+
+  return (
+    <input
+      ref={inputRef}
+      type="number"
+      min="0"
+      disabled={disabled}
+      defaultValue={value > 0 ? String(value) : ''}
+      onFocus={() => { focusedRef.current = true; }}
+      onBlur={async event => {
+        focusedRef.current = false;
+        if (disabled) { event.currentTarget.value = ''; return; }
+        const raw = event.currentTarget.value.trim();
+        const nextValue = raw ? Math.max(0, Math.round(Number(raw) || 0)) : 0;
+        const ok = await onCommit(nextValue);
+        event.currentTarget.value = ok && nextValue > 0 ? String(nextValue) : (value > 0 ? String(value) : '');
+      }}
+      className={className}
+      placeholder={disabled ? '—' : '0'}
+      inputMode="numeric"
+    />
   );
 }
 

@@ -85,6 +85,7 @@ export interface LiveTournamentPlayer {
   addonCount: number;
   bonusCount: number;
   bounty: number;
+  bonusRcPoints: number;
   paymentDue: number;
   paymentDueOverride: boolean;
   paymentMethod: LiveTournamentPaymentMethod;
@@ -154,6 +155,7 @@ export interface TournamentArchivePlayerRecord {
   addonCount: number;
   bonusCount: number;
   bounty: number;
+  bonusRcPoints: number;
   paymentDue: number;
   paymentMethod: LiveTournamentPaymentMethod;
   place: number | null;
@@ -227,6 +229,7 @@ export interface TournamentResultsPlayerRecord {
   rebuyCount: number;
   addonCount: number;
   bounty: number;
+  bonusRcPoints: number;
   status: LiveTournamentPlayerStatus;
   place: number | null;
   bustoutOrder: number | null;
