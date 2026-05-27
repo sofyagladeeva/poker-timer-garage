@@ -807,6 +807,11 @@ export function buildTournamentFinancePayload(params: {
   const { sessionId, tournamentBotId, tournamentTitle, finishedAt, levelsPlayed, players } = params;
   const eligiblePlayers = players.filter(player => player.arrivalStatus !== 'absent');
   const summary = summarizePlayers(eligiblePlayers);
+  const cashTotal = eligiblePlayers.reduce((s, p) => s + p.cashPaid, 0);
+  const cardTotal = eligiblePlayers.reduce((s, p) => s + p.cardPaid, 0);
+  const totalPaid = cashTotal + cardTotal;
+  const fullTotal = eligiblePlayers.reduce((s, p) => s + (p.arrivalStatus === 'promo' ? p.paymentDue * 2 : p.paymentDue), 0);
+  const discountTotal = fullTotal - summary.totalDue;
 
   return {
     sessionId,
@@ -829,6 +834,10 @@ export function buildTournamentFinancePayload(params: {
       paidEntries: summary.paidEntries,
       freeEntries: summary.freeEntries,
       totalDue: summary.totalDue,
+      cashTotal,
+      cardTotal,
+      totalPaid,
+      discountTotal,
     },
     players: eligiblePlayers.map(player => ({
       id: player.id,

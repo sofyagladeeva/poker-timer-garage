@@ -216,6 +216,10 @@ export interface TournamentFinancePayload {
     paidEntries: number;
     freeEntries: number;
     totalDue: number;
+    cashTotal: number;
+    cardTotal: number;
+    totalPaid: number;
+    discountTotal: number;
   };
   players: TournamentFinancePlayerRecord[];
 }
