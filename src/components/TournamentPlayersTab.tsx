@@ -832,33 +832,31 @@ function MobilePlayerCard({
                   onCommit={async (value) => await onUpdatePlayerField(player.id, { cardPaid: value })}
                 />
               </div>
+              <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">
+                  К оплате{player.paymentDueOverride && <span className="ml-1 text-amber-400">✎</span>}
+                </div>
+                <PaymentDueInput
+                  value={player.paymentDue}
+                  disabled={player.arrivalStatus === 'absent'}
+                  className="mt-1 w-full bg-transparent text-base font-black text-right focus:outline-none placeholder:text-[#444] disabled:text-[#444] text-white"
+                  onCommit={async (value, override) =>
+                    await onUpdatePlayerField(player.id, { paymentDue: value, paymentDueOverride: override })
+                  }
+                />
+              </div>
+              <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Бонус RC</div>
+                <BonusRcInput
+                  value={player.bonusRcPoints}
+                  disabled={player.arrivalStatus === 'absent'}
+                  className="mt-1 w-full bg-transparent text-base font-black text-right focus:outline-none placeholder:text-[#444] disabled:text-[#444] text-white"
+                  onCommit={async (value) =>
+                    await onUpdatePlayerField(player.id, { bonusRcPoints: value })
+                  }
+                />
+              </div>
             </div>
-          </div>
-
-          <div className="mt-3 rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2">
-            <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">
-              К оплате{player.paymentDueOverride && <span className="ml-1 text-amber-400">✎</span>}
-            </div>
-            <PaymentDueInput
-              value={player.paymentDue}
-              disabled={player.arrivalStatus === 'absent'}
-              className="mt-1 w-full bg-transparent text-base font-black text-right focus:outline-none placeholder:text-[#444] disabled:text-[#444] text-white"
-              onCommit={async (value, override) =>
-                await onUpdatePlayerField(player.id, { paymentDue: value, paymentDueOverride: override })
-              }
-            />
-          </div>
-
-          <div className="mt-3 rounded-xl border border-[#2D2D2D] bg-[#141414] px-3 py-2">
-            <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Бонус RC</div>
-            <BonusRcInput
-              value={player.bonusRcPoints}
-              disabled={player.arrivalStatus === 'absent'}
-              className="mt-1 w-full bg-transparent text-base font-black text-right focus:outline-none placeholder:text-[#444] disabled:text-[#444] text-white"
-              onCommit={async (value) =>
-                await onUpdatePlayerField(player.id, { bonusRcPoints: value })
-              }
-            />
           </div>
         </>
       )}

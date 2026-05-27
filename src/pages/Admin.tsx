@@ -580,6 +580,13 @@ export function Admin() {
   const [backgroundUploadBusy, setBackgroundUploadBusy] = useState(false);
   const [backgroundUploadError, setBackgroundUploadError] = useState<string | null>(null);
   const [backgroundUploadNote, setBackgroundUploadNote] = useState<string | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 400);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   // ── Drag state for blind levels ────────────────────────────────────────
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropLine, setDropLine] = useState<number | null>(null);
@@ -3206,6 +3213,17 @@ export function Admin() {
         </div>
       )}
     </div>
+
+    {showScrollTop && (
+      <button
+        type="button"
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        className="fixed bottom-5 right-5 z-50 flex h-11 w-11 items-center justify-center rounded-full border border-[#3D3D3D] bg-[#1A1A1A] text-[#AAA] shadow-lg transition-colors hover:border-[#666] hover:text-white"
+        aria-label="Наверх"
+      >
+        ↑
+      </button>
+    )}
     </ErrorBoundary>
   );
 }
