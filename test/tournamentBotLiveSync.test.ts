@@ -61,6 +61,8 @@ test('buildTournamentBotLiveSyncPayload includes active players and knockout ETA
   assert.equal(payload.playersInGame, 14);
   assert.equal(payload.playersRegistered, 21);
   assert.equal(payload.playersOut, 7);
+  assert.equal(payload.secondsToKnockout, 600);
+  assert.equal(payload.knockoutStartsAt, new Date(authoritativeNowMs + 600_000).toISOString());
   assert.equal(payload.knockout?.label, 'Knockout');
   assert.equal(payload.knockout?.secondsUntil, 600);
   assert.equal(payload.knockout?.startsAt, new Date(authoritativeNowMs + 600_000).toISOString());

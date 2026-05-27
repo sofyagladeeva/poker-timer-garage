@@ -26,6 +26,8 @@ export interface TournamentBotLiveSyncPayload {
   playersRegistered: number;
   playersOut: number;
   sentAt: string;
+  knockoutStartsAt: string | null;
+  secondsToKnockout: number | null;
   knockout: {
     label: string;
     levelIndex: number;
@@ -99,6 +101,10 @@ export function buildTournamentBotLiveSyncPayload({
     playersRegistered: clampWhole(playersRegistered),
     playersOut: clampWhole(playersOut),
     sentAt: new Date(roundedAuthoritativeNowMs).toISOString(),
+    knockoutStartsAt: nextKnockout
+      ? new Date(roundToSecond(authoritativeNowMs + nextKnockout.secondsUntil * 1000)).toISOString()
+      : null,
+    secondsToKnockout: nextKnockout ? clampWhole(nextKnockout.secondsUntil) : null,
     knockout: nextKnockout
       ? {
           label: getKnockoutLabel(nextKnockout.level) || 'Игра на вылет',
