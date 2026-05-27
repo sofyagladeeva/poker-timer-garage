@@ -272,20 +272,14 @@ export function Display() {
         <FullscreenButton />
         <div
           style={{ position: 'absolute', width: W, height: H, transform: `translate(${x}px,${y}px) scale(${k})`, transformOrigin: 'top left' }}
-          className="flex flex-col items-center justify-center gap-8"
+          className="flex items-center justify-center"
         >
           <img
             src={logoUrl}
             alt="Garage Game Club"
-            style={{ width: '48%', height: 'auto', maxHeight: '58%', objectFit: 'contain' }}
+            style={{ width: '68%', height: 'auto', maxHeight: '78%', objectFit: 'contain' }}
             className="opacity-95 select-none pointer-events-none"
           />
-          <div
-            className="uppercase font-black tracking-[0.35em] select-none"
-            style={{ color: '#FFFFFF', fontSize: '38px', textShadow: '0 0 60px rgba(255,255,255,0.12)' }}
-          >
-            GARAGE GAME CLUB
-          </div>
         </div>
       </div>
     );
@@ -304,7 +298,7 @@ export function Display() {
               <img
                 src={logoUrl}
                 alt="Garage Game Club"
-                style={{ height: 42, width: 'auto' }}
+                style={{ height: 64, width: 'auto' }}
                 className="opacity-90 select-none pointer-events-none"
               />
               <span
