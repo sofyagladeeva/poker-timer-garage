@@ -264,6 +264,27 @@ export function Display() {
       }
     : {};
 
+  /* ══════════════ LOGO MODE ══════════════ */
+  if (gameState.showLogo) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: '#0A0A0A', overflow: 'hidden', ...bgStyle }}>
+        {gameState.backgroundUrl && <div className="absolute inset-0 bg-black/80 z-0" />}
+        <FullscreenButton />
+        <div
+          style={{ position: 'absolute', width: W, height: H, transform: `translate(${x}px,${y}px) scale(${k})`, transformOrigin: 'top left' }}
+          className="flex items-center justify-center"
+        >
+          <img
+            src={logoUrl}
+            alt="Garage Game Club"
+            style={{ width: '60%', height: 'auto', maxHeight: '70%', objectFit: 'contain' }}
+            className="opacity-95 select-none pointer-events-none"
+          />
+        </div>
+      </div>
+    );
+  }
+
   /* ══════════════ RATING MODE ══════════════ */
   if (gameState.showRating) {
     return (

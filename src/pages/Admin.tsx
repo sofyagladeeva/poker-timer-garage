@@ -2369,13 +2369,33 @@ export function Admin() {
                   <div className="text-[#555] text-xs mt-0.5">Заменяет таймер на таблицу рейтинга</div>
                 </div>
                 <button
-                  onClick={() => updateGameState({ showRating: !gameState.showRating })}
+                  onClick={() => updateGameState({ showRating: !gameState.showRating, showLogo: false })}
                   className={`w-14 h-7 rounded-full transition-colors flex-shrink-0 ml-4 ${
                     gameState.showRating ? 'bg-[#C0392B]' : 'bg-[#2D2D2D]'
                   }`}
                 >
                   <div className={`w-6 h-6 bg-white rounded-full mx-0.5 transition-transform ${
                     gameState.showRating ? 'translate-x-7' : 'translate-x-0'
+                  }`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Logo toggle */}
+            <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-white font-medium text-sm">Показать логотип на экране</div>
+                  <div className="text-[#555] text-xs mt-0.5">Заменяет таймер на логотип клуба</div>
+                </div>
+                <button
+                  onClick={() => updateGameState({ showLogo: !gameState.showLogo, showRating: false })}
+                  className={`w-14 h-7 rounded-full transition-colors flex-shrink-0 ml-4 ${
+                    gameState.showLogo ? 'bg-[#C0392B]' : 'bg-[#2D2D2D]'
+                  }`}
+                >
+                  <div className={`w-6 h-6 bg-white rounded-full mx-0.5 transition-transform ${
+                    gameState.showLogo ? 'translate-x-7' : 'translate-x-0'
                   }`} />
                 </button>
               </div>

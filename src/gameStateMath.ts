@@ -64,6 +64,7 @@ export function normalizeGameState(raw: unknown, fallback: GameState): GameState
     backgroundUrl: toNullableString(source.backgroundUrl, fallback.backgroundUrl),
     nextGameInfo: toStringValue(source.nextGameInfo, fallback.nextGameInfo),
     showRating: toBoolean(source.showRating, fallback.showRating),
+    showLogo: toBoolean(source.showLogo, fallback.showLogo),
     prizeAmount: toWholeNumber(source.prizeAmount, fallback.prizeAmount),
     prizePlaces: toWholeNumber(source.prizePlaces, fallback.prizePlaces),
     tournamentTitle: toStringValue(source.tournamentTitle, fallback.tournamentTitle),

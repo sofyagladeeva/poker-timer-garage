@@ -53,6 +53,7 @@ export interface GameState {
   backgroundUrl: string | null;
   nextGameInfo: string;
   showRating: boolean;
+  showLogo: boolean;
   prizeAmount: number;
   prizePlaces: number;
   tournamentTitle: string; // название текущей игры

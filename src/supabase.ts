@@ -41,6 +41,7 @@ export const DEFAULT_GAME_STATE = {
   backgroundUrl: null,
   nextGameInfo: '',
   showRating: false,
+  showLogo: false,
   prizeAmount: 0,
   prizePlaces: 3,
   tournamentTitle: '',
