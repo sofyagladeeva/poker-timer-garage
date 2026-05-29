@@ -1030,7 +1030,7 @@ export function useGameState(readOnly = false) {
     levelsPlayed: number,
     archiveDetails?: TournamentArchiveDetails | null
   ) => {
-    if (gs.players === 0 && gs.totalStack === 0) return;
+    if (gs.players === 0 && gs.totalStack === 0 && !archiveDetails) return;
     const record = {
       title: gs.tournamentTitle || null,
       players: gs.players,

@@ -108,7 +108,7 @@ export function TournamentPlayersTab({
       case 'out':
         return player.status === 'out';
       case 'unpaid':
-        return player.arrivalStatus !== 'absent' && player.cashPaid === 0 && player.cardPaid === 0;
+        return player.arrivalStatus !== 'absent' && player.paymentDue > 0 && player.cashPaid === 0 && player.cardPaid === 0;
       default:
         return true;
     }
@@ -641,6 +641,7 @@ function MobilePlayerCard({
   onRestorePlayer: (playerId: string) => Promise<void>;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [splitOpen, setSplitOpen] = useState(false);
   const canEditCounters = player.arrivalStatus !== 'absent';
   const isOut = player.status === 'out';
   const nameBadgeLabel = isOut ? 'Выбыл' : player.arrivalStatus === 'absent' ? 'Не в игре' : 'В игре';
@@ -814,24 +815,77 @@ function MobilePlayerCard({
               ]}
             />
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2">
-                <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Наличными</div>
-                <PaidAmountInput
-                  value={player.cashPaid}
-                  disabled={player.arrivalStatus === 'absent'}
-                  className="mt-1 w-full bg-transparent text-base font-black text-right focus:outline-none placeholder:text-[#444] disabled:text-[#444] text-white"
-                  onCommit={async (value) => await onUpdatePlayerField(player.id, { cashPaid: value })}
-                />
-              </div>
-              <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2">
-                <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Картой</div>
-                <PaidAmountInput
-                  value={player.cardPaid}
-                  disabled={player.arrivalStatus === 'absent'}
-                  className="mt-1 w-full bg-transparent text-base font-black text-right focus:outline-none placeholder:text-[#444] disabled:text-[#444] text-white"
-                  onCommit={async (value) => await onUpdatePlayerField(player.id, { cardPaid: value })}
-                />
-              </div>
+              {player.paymentDue > 0 && (
+                <div className="col-span-2 rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-2">Способ оплаты</div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      disabled={player.arrivalStatus === 'absent'}
+                      onClick={async () => {
+                        setSplitOpen(false);
+                        await onUpdatePlayerField(player.id, { cashPaid: player.paymentDue, cardPaid: 0 });
+                      }}
+                      className={`rounded-lg border py-2 text-[11px] font-bold transition-colors ${
+                        player.cashPaid > 0 && player.cardPaid === 0
+                          ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
+                          : 'border-[#2D2D2D] bg-[#141414] text-[#888] hover:border-[#555] hover:text-white'
+                      } disabled:opacity-40`}
+                    >
+                      Наличкой
+                    </button>
+                    <button
+                      type="button"
+                      disabled={player.arrivalStatus === 'absent'}
+                      onClick={async () => {
+                        setSplitOpen(false);
+                        await onUpdatePlayerField(player.id, { cardPaid: player.paymentDue, cashPaid: 0 });
+                      }}
+                      className={`rounded-lg border py-2 text-[11px] font-bold transition-colors ${
+                        player.cardPaid > 0 && player.cashPaid === 0
+                          ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
+                          : 'border-[#2D2D2D] bg-[#141414] text-[#888] hover:border-[#555] hover:text-white'
+                      } disabled:opacity-40`}
+                    >
+                      Картой
+                    </button>
+                    <button
+                      type="button"
+                      disabled={player.arrivalStatus === 'absent'}
+                      onClick={() => setSplitOpen(o => !o)}
+                      className={`rounded-lg border py-2 text-[11px] font-bold transition-colors ${
+                        (player.cashPaid > 0 && player.cardPaid > 0) || splitOpen
+                          ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
+                          : 'border-[#2D2D2D] bg-[#141414] text-[#888] hover:border-[#555] hover:text-white'
+                      } disabled:opacity-40`}
+                    >
+                      Разделить
+                    </button>
+                  </div>
+                  {splitOpen && (
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1">Наличными</div>
+                        <PaidAmountInput
+                          value={player.cashPaid}
+                          disabled={player.arrivalStatus === 'absent'}
+                          className="w-full bg-transparent text-base font-black text-right focus:outline-none placeholder:text-[#444] disabled:text-[#444] text-white"
+                          onCommit={async (value) => await onUpdatePlayerField(player.id, { cashPaid: value })}
+                        />
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1">Картой</div>
+                        <PaidAmountInput
+                          value={player.cardPaid}
+                          disabled={player.arrivalStatus === 'absent'}
+                          className="w-full bg-transparent text-base font-black text-right focus:outline-none placeholder:text-[#444] disabled:text-[#444] text-white"
+                          onCommit={async (value) => await onUpdatePlayerField(player.id, { cardPaid: value })}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2">
                 <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">
                   К оплате{player.paymentDueOverride && <span className="ml-1 text-amber-400">✎</span>}
@@ -881,7 +935,7 @@ function PlayerRow({
   onOpenOutDialog: (player: LiveTournamentPlayer) => void;
   onRestorePlayer: (playerId: string) => Promise<void>;
 }) {
-  const [openField, setOpenField] = useState<'entry' | null>(null);
+  const [openField, setOpenField] = useState<'entry' | 'split' | null>(null);
   const canEditCounters = player.arrivalStatus !== 'absent';
   const isOut = player.status === 'out';
   const entryTypeLabel = player.arrivalStatus === 'promo'
@@ -1112,26 +1166,61 @@ function PlayerRow({
               </MiniChoice>
             </div>
           )}
-          <div className="flex items-end gap-0.5">
-            <div className="flex-1 min-w-0">
-              <div className="text-[7px] sm:text-[8px] uppercase text-[#555] text-center mb-0.5">нал</div>
-              <PaidAmountInput
-                value={player.cashPaid}
-                disabled={player.arrivalStatus === 'absent'}
-                className="admin-input !w-full !py-0.5 !px-1 !text-[9px] sm:!text-[10px] text-center disabled:opacity-40"
-                onCommit={async (v) => await onUpdatePlayerField(player.id, { cashPaid: v })}
-              />
+          {player.paymentDue > 0 && (
+            <div className="flex flex-col gap-1">
+              <div className="grid grid-cols-3 gap-0.5">
+                <MiniChoice
+                  active={player.cashPaid > 0 && player.cardPaid === 0}
+                  centered
+                  onClick={async () => {
+                    setOpenField(f => f === 'split' ? null : f);
+                    await onUpdatePlayerField(player.id, { cashPaid: player.paymentDue, cardPaid: 0 });
+                  }}
+                >
+                  Нал
+                </MiniChoice>
+                <MiniChoice
+                  active={player.cardPaid > 0 && player.cashPaid === 0}
+                  centered
+                  onClick={async () => {
+                    setOpenField(f => f === 'split' ? null : f);
+                    await onUpdatePlayerField(player.id, { cardPaid: player.paymentDue, cashPaid: 0 });
+                  }}
+                >
+                  Карта
+                </MiniChoice>
+                <MiniChoice
+                  active={(player.cashPaid > 0 && player.cardPaid > 0) || openField === 'split'}
+                  centered
+                  onClick={() => setOpenField(f => f === 'split' ? null : 'split')}
+                >
+                  Сплит
+                </MiniChoice>
+              </div>
+              {openField === 'split' && (
+                <div className="flex gap-0.5">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[7px] sm:text-[8px] uppercase text-[#555] text-center mb-0.5">нал</div>
+                    <PaidAmountInput
+                      value={player.cashPaid}
+                      disabled={player.arrivalStatus === 'absent'}
+                      className="admin-input !w-full !py-0.5 !px-1 !text-[9px] sm:!text-[10px] text-center disabled:opacity-40"
+                      onCommit={async (v) => await onUpdatePlayerField(player.id, { cashPaid: v })}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[7px] sm:text-[8px] uppercase text-[#555] text-center mb-0.5">карта</div>
+                    <PaidAmountInput
+                      value={player.cardPaid}
+                      disabled={player.arrivalStatus === 'absent'}
+                      className="admin-input !w-full !py-0.5 !px-1 !text-[9px] sm:!text-[10px] text-center disabled:opacity-40"
+                      onCommit={async (v) => await onUpdatePlayerField(player.id, { cardPaid: v })}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[7px] sm:text-[8px] uppercase text-[#555] text-center mb-0.5">карта</div>
-              <PaidAmountInput
-                value={player.cardPaid}
-                disabled={player.arrivalStatus === 'absent'}
-                className="admin-input !w-full !py-0.5 !px-1 !text-[9px] sm:!text-[10px] text-center disabled:opacity-40"
-                onCommit={async (v) => await onUpdatePlayerField(player.id, { cardPaid: v })}
-              />
-            </div>
-          </div>
+          )}
           <div className="text-[8px] sm:text-[10px] leading-tight text-center sm:text-left uppercase tracking-[0.08em] sm:tracking-widest text-[#777]">
             <PaymentDueInput
               value={player.paymentDue}
