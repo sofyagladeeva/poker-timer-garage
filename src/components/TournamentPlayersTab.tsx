@@ -644,6 +644,7 @@ function MobilePlayerCard({
   const [splitOpen, setSplitOpen] = useState(false);
   const canEditCounters = player.arrivalStatus !== 'absent';
   const isOut = player.status === 'out';
+  const isWaitlist = player.registrationSource === 'waitlist';
   const nameBadgeLabel = isOut ? 'Выбыл' : player.arrivalStatus === 'absent' ? 'Не в игре' : 'В игре';
   const nameBadgeTone = isOut
     ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
@@ -693,8 +694,15 @@ function MobilePlayerCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-white font-black text-base leading-tight break-words">{player.name}</div>
-          <div className={`mt-1 inline-flex items-center rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.12em] ${nameBadgeTone}`}>
-            {nameBadgeLabel}
+          <div className="mt-1 flex flex-wrap gap-1">
+            <div className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.12em] ${nameBadgeTone}`}>
+              {nameBadgeLabel}
+            </div>
+            {isWaitlist && (
+              <div className="inline-flex items-center rounded-full border border-amber-600/70 bg-amber-950/50 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-amber-300">
+                Waitlist
+              </div>
+            )}
           </div>
         </div>
 
@@ -948,6 +956,7 @@ function PlayerRow({
     setOpenField(current => current === field ? null : field);
   };
 
+  const isWaitlist = player.registrationSource === 'waitlist';
   const nameBadgeLabel = isOut ? 'Выбыл' : player.arrivalStatus === 'absent' ? 'Не в игре' : 'В игре';
   const nameBadgeTone = isOut
     ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
@@ -988,8 +997,15 @@ function PlayerRow({
       <td className="px-1 py-1 sm:px-1.5 sm:py-1.5 align-top rounded-l-2xl border-y border-l border-[#2D2D2D]">
         <div className="flex min-w-0 flex-col gap-1">
           <div className="text-white font-black text-[11px] sm:text-sm truncate">{player.name}</div>
-          <div className={`inline-flex w-fit items-center rounded-full border px-1.5 py-0.5 text-[8px] sm:px-2 sm:text-[9px] uppercase tracking-[0.12em] sm:tracking-[0.14em] ${nameBadgeTone}`}>
-            {nameBadgeLabel}
+          <div className="flex flex-wrap gap-1">
+            <div className={`inline-flex w-fit items-center rounded-full border px-1.5 py-0.5 text-[8px] sm:px-2 sm:text-[9px] uppercase tracking-[0.12em] sm:tracking-[0.14em] ${nameBadgeTone}`}>
+              {nameBadgeLabel}
+            </div>
+            {isWaitlist && (
+              <div className="inline-flex w-fit items-center rounded-full border border-amber-600/70 bg-amber-950/50 px-1.5 py-0.5 text-[8px] sm:px-2 sm:text-[9px] uppercase tracking-[0.12em] sm:tracking-[0.14em] text-amber-300">
+                Waitlist
+              </div>
+            )}
           </div>
         </div>
       </td>
