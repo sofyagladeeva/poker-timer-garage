@@ -184,9 +184,9 @@ export function TournamentPlayersTab({
       ? filterPlayers(groupedPlayers.out)
       : [
           ...filterPlayers(groupedPlayers.active),
-          ...filterPlayers(groupedPlayers.pending),
           ...filterPlayers(groupedPlayers.waitlist),
           ...filterPlayers(groupedPlayers.out),
+          ...filterPlayers(groupedPlayers.pending),
         ];
   const projectedOutPlace = outDialogPlayer
     ? getProjectedOutPlace(rosterPlayers, outDialogPlayer)
