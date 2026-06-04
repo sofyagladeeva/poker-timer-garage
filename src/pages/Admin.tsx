@@ -81,6 +81,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: string |
 }
 
 const BOT_API = import.meta.env.VITE_BOT_API_URL || 'https://web-production-6035.up.railway.app';
+const BOT_ADMIN_TOKEN = import.meta.env.VITE_BOT_ADMIN_TOKEN || '';
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'poker2024';
 const ARCHIVE_PASSWORD = import.meta.env.VITE_ARCHIVE_PASSWORD || 'garage1409';
@@ -625,7 +626,9 @@ export function Admin() {
   // ── Bot games list ─────────────────────────────────────────────────────
   const [botGames, setBotGames] = useState<BotGameSummary[]>([]);
   useEffect(() => {
-    fetch(`${BOT_API}/api/games`)
+    fetch(`${BOT_API}/api/games`, {
+      headers: BOT_ADMIN_TOKEN ? { 'X-Admin-Token': BOT_ADMIN_TOKEN } : {},
+    })
       .then(r => r.json())
       .then(setBotGames)
       .catch(() => {});
