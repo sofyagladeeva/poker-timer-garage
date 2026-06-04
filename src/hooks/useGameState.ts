@@ -309,6 +309,10 @@ export function useGameState(readOnly = false) {
     }
     markAuthoritativeReady();
     setGameState(liveState);
+    // Update ref immediately — useEffect lags behind by one render cycle.
+    // Without this, applyGameStatePatch reads stale currentLevelIndex right
+    // after a foreground sync completes (multi-device or wake-from-sleep).
+    gameStateRef.current = liveState;
     saveLocal(STATE_KEY, persistedState);
     markClientActivity();
   }, [hydrateSyncedState, markAuthoritativeReady, markClientActivity]);
@@ -809,6 +813,10 @@ export function useGameState(readOnly = false) {
     const updated = normalizeGameState({ ...gameStateRef.current, ...nextPatch }, gameStateRef.current);
     const persistedPatch = buildGameStatePersistencePatch(updated, nextPatch);
     setGameState(updated);
+    // Keep ref in sync immediately so subsequent patches in the same event loop
+    // tick (e.g. two rapid player-count updates) read the correct state rather
+    // than the pre-render stale snapshot.
+    gameStateRef.current = updated;
     saveLocal(STATE_KEY, updated);
     markClientActivity();
     if (!isSupabaseConfigured) return Promise.resolve(true);
@@ -839,6 +847,13 @@ export function useGameState(readOnly = false) {
     if (immediate) {
       return persistGameState(updated, persistedPatch, true);
     }
+
+    // Mark write intent immediately — persistGameState sets this too, but only
+    // fires after the 300ms debounce. Without this, the 2s poll can race the
+    // debounce window: it sees hasFreshLocalWrite=false AND incomingTick equal
+    // to localTick, so it applies stale server state (potentially with an older
+    // currentLevelIndex) before the local patch reaches Supabase.
+    lastLocalWriteAt.current = Date.now();
 
     supabaseUpsertTimer.current = setTimeout(() => {
       const stateToSave = pendingUpsertState.current;

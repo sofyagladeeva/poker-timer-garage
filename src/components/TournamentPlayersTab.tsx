@@ -67,7 +67,7 @@ export function TournamentPlayersTab({
 }: Props) {
   const [manualPlayerName, setManualPlayerName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewFilter, setViewFilter] = useState<'all' | 'active' | 'pending' | 'waitlist' | 'out' | 'unpaid'>('all');
+  const [viewFilter, setViewFilter] = useState<'all' | 'active' | 'pending' | 'waitlist' | 'out' | 'unpaid' | 'cash' | 'card'>('all');
   const [placeConflictNotice, setPlaceConflictNotice] = useState<string | null>(null);
   const [backupRestoreBusyId, setBackupRestoreBusyId] = useState<string | null>(null);
   const [backupRestoreNotice, setBackupRestoreNotice] = useState<string | null>(null);
@@ -108,7 +108,11 @@ export function TournamentPlayersTab({
       case 'out':
         return player.status === 'out';
       case 'unpaid':
-        return player.arrivalStatus !== 'absent' && player.paymentDue > 0 && player.cashPaid === 0 && player.cardPaid === 0;
+        return player.arrivalStatus !== 'absent' && player.paymentDue > player.cashPaid + player.cardPaid;
+      case 'cash':
+        return player.arrivalStatus !== 'absent' && player.cashPaid > 0;
+      case 'card':
+        return player.arrivalStatus !== 'absent' && player.cardPaid > 0;
       default:
         return true;
     }
@@ -181,13 +185,13 @@ export function TournamentPlayersTab({
       : viewFilter === 'waitlist'
         ? filterPlayers(groupedPlayers.waitlist)
         : viewFilter === 'out'
-      ? filterPlayers(groupedPlayers.out)
-      : [
-          ...filterPlayers(groupedPlayers.active),
-          ...filterPlayers(groupedPlayers.waitlist),
-          ...filterPlayers(groupedPlayers.out),
-          ...filterPlayers(groupedPlayers.pending),
-        ];
+          ? filterPlayers(groupedPlayers.out)
+          : [
+              ...filterPlayers(groupedPlayers.active),
+              ...filterPlayers(groupedPlayers.waitlist),
+              ...filterPlayers(groupedPlayers.out),
+              ...filterPlayers(groupedPlayers.pending),
+            ];
   const projectedOutPlace = outDialogPlayer
     ? getProjectedOutPlace(rosterPlayers, outDialogPlayer)
     : null;
@@ -364,20 +368,46 @@ export function TournamentPlayersTab({
                 <div className="text-[#555] text-[10px] uppercase">К оплате</div>
                 <div className="text-white font-black text-base mt-0.5">{payTotalDue.toLocaleString('ru-RU')} ₽</div>
               </div>
-              <div className="rounded-lg bg-[#111] px-3 py-2">
+              <button
+                type="button"
+                onClick={() => setViewFilter(f => f === 'cash' ? 'all' : 'cash')}
+                className={`rounded-lg px-3 py-2 text-left transition-colors ${
+                  viewFilter === 'cash'
+                    ? 'border border-[#C0392B] bg-[#2A0C0A]'
+                    : 'bg-[#111] hover:bg-[#1A1A1A]'
+                }`}
+              >
                 <div className="text-[#555] text-[10px] uppercase">Наличными</div>
                 <div className="text-white font-black text-base mt-0.5">{payCash.toLocaleString('ru-RU')} ₽</div>
-              </div>
-              <div className="rounded-lg bg-[#111] px-3 py-2">
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewFilter(f => f === 'card' ? 'all' : 'card')}
+                className={`rounded-lg px-3 py-2 text-left transition-colors ${
+                  viewFilter === 'card'
+                    ? 'border border-[#C0392B] bg-[#2A0C0A]'
+                    : 'bg-[#111] hover:bg-[#1A1A1A]'
+                }`}
+              >
                 <div className="text-[#555] text-[10px] uppercase">Картой</div>
                 <div className="text-white font-black text-base mt-0.5">{payCard.toLocaleString('ru-RU')} ₽</div>
-              </div>
-              <div className={`rounded-lg px-3 py-2 ${payUnpaid > 0 ? 'bg-amber-950/30 border border-amber-900/50' : 'bg-[#111]'}`}>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewFilter(f => f === 'unpaid' ? 'all' : 'unpaid')}
+                className={`rounded-lg px-3 py-2 text-left transition-colors ${
+                  viewFilter === 'unpaid'
+                    ? 'border border-amber-600 bg-amber-950/50'
+                    : payUnpaid > 0
+                      ? 'bg-amber-950/30 border border-amber-900/50 hover:bg-amber-950/50'
+                      : 'bg-[#111] hover:bg-[#1A1A1A]'
+                }`}
+              >
                 <div className="text-[#555] text-[10px] uppercase">Не оплачено</div>
                 <div className={`font-black text-base mt-0.5 ${payUnpaid > 0 ? 'text-amber-300' : 'text-white'}`}>
                   {payUnpaid.toLocaleString('ru-RU')} ₽
                 </div>
-              </div>
+              </button>
             </div>
           </div>
         )}
