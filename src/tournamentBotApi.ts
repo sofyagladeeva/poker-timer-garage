@@ -232,7 +232,9 @@ export async function fetchBotTournamentRoster(tournamentBotId: number) {
   }
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: BOT_ADMIN_TOKEN ? { 'X-Admin-Token': BOT_ADMIN_TOKEN } : {},
+    });
     if (!response.ok) {
       return {
         ok: false as const,
