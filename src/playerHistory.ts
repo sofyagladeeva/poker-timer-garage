@@ -1,4 +1,4 @@
-import type { TournamentRecord, TournamentArchivePlayerRecord } from './types';
+import type { TournamentRecord, TournamentArchivePlayerRecord, TournamentArchiveDetails } from './types';
 
 export interface PlayerTournamentEntry {
   tournamentId: number;
@@ -36,7 +36,10 @@ function playerKey(p: TournamentArchivePlayerRecord): string {
   return `nm:${p.name.trim().toLowerCase()}`;
 }
 
-export function aggregatePlayerHistory(tournaments: TournamentRecord[]): PlayerAggregate[] {
+export function aggregatePlayerHistory(
+  tournaments: TournamentRecord[],
+  archiveDetailsById: Record<number, TournamentArchiveDetails | null> = {}
+): PlayerAggregate[] {
   const map = new Map<string, PlayerAggregate>();
 
   const sorted = [...tournaments].sort(
@@ -44,7 +47,7 @@ export function aggregatePlayerHistory(tournaments: TournamentRecord[]): PlayerA
   );
 
   for (const t of sorted) {
-    const details = t.archive_details;
+    const details = archiveDetailsById[t.id] ?? t.archive_details;
     if (!details || !Array.isArray(details.players)) continue;
 
     for (const p of details.players as TournamentArchivePlayerRecord[]) {

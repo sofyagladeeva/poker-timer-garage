@@ -614,6 +614,7 @@ export function Admin() {
   const [archiveSubTab, setArchiveSubTab] = useState<'games' | 'players'>('games');
   const [playerHistorySearch, setPlayerHistorySearch] = useState('');
   const [playerHistoryPeriod, setPlayerHistoryPeriod] = useState<'30' | '90' | '365' | 'all'>('all');
+  const [playerHistoryLoading, setPlayerHistoryLoading] = useState(false);
   const [expandedPlayerKey, setExpandedPlayerKey] = useState<string | null>(null);
   const [archiveOpenId, setArchiveOpenId] = useState<number | null>(null);
   const [archiveDetailsLoadingId, setArchiveDetailsLoadingId] = useState<number | null>(null);
@@ -1258,6 +1259,44 @@ export function Admin() {
 
     void loadArchive();
   }, [activeTab, archiveAuthed, fetchTournaments]);
+
+  // ── Load all archive details when switching to the Players sub-tab ──────
+  const archiveDetailsByIdRef = useRef(archiveDetailsById);
+  useEffect(() => { archiveDetailsByIdRef.current = archiveDetailsById; }, [archiveDetailsById]);
+
+  useEffect(() => {
+    if (activeTab !== 'archive' || !archiveAuthed || archiveSubTab !== 'players') return;
+    if (tournaments.length === 0) return;
+
+    const missingIds = tournaments
+      .map(t => t.id)
+      .filter(id => !Object.prototype.hasOwnProperty.call(archiveDetailsByIdRef.current, id));
+
+    if (missingIds.length === 0) return;
+
+    setPlayerHistoryLoading(true);
+    let cancelled = false;
+
+    const loadAll = async () => {
+      try {
+        const results = await Promise.all(
+          missingIds.map(id => fetchTournamentArchiveDetails(id).then(d => ({ id, d })))
+        );
+        if (!cancelled) {
+          setArchiveDetailsById(prev => {
+            const next = { ...prev };
+            for (const { id, d } of results) next[id] = d;
+            return next;
+          });
+        }
+      } finally {
+        if (!cancelled) setPlayerHistoryLoading(false);
+      }
+    };
+
+    void loadAll();
+    return () => { cancelled = true; };
+  }, [activeTab, archiveAuthed, archiveSubTab, tournaments, fetchTournamentArchiveDetails]);
 
   const toggleArchiveDetails = async (tournamentId: number) => {
     if (archiveOpenId === tournamentId) {
@@ -3002,7 +3041,7 @@ export function Admin() {
 
                 {/* ── PLAYERS sub-tab ───────────────────────────────────── */}
                 {archiveSubTab === 'players' && (() => {
-                  const allAggs = aggregatePlayerHistory(tournaments);
+                  const allAggs = aggregatePlayerHistory(tournaments, archiveDetailsById);
                   const query = playerHistorySearch.trim().toLowerCase();
                   const filtered = allAggs.filter(a =>
                     !query ||
@@ -3039,11 +3078,11 @@ export function Admin() {
                         </div>
                       </div>
 
-                      {archiveLoading && (
+                      {(archiveLoading || playerHistoryLoading) && (
                         <div className="text-[#444] text-sm text-center py-8">Загрузка...</div>
                       )}
 
-                      {!archiveLoading && filtered.length === 0 && (
+                      {!archiveLoading && !playerHistoryLoading && filtered.length === 0 && (
                         <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-8 text-center">
                           <div className="text-[#555] text-sm">
                             {allAggs.length === 0 ? 'Нет данных — у турниров нет сохранённых списков игроков' : 'Никто не найден'}
