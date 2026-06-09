@@ -34,6 +34,7 @@ type Props = {
     disabled: boolean;
   };
   tournamentBotId: number | null;
+  tournamentDate?: string | null;
   isTournamentEnded: boolean;
   preferMobileCards?: boolean;
   reviewPlayers: LiveTournamentPlayer[];
@@ -53,6 +54,7 @@ export function TournamentPlayersTab({
   playerBackups,
   botSyncState,
   tournamentBotId,
+  tournamentDate,
   isTournamentEnded,
   preferMobileCards = false,
   reviewPlayers,
@@ -515,6 +517,7 @@ export function TournamentPlayersTab({
                   <MobilePlayerCard
                     key={player.id}
                     player={player}
+                    tournamentDate={tournamentDate}
                     rosterPlayers={rosterPlayers}
                     onPlaceConflict={setPlaceConflictNotice}
                     onUpdatePlayerField={onUpdatePlayerField}
@@ -531,6 +534,7 @@ export function TournamentPlayersTab({
                     <MobilePlayerCard
                       key={player.id}
                       player={player}
+                      tournamentDate={tournamentDate}
                       rosterPlayers={rosterPlayers}
                       onPlaceConflict={setPlaceConflictNotice}
                       onUpdatePlayerField={onUpdatePlayerField}
@@ -560,6 +564,7 @@ export function TournamentPlayersTab({
                         <PlayerRow
                           key={player.id}
                           player={player}
+                          tournamentDate={tournamentDate}
                           rosterPlayers={rosterPlayers}
                           onPlaceConflict={setPlaceConflictNotice}
                           onUpdatePlayerField={onUpdatePlayerField}
@@ -655,6 +660,7 @@ function getProjectedOutPlace(players: LiveTournamentPlayer[], player: LiveTourn
 
 function MobilePlayerCard({
   player,
+  tournamentDate,
   rosterPlayers,
   onPlaceConflict,
   onUpdatePlayerField,
@@ -663,6 +669,7 @@ function MobilePlayerCard({
   onRestorePlayer,
 }: {
   player: LiveTournamentPlayer;
+  tournamentDate?: string | null;
   rosterPlayers: LiveTournamentPlayer[];
   onPlaceConflict: (message: string | null) => void;
   onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<boolean>;
@@ -675,7 +682,7 @@ function MobilePlayerCard({
   const canEditCounters = player.arrivalStatus !== 'absent';
   const isOut = player.status === 'out';
   const isWaitlist = player.registrationSource === 'waitlist';
-  const isEarlyBirdPlayer = player.registeredAt != null && isEarlyBird(player.registeredAt);
+  const isEarlyBirdPlayer = player.registeredAt != null && isEarlyBird(player.registeredAt, tournamentDate);
   const nameBadgeLabel = isOut ? 'Выбыл' : player.arrivalStatus === 'absent' ? 'Не в игре' : 'В игре';
   const nameBadgeTone = isOut
     ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
@@ -964,6 +971,7 @@ function MobilePlayerCard({
 
 function PlayerRow({
   player,
+  tournamentDate,
   rosterPlayers,
   onPlaceConflict,
   onUpdatePlayerField,
@@ -972,6 +980,7 @@ function PlayerRow({
   onRestorePlayer,
 }: {
   player: LiveTournamentPlayer;
+  tournamentDate?: string | null;
   rosterPlayers: LiveTournamentPlayer[];
   onPlaceConflict: (message: string | null) => void;
   onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<boolean>;
@@ -993,7 +1002,7 @@ function PlayerRow({
   };
 
   const isWaitlist = player.registrationSource === 'waitlist';
-  const isEarlyBirdPlayer = player.registeredAt != null && isEarlyBird(player.registeredAt);
+  const isEarlyBirdPlayer = player.registeredAt != null && isEarlyBird(player.registeredAt, tournamentDate);
   const nameBadgeLabel = isOut ? 'Выбыл' : player.arrivalStatus === 'absent' ? 'Не в игре' : 'В игре';
   const nameBadgeTone = isOut
     ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
