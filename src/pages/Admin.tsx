@@ -615,6 +615,7 @@ export function Admin() {
   const [playerHistorySearch, setPlayerHistorySearch] = useState('');
   const [playerHistoryPeriod, setPlayerHistoryPeriod] = useState<'30' | '90' | '365' | 'all'>('all');
   const [playerHistoryLoading, setPlayerHistoryLoading] = useState(false);
+  const [playerHistorySort, setPlayerHistorySort] = useState<'games' | 'spend_desc' | 'spend_asc' | 'rebuys' | 'discount'>('games');
   const [expandedPlayerKey, setExpandedPlayerKey] = useState<string | null>(null);
   const [archiveOpenId, setArchiveOpenId] = useState<number | null>(null);
   const [archiveDetailsLoadingId, setArchiveDetailsLoadingId] = useState<number | null>(null);
@@ -3043,36 +3044,88 @@ export function Admin() {
                 {archiveSubTab === 'players' && (() => {
                   const allAggs = aggregatePlayerHistory(tournaments, archiveDetailsById);
                   const query = playerHistorySearch.trim().toLowerCase();
-                  const filtered = allAggs.filter(a =>
-                    !query ||
-                    a.currentName.toLowerCase().includes(query) ||
-                    (a.currentUsername ?? '').toLowerCase().includes(query)
-                  );
+
+                  const aggsWithStats = allAggs
+                    .filter(a =>
+                      !query ||
+                      a.currentName.toLowerCase().includes(query) ||
+                      (a.currentUsername ?? '').toLowerCase().includes(query)
+                    )
+                    .map(agg => {
+                      const entries = filterByPeriod(
+                        [...agg.tournaments].sort((a, b) => new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime()),
+                        playerHistoryPeriod
+                      );
+                      const periodCash = entries.reduce((s, e) => s + e.cashPaid, 0);
+                      const periodCard = entries.reduce((s, e) => s + e.cardPaid, 0);
+                      const periodRebuys = entries.reduce((s, e) => s + e.rebuyCount, 0);
+                      const periodAddons = entries.reduce((s, e) => s + e.addonCount, 0);
+                      const periodBounty = entries.reduce((s, e) => s + e.bounty, 0);
+                      const periodDiscount = entries.reduce((s, e) => s + (e.arrivalStatus === 'promo' ? e.paymentDue : 0), 0);
+                      const placedEntries = entries.map(e => e.place).filter((p): p is number => p !== null);
+                      const periodBest = placedEntries.length > 0 ? Math.min(...placedEntries) : null;
+                      return { agg, entries, periodCash, periodCard, periodRebuys, periodAddons, periodBounty, periodBest, periodDiscount };
+                    })
+                    .filter(x => x.entries.length > 0)
+                    .sort((a, b) => {
+                      if (playerHistorySort === 'spend_desc') return (b.periodCash + b.periodCard) - (a.periodCash + a.periodCard);
+                      if (playerHistorySort === 'spend_asc') return (a.periodCash + a.periodCard) - (b.periodCash + b.periodCard);
+                      if (playerHistorySort === 'rebuys') return (b.periodRebuys + b.periodAddons) - (a.periodRebuys + a.periodAddons);
+                      if (playerHistorySort === 'discount') return b.periodDiscount - a.periodDiscount;
+                      return b.entries.length - a.entries.length || a.agg.currentName.localeCompare(b.agg.currentName, 'ru');
+                    });
+
+                  const sortOptions: { key: 'games' | 'spend_desc' | 'spend_asc' | 'rebuys' | 'discount'; label: string }[] = [
+                    { key: 'games', label: 'Игры' },
+                    { key: 'spend_desc', label: 'Сумма ↓' },
+                    { key: 'spend_asc', label: 'Сумма ↑' },
+                    { key: 'rebuys', label: 'Ребаи' },
+                    { key: 'discount', label: 'Скидки' },
+                  ];
 
                   return (
                     <div className="flex flex-col gap-3">
                       {/* Controls */}
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <input
-                          type="text"
-                          value={playerHistorySearch}
-                          onChange={e => setPlayerHistorySearch(e.target.value)}
-                          placeholder="Поиск по нику"
-                          className="admin-input flex-1"
-                        />
-                        <div className="flex gap-1">
-                          {(['30', '90', '365', 'all'] as PeriodFilter[]).map(p => (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <input
+                            type="text"
+                            value={playerHistorySearch}
+                            onChange={e => setPlayerHistorySearch(e.target.value)}
+                            placeholder="Поиск по нику"
+                            className="admin-input flex-1"
+                          />
+                          <div className="flex gap-1">
+                            {(['30', '90', '365', 'all'] as PeriodFilter[]).map(p => (
+                              <button
+                                key={p}
+                                type="button"
+                                onClick={() => setPlayerHistoryPeriod(p)}
+                                className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
+                                  playerHistoryPeriod === p
+                                    ? 'bg-[#C0392B] text-white'
+                                    : 'bg-[#111] border border-[#2D2D2D] text-[#888] hover:text-white hover:border-[#555]'
+                                }`}
+                              >
+                                {p === 'all' ? 'Всё' : `${p}д`}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[#444] text-[10px] uppercase tracking-wider mr-1">Сортировка:</span>
+                          {sortOptions.map(({ key, label }) => (
                             <button
-                              key={p}
+                              key={key}
                               type="button"
-                              onClick={() => setPlayerHistoryPeriod(p)}
-                              className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
-                                playerHistoryPeriod === p
+                              onClick={() => setPlayerHistorySort(key)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                                playerHistorySort === key
                                   ? 'bg-[#C0392B] text-white'
-                                  : 'bg-[#111] border border-[#2D2D2D] text-[#888] hover:text-white hover:border-[#555]'
+                                  : 'bg-[#111] border border-[#2D2D2D] text-[#666] hover:text-white hover:border-[#555]'
                               }`}
                             >
-                              {p === 'all' ? 'Всё' : `${p}д`}
+                              {label}
                             </button>
                           ))}
                         </div>
@@ -3082,7 +3135,7 @@ export function Admin() {
                         <div className="text-[#444] text-sm text-center py-8">Загрузка...</div>
                       )}
 
-                      {!archiveLoading && !playerHistoryLoading && filtered.length === 0 && (
+                      {!archiveLoading && !playerHistoryLoading && aggsWithStats.length === 0 && (
                         <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-8 text-center">
                           <div className="text-[#555] text-sm">
                             {allAggs.length === 0 ? 'Нет данных — у турниров нет сохранённых списков игроков' : 'Никто не найден'}
@@ -3090,20 +3143,7 @@ export function Admin() {
                         </div>
                       )}
 
-                      {filtered.map(agg => {
-                        const entries = filterByPeriod(
-                          [...agg.tournaments].sort((a, b) => new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime()),
-                          playerHistoryPeriod
-                        );
-                        if (entries.length === 0) return null;
-
-                        const periodCash = entries.reduce((s, e) => s + e.cashPaid, 0);
-                        const periodCard = entries.reduce((s, e) => s + e.cardPaid, 0);
-                        const periodRebuys = entries.reduce((s, e) => s + e.rebuyCount, 0);
-                        const periodAddons = entries.reduce((s, e) => s + e.addonCount, 0);
-                        const periodBounty = entries.reduce((s, e) => s + e.bounty, 0);
-                        const placedEntries = entries.map(e => e.place).filter((p): p is number => p !== null);
-                        const periodBest = placedEntries.length > 0 ? Math.min(...placedEntries) : null;
+                      {aggsWithStats.map(({ agg, entries, periodCash, periodCard, periodRebuys, periodAddons, periodBounty, periodBest, periodDiscount }) => {
                         const isExpanded = expandedPlayerKey === agg.key;
 
                         return (
@@ -3160,33 +3200,61 @@ export function Admin() {
                                       <div className="text-white font-black text-base mt-0.5">{periodBounty}</div>
                                     </div>
                                   )}
+                                  {periodDiscount > 0 && (
+                                    <div className="rounded-xl bg-[#0A0A0A] px-3 py-2">
+                                      <div className="text-[#555] text-[10px] uppercase">Скидок</div>
+                                      <div className="text-[#C0392B] font-black text-base mt-0.5">−{periodDiscount.toLocaleString('ru-RU')} ₽</div>
+                                    </div>
+                                  )}
                                 </div>
 
                                 {/* Tournament history */}
-                                <div className="flex flex-col gap-1">
-                                  {entries.map(e => (
-                                    <div key={e.tournamentId} className="flex items-center justify-between gap-2 rounded-lg border border-[#1D1D1D] bg-[#0A0A0A] px-3 py-2">
-                                      <div className="min-w-0">
-                                        <div className="text-white text-xs font-bold truncate">{e.title}</div>
-                                        <div className="text-[#555] text-[10px] mt-0.5">
-                                          {new Date(e.finishedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                          {e.rebuyCount > 0 && ` · R${e.rebuyCount}`}
-                                          {e.addonCount > 0 && ` · A${e.addonCount}`}
-                                          {e.bounty > 0 && ` · Bounty ${e.bounty}`}
+                                <div className="flex flex-col gap-1.5">
+                                  {entries.map(e => {
+                                    const discount = e.arrivalStatus === 'promo' ? e.paymentDue : 0;
+                                    return (
+                                      <div key={e.tournamentId} className="rounded-lg border border-[#1D1D1D] bg-[#0A0A0A] px-3 py-2">
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div className="min-w-0">
+                                            <div className="text-white text-xs font-bold truncate">{e.title}</div>
+                                            <div className="text-[#555] text-[10px] mt-0.5">
+                                              {new Date(e.finishedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                            </div>
+                                          </div>
+                                          <div className="shrink-0 text-right">
+                                            <div className="text-white font-black text-sm">{e.place !== null ? `#${e.place}` : '—'}</div>
+                                          </div>
+                                        </div>
+                                        <div className="mt-1.5 flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            {e.rebuyCount > 0 && (
+                                              <span className="text-[#888] text-[10px]">Ребай <span className="text-white font-bold">{e.rebuyCount}</span></span>
+                                            )}
+                                            {e.addonCount > 0 && (
+                                              <span className="text-[#888] text-[10px]">Аддон <span className="text-white font-bold">{e.addonCount}</span></span>
+                                            )}
+                                            {e.bounty > 0 && (
+                                              <span className="text-[#888] text-[10px]">Bounty <span className="text-white font-bold">{e.bounty}</span></span>
+                                            )}
+                                            {discount > 0 && (
+                                              <span className="text-[#C0392B] text-[10px] font-bold">−{discount.toLocaleString('ru-RU')} ₽ скидка</span>
+                                            )}
+                                          </div>
+                                          <div className="shrink-0 text-right">
+                                            {e.cashPaid > 0 && (
+                                              <div className="text-[#888] text-[10px]">нал <span className="text-white font-bold">{e.cashPaid.toLocaleString('ru-RU')} ₽</span></div>
+                                            )}
+                                            {e.cardPaid > 0 && (
+                                              <div className="text-[#888] text-[10px]">карта <span className="text-white font-bold">{e.cardPaid.toLocaleString('ru-RU')} ₽</span></div>
+                                            )}
+                                            {e.cashPaid === 0 && e.cardPaid === 0 && (
+                                              <div className="text-[#555] text-[10px]">{e.arrivalStatus === 'free' ? 'Бесплатно' : 'не оплачено'}</div>
+                                            )}
+                                          </div>
                                         </div>
                                       </div>
-                                      <div className="shrink-0 text-right">
-                                        <div className="text-white font-black text-sm">
-                                          {e.place !== null ? `#${e.place}` : '—'}
-                                        </div>
-                                        <div className="text-[#555] text-[10px]">
-                                          {(e.cashPaid + e.cardPaid) > 0
-                                            ? `${(e.cashPaid + e.cardPaid).toLocaleString('ru-RU')} ₽`
-                                            : ''}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               </div>
                             )}
