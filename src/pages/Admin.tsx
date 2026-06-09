@@ -613,7 +613,7 @@ export function Admin() {
   const [archiveDetailsById, setArchiveDetailsById] = useState<Record<number, TournamentArchiveDetails | null>>({});
   const [archiveSubTab, setArchiveSubTab] = useState<'games' | 'players'>('games');
   const [playerHistorySearch, setPlayerHistorySearch] = useState('');
-  const [playerHistoryPeriod, setPlayerHistoryPeriod] = useState<'30' | '90' | '365' | 'all'>('all');
+  const [playerHistoryPeriod, setPlayerHistoryPeriod] = useState<'7' | '30' | '90' | '365' | 'all'>('all');
   const [playerHistoryLoading, setPlayerHistoryLoading] = useState(false);
   const [playerHistorySort, setPlayerHistorySort] = useState<'games' | 'spend_desc' | 'spend_asc' | 'rebuys' | 'discount' | 'avg_desc'>('games');
   const [expandedPlayerKey, setExpandedPlayerKey] = useState<string | null>(null);
@@ -3099,7 +3099,7 @@ export function Admin() {
                             className="admin-input flex-1"
                           />
                           <div className="flex gap-1">
-                            {(['30', '90', '365', 'all'] as PeriodFilter[]).map(p => (
+                            {(['7', '30', '90', '365', 'all'] as PeriodFilter[]).map(p => (
                               <button
                                 key={p}
                                 type="button"

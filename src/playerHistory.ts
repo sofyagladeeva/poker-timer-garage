@@ -115,7 +115,7 @@ export function aggregatePlayerHistory(
     .sort((a, b) => b.tournamentCount - a.tournamentCount || a.currentName.localeCompare(b.currentName, 'ru'));
 }
 
-export type PeriodFilter = '30' | '90' | '365' | 'all';
+export type PeriodFilter = '7' | '30' | '90' | '365' | 'all';
 
 export function filterByPeriod(tournaments: PlayerTournamentEntry[], period: PeriodFilter): PlayerTournamentEntry[] {
   if (period === 'all') return tournaments;
