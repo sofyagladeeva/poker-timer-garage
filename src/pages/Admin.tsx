@@ -615,7 +615,7 @@ export function Admin() {
   const [playerHistorySearch, setPlayerHistorySearch] = useState('');
   const [playerHistoryPeriod, setPlayerHistoryPeriod] = useState<'30' | '90' | '365' | 'all'>('all');
   const [playerHistoryLoading, setPlayerHistoryLoading] = useState(false);
-  const [playerHistorySort, setPlayerHistorySort] = useState<'games' | 'spend_desc' | 'spend_asc' | 'rebuys' | 'discount'>('games');
+  const [playerHistorySort, setPlayerHistorySort] = useState<'games' | 'spend_desc' | 'spend_asc' | 'rebuys' | 'discount' | 'avg_desc'>('games');
   const [expandedPlayerKey, setExpandedPlayerKey] = useState<string | null>(null);
   const [archiveOpenId, setArchiveOpenId] = useState<number | null>(null);
   const [archiveDetailsLoadingId, setArchiveDetailsLoadingId] = useState<number | null>(null);
@@ -3064,7 +3064,8 @@ export function Admin() {
                       const periodDiscount = entries.reduce((s, e) => s + (e.arrivalStatus === 'promo' ? e.paymentDue : 0), 0);
                       const placedEntries = entries.map(e => e.place).filter((p): p is number => p !== null);
                       const periodBest = placedEntries.length > 0 ? Math.min(...placedEntries) : null;
-                      return { agg, entries, periodCash, periodCard, periodRebuys, periodAddons, periodBounty, periodBest, periodDiscount };
+                      const avgSpend = entries.length > 0 ? (periodCash + periodCard) / entries.length : 0;
+                      return { agg, entries, periodCash, periodCard, periodRebuys, periodAddons, periodBounty, periodBest, periodDiscount, avgSpend };
                     })
                     .filter(x => x.entries.length > 0)
                     .sort((a, b) => {
@@ -3072,13 +3073,15 @@ export function Admin() {
                       if (playerHistorySort === 'spend_asc') return (a.periodCash + a.periodCard) - (b.periodCash + b.periodCard);
                       if (playerHistorySort === 'rebuys') return (b.periodRebuys + b.periodAddons) - (a.periodRebuys + a.periodAddons);
                       if (playerHistorySort === 'discount') return b.periodDiscount - a.periodDiscount;
+                      if (playerHistorySort === 'avg_desc') return b.avgSpend - a.avgSpend;
                       return b.entries.length - a.entries.length || a.agg.currentName.localeCompare(b.agg.currentName, 'ru');
                     });
 
-                  const sortOptions: { key: 'games' | 'spend_desc' | 'spend_asc' | 'rebuys' | 'discount'; label: string }[] = [
+                  const sortOptions: { key: 'games' | 'spend_desc' | 'spend_asc' | 'rebuys' | 'discount' | 'avg_desc'; label: string }[] = [
                     { key: 'games', label: 'Игры' },
                     { key: 'spend_desc', label: 'Сумма ↓' },
                     { key: 'spend_asc', label: 'Сумма ↑' },
+                    { key: 'avg_desc', label: 'Ср. чек ↓' },
                     { key: 'rebuys', label: 'Ребаи' },
                     { key: 'discount', label: 'Скидки' },
                   ];
@@ -3143,7 +3146,7 @@ export function Admin() {
                         </div>
                       )}
 
-                      {aggsWithStats.map(({ agg, entries, periodCash, periodCard, periodRebuys, periodAddons, periodBounty, periodBest, periodDiscount }) => {
+                      {aggsWithStats.map(({ agg, entries, periodCash, periodCard, periodRebuys, periodAddons, periodBounty, periodBest, periodDiscount, avgSpend }, idx) => {
                         const isExpanded = expandedPlayerKey === agg.key;
 
                         return (
@@ -3153,17 +3156,26 @@ export function Admin() {
                               onClick={() => setExpandedPlayerKey(isExpanded ? null : agg.key)}
                               className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-[#161616] transition-colors"
                             >
-                              <div className="min-w-0">
-                                <div className="text-white font-black text-sm truncate">{agg.currentName}</div>
-                                {agg.currentUsername && (
-                                  <div className="text-[#555] text-xs mt-0.5">@{agg.currentUsername.replace(/^@/, '')}</div>
-                                )}
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span className="shrink-0 text-[#444] text-[11px] font-mono w-5 text-right select-none">{idx + 1}</span>
+                                <div className="min-w-0">
+                                  <div className="text-white font-black text-sm truncate">{agg.currentName}</div>
+                                  {agg.currentUsername && (
+                                    <div className="text-[#555] text-xs mt-0.5">@{agg.currentUsername.replace(/^@/, '')}</div>
+                                  )}
+                                </div>
                               </div>
                               <div className="shrink-0 flex items-center gap-3">
                                 <div className="text-right">
                                   <div className="text-white font-black text-sm">{entries.length}</div>
                                   <div className="text-[#555] text-[10px] uppercase">игр</div>
                                 </div>
+                                {avgSpend > 0 && (
+                                  <div className="text-right">
+                                    <div className="text-white font-black text-sm">{Math.round(avgSpend).toLocaleString('ru-RU')} ₽</div>
+                                    <div className="text-[#555] text-[10px] uppercase">ср. чек</div>
+                                  </div>
+                                )}
                                 {periodBest !== null && (
                                   <div className="text-right">
                                     <div className="text-white font-black text-sm">#{periodBest}</div>
