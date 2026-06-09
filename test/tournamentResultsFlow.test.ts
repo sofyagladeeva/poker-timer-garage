@@ -23,6 +23,7 @@ import {
   deriveTournamentResultsUiState,
   getDuplicatePlaces,
   getTournamentResultsButtonLabel,
+  shouldBlockNewTournamentForPendingBotResults,
 } from '../src/tournamentResultsFlow.ts';
 import type { GameState, LiveTournamentPlayer, TournamentResultsPayload } from '../src/types.ts';
 
@@ -649,6 +650,30 @@ test('deriveTournamentResultsUiState and button labels reflect first send, resen
     currentResultsSignature: 'sig-a',
   });
   assert.equal(duplicatePlaces.canSubmitTournamentResults, false);
+});
+
+test('new tournament is blocked for bot games until current results are sent', () => {
+  assert.equal(
+    shouldBlockNewTournamentForPendingBotResults({
+      requiresBotResults: true,
+      resultsAlreadyCurrent: false,
+    }),
+    true
+  );
+  assert.equal(
+    shouldBlockNewTournamentForPendingBotResults({
+      requiresBotResults: true,
+      resultsAlreadyCurrent: true,
+    }),
+    false
+  );
+  assert.equal(
+    shouldBlockNewTournamentForPendingBotResults({
+      requiresBotResults: false,
+      resultsAlreadyCurrent: false,
+    }),
+    false
+  );
 });
 
 test('isIncomingPlayersSnapshotStale ignores older shared snapshots and accepts newer ones', () => {

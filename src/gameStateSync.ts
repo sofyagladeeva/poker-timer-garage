@@ -50,6 +50,15 @@ export function buildGameStatePersistencePatch(
   return persistedPatch;
 }
 
+export function stripUnsupportedBonusColumns<T extends Record<string, unknown>>(payload: T) {
+  const { bonusCount, bonusStack, bonus_count, bonus_stack, ...legacyPayload } = payload;
+  void bonusCount;
+  void bonusStack;
+  void bonus_count;
+  void bonus_stack;
+  return legacyPayload;
+}
+
 export function shouldForceForegroundSyncBeforeWrite(
   state: Pick<GameState, 'status'>,
   inactiveForMs: number

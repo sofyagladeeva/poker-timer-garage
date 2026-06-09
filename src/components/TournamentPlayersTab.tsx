@@ -4,7 +4,7 @@ import type {
   LiveTournamentArrivalStatus,
   LiveTournamentPlayer,
 } from '../types';
-import { findPlayerWithPlaceConflict } from '../hooks/useTournamentPlayers';
+import { findPlayerWithPlaceConflict, isEarlyBird } from '../hooks/useTournamentPlayers';
 
 type Props = {
   groupedPlayers: {
@@ -675,6 +675,7 @@ function MobilePlayerCard({
   const canEditCounters = player.arrivalStatus !== 'absent';
   const isOut = player.status === 'out';
   const isWaitlist = player.registrationSource === 'waitlist';
+  const isEarlyBirdPlayer = player.registeredAt != null && isEarlyBird(player.registeredAt);
   const nameBadgeLabel = isOut ? 'Выбыл' : player.arrivalStatus === 'absent' ? 'Не в игре' : 'В игре';
   const nameBadgeTone = isOut
     ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
@@ -731,6 +732,11 @@ function MobilePlayerCard({
             {isWaitlist && (
               <div className="inline-flex items-center rounded-full border border-amber-600/70 bg-amber-950/50 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-amber-300">
                 Waitlist
+              </div>
+            )}
+            {isEarlyBirdPlayer && (
+              <div className="inline-flex items-center rounded-full border border-green-600/70 bg-green-950/50 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-green-300">
+                Бонус
               </div>
             )}
           </div>
@@ -987,6 +993,7 @@ function PlayerRow({
   };
 
   const isWaitlist = player.registrationSource === 'waitlist';
+  const isEarlyBirdPlayer = player.registeredAt != null && isEarlyBird(player.registeredAt);
   const nameBadgeLabel = isOut ? 'Выбыл' : player.arrivalStatus === 'absent' ? 'Не в игре' : 'В игре';
   const nameBadgeTone = isOut
     ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
@@ -1034,6 +1041,11 @@ function PlayerRow({
             {isWaitlist && (
               <div className="inline-flex w-fit items-center rounded-full border border-amber-600/70 bg-amber-950/50 px-1.5 py-0.5 text-[8px] sm:px-2 sm:text-[9px] uppercase tracking-[0.12em] sm:tracking-[0.14em] text-amber-300">
                 Waitlist
+              </div>
+            )}
+            {isEarlyBirdPlayer && (
+              <div className="inline-flex w-fit items-center rounded-full border border-green-600/70 bg-green-950/50 px-1.5 py-0.5 text-[8px] sm:px-2 sm:text-[9px] uppercase tracking-[0.12em] sm:tracking-[0.14em] text-green-300">
+                Бонус
               </div>
             )}
           </div>

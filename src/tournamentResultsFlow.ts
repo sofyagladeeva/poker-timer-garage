@@ -68,3 +68,13 @@ export function getTournamentResultsButtonLabel({
   if (resultsNeedResubmit) return '📤 Отправить обновление';
   return '📤 Отправить в бот';
 }
+
+export function shouldBlockNewTournamentForPendingBotResults({
+  requiresBotResults,
+  resultsAlreadyCurrent,
+}: {
+  requiresBotResults: boolean;
+  resultsAlreadyCurrent: boolean;
+}) {
+  return requiresBotResults && !resultsAlreadyCurrent;
+}

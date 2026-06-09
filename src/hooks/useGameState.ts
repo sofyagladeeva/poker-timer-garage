@@ -4,8 +4,9 @@ import {
   buildGameStatePersistencePatch,
   shouldApplyRemoteGameStateUpdate,
   shouldForceForegroundSyncBeforeWrite,
+  stripUnsupportedBonusColumns,
 } from '../gameStateSync';
-import { hasMissingBonusColumns, hasMissingNextGameBotId, hasMissingResetAt, normalizeGameState, toLegacyGameState } from '../gameStateMath';
+import { hasMissingBonusColumns, hasMissingNextGameBotId, hasMissingResetAt, normalizeGameState } from '../gameStateMath';
 import { buildAdvanceLevelPatch, buildAutoAdvanceAnchor } from '../levelAdvance';
 import type {
   GameState,
@@ -484,7 +485,7 @@ export function useGameState(readOnly = false) {
       if (!error) return true;
 
       if (hasMissingBonusColumns(error)) {
-        payload = { id: 1, ...toLegacyGameState({ ...stateToSave, ...patchToPersist }) };
+        payload = stripUnsupportedBonusColumns(payload);
         continue;
       }
 

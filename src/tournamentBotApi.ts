@@ -26,6 +26,7 @@ export interface ImportedTournamentPlayer {
   name: string;
   username: string | null;
   registrationSource: LiveTournamentRegistrationSource;
+  registeredAt: string | null;
   sortOrder: number;
 }
 
@@ -148,12 +149,15 @@ function normalizeImportedPlayer(
   );
   const username = toNullableString(source.username) || toNullableString(nestedUser?.username);
 
+  const registeredAt = toNullableString(source.registered_at) ?? toNullableString(source.registeredAt);
+
   return {
     botRegistrationId,
     telegramId,
     name: buildPlayerName({ ...nestedUser, ...source }, sortOrder),
     username,
     registrationSource: inferRegistrationSource(source, fallback),
+    registeredAt,
     sortOrder,
   };
 }

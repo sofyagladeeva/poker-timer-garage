@@ -6,6 +6,7 @@ import {
   buildGameStatePersistencePatch,
   shouldApplyRemoteGameStateUpdate,
   shouldForceForegroundSyncBeforeWrite,
+  stripUnsupportedBonusColumns,
 } from '../src/gameStateSync.ts';
 import type { GameState } from '../src/types.ts';
 
@@ -94,6 +95,30 @@ test('game state persistence patch only includes touched fields plus sync anchor
   });
   assert.equal('players' in patch, false);
   assert.equal('outs' in patch, false);
+});
+
+test('legacy bonus-column fallback keeps the write scoped to the current patch', () => {
+  const staleLocalState = createGameState({
+    currentLevelIndex: 4,
+    timeLeft: 500,
+    lastTickAt: 12_345,
+    outs: 20,
+    bonusCount: 2,
+  });
+
+  const patch = buildGameStatePersistencePatch(staleLocalState, {
+    outs: 20,
+    bonusCount: 2,
+  });
+
+  assert.deepEqual(stripUnsupportedBonusColumns({ id: 1, ...patch }), {
+    id: 1,
+    outs: 20,
+    lastTickAt: 12_345,
+    resetAt: 100,
+  });
+  assert.equal('currentLevelIndex' in patch, false);
+  assert.equal('timeLeft' in patch, false);
 });
 
 test('foreground wake sync is forced only for long inactive running timers', () => {

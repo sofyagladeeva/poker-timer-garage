@@ -94,6 +94,7 @@ export interface LiveTournamentPlayer {
   placeOverride: boolean;
   bustoutOrder: number | null;
   sortOrder: number;
+  registeredAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -168,6 +169,10 @@ export interface TournamentArchivePlayerRecord {
 }
 
 export interface TournamentArchiveDetails {
+  tournamentBotId?: number | null;
+  tournamentTitle?: string;
+  resultsSentAt?: string | null;
+  resultsSignature?: string | null;
   players: TournamentArchivePlayerRecord[];
   summary: TournamentPlayersSummary | null;
   savedAt: string;

@@ -286,6 +286,11 @@ function createId() {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+export function isEarlyBird(registeredAt: string): boolean {
+  const date = new Date(registeredAt);
+  return !isNaN(date.getTime()) && date.getHours() < 16;
+}
+
 function deriveBaseStatus(registrationSource: LiveTournamentRegistrationSource): LiveTournamentPlayerStatus {
   return registrationSource === 'waitlist' ? 'waitlist' : 'registered';
 }
@@ -392,6 +397,7 @@ function normalizePlayer(
     placeOverride: raw.placeOverride === true,
     bustoutOrder: raw.bustoutOrder == null ? null : clampWhole(raw.bustoutOrder),
     sortOrder: clampWhole(raw.sortOrder),
+    registeredAt: typeof raw.registeredAt === 'string' && raw.registeredAt ? raw.registeredAt : null,
     createdAt,
     updatedAt,
   };
@@ -516,6 +522,7 @@ function playersEqual(a: LiveTournamentPlayer | undefined, b: LiveTournamentPlay
     a.placeOverride === b.placeOverride &&
     a.bustoutOrder === b.bustoutOrder &&
     a.sortOrder === b.sortOrder &&
+    a.registeredAt === b.registeredAt &&
     a.createdAt === b.createdAt &&
     a.updatedAt === b.updatedAt
   );
@@ -607,6 +614,7 @@ export function mergeImportedRoster(
           : 'active';
       const nextBotRegistrationId = imported.botRegistrationId ?? existing.botRegistrationId;
       const nextTelegramId = imported.telegramId ?? existing.telegramId;
+      const nextRegisteredAt = imported.registeredAt ?? existing.registeredAt;
       const hasChanges =
         existing.tournamentBotId !== tournamentBotId ||
         existing.botRegistrationId !== nextBotRegistrationId ||
@@ -616,7 +624,8 @@ export function mergeImportedRoster(
         existing.source !== 'bot' ||
         existing.registrationSource !== imported.registrationSource ||
         existing.status !== nextStatus ||
-        existing.arrivalStatus !== nextArrivalStatus;
+        existing.arrivalStatus !== nextArrivalStatus ||
+        existing.registeredAt !== nextRegisteredAt;
 
       if (!hasChanges) {
         continue;
@@ -633,6 +642,7 @@ export function mergeImportedRoster(
         registrationSource: imported.registrationSource,
         status: nextStatus,
         arrivalStatus: nextArrivalStatus,
+        registeredAt: nextRegisteredAt,
         updatedAt: nowIso(),
       });
       continue;
@@ -652,7 +662,7 @@ export function mergeImportedRoster(
       arrivalStatus: isPromoUsername(imported.username) ? 'promo' : 'absent',
       rebuyCount: 0,
       addonCount: 0,
-      bonusCount: 0,
+      bonusCount: imported.registeredAt && isEarlyBird(imported.registeredAt) ? 1 : 0,
       bounty: 0,
       cashPaid: 0,
       cardPaid: 0,
@@ -662,6 +672,7 @@ export function mergeImportedRoster(
       placeOverride: false,
       bustoutOrder: null,
       sortOrder: nextSortOrder++,
+      registeredAt: imported.registeredAt,
       createdAt: nowIso(),
       updatedAt: nowIso(),
     }, sessionId, tournamentBotId);

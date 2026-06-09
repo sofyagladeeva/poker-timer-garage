@@ -25,7 +25,12 @@ import type {
   GameState,
 } from '../types';
 import { SUIT_SYMBOLS } from '../types';
-import { deriveTournamentResultsUiState, getDuplicatePlaces, getTournamentResultsButtonLabel } from '../tournamentResultsFlow';
+import {
+  deriveTournamentResultsUiState,
+  getDuplicatePlaces,
+  getTournamentResultsButtonLabel,
+  shouldBlockNewTournamentForPendingBotResults,
+} from '../tournamentResultsFlow';
 import { PokerCard } from '../components/PokerCard';
 import { TournamentPlayersTab } from '../components/TournamentPlayersTab';
 import {
@@ -708,6 +713,10 @@ export function Admin() {
   const levelsPlayed = gameState.currentLevelIndex + 1;
   const archiveDetailsPayload: TournamentArchiveDetails | null = tournamentPlayers.length > 0
     ? {
+        tournamentBotId: gameState.tournamentBotId,
+        tournamentTitle: gameState.tournamentTitle,
+        resultsSentAt: resultsSubmission.sentAt,
+        resultsSignature: resultsSubmission.signature,
         players: tournamentPlayers.map(player => ({
           id: player.id,
           name: player.name,
@@ -1052,11 +1061,23 @@ export function Admin() {
   };
 
   const confirmStartNewTournament = async (nextTournament?: PendingTournamentSelection) => {
+    if (shouldBlockNewTournamentForPendingBotResults({ requiresBotResults, resultsAlreadyCurrent })) {
+      setResultsNotice({
+        tone: 'error',
+        text: missingBotRosterForFinish
+          ? 'Нельзя начать новый турнир: для игры из бота нет списка игроков. Сначала синхронизируйте состав или добавьте игроков вручную.'
+          : canSubmitTournamentResults
+          ? 'Сначала отправьте итоги турнира в бот. Новый турнир можно начать только после успешной отправки.'
+          : 'Нельзя начать новый турнир: итоги игры из бота ещё не готовы к отправке. Проверьте места и список игроков.',
+      });
+      setFinishReviewOpen(true);
+      setActiveTab('control');
+      return;
+    }
+
     const message = nextTournament
       ? `Начать новый турнир с игрой «${nextTournament.title}»? Завершённый турнир сохранится в архив.`
-      : hasBotResultsTarget && !resultsAlreadyCurrent
-        ? 'Начать новый турнир? Если итоги ещё не отправлены в бот, сделайте это сначала. Данные текущего турнира сохранятся в архив.'
-        : 'Завершить текущий турнир и начать новый? Данные сохранятся в архив.';
+      : 'Завершить текущий турнир и начать новый? Данные сохранятся в архив.';
 
     if (!confirm(message)) return;
     await startNewTournamentFlow(nextTournament);
