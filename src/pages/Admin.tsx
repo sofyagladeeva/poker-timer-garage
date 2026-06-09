@@ -636,8 +636,6 @@ export function Admin() {
       .catch(() => {});
   }, []);
 
-  const selectedBotGame = botGames.find(g => g.id === gameState.tournamentBotId) ?? null;
-
   const {
     players: tournamentPlayers,
     groupedPlayers,
@@ -659,7 +657,6 @@ export function Admin() {
   } = useTournamentPlayers({
     gameState,
     updateGameState,
-    tournamentDate: selectedBotGame?.date ?? null,
   });
 
   useEffect(() => {
@@ -2457,7 +2454,7 @@ export function Admin() {
             playerBackups={playerBackups}
             botSyncState={botSyncState}
             tournamentBotId={gameState.tournamentBotId}
-            tournamentDate={selectedBotGame?.date ?? null}
+
             isTournamentEnded={false}
             preferMobileCards={tabletAdminLayout}
             reviewPlayers={[]}
@@ -3172,7 +3169,7 @@ export function Admin() {
                   playerBackups={playerBackups}
                   botSyncState={botSyncState}
                   tournamentBotId={gameState.tournamentBotId}
-                  tournamentDate={selectedBotGame?.date ?? null}
+      
                   isTournamentEnded={false}
                   preferMobileCards={tabletAdminLayout}
                   reviewPlayers={[]}
