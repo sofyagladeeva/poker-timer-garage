@@ -147,6 +147,8 @@ export interface TournamentRecord {
 
 export interface TournamentArchivePlayerRecord {
   id: string;
+  telegramId?: number | null;
+  botRegistrationId?: string | null;
   name: string;
   username: string | null;
   source: LiveTournamentPlayerSource;

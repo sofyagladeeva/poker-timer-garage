@@ -31,6 +31,8 @@ import {
   getTournamentResultsButtonLabel,
   shouldBlockNewTournamentForPendingBotResults,
 } from '../tournamentResultsFlow';
+import { aggregatePlayerHistory, filterByPeriod } from '../playerHistory';
+import type { PeriodFilter } from '../playerHistory';
 import { PokerCard } from '../components/PokerCard';
 import { TournamentPlayersTab } from '../components/TournamentPlayersTab';
 import {
@@ -609,6 +611,10 @@ export function Admin() {
 
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([]);
   const [archiveDetailsById, setArchiveDetailsById] = useState<Record<number, TournamentArchiveDetails | null>>({});
+  const [archiveSubTab, setArchiveSubTab] = useState<'games' | 'players'>('games');
+  const [playerHistorySearch, setPlayerHistorySearch] = useState('');
+  const [playerHistoryPeriod, setPlayerHistoryPeriod] = useState<'30' | '90' | '365' | 'all'>('all');
+  const [expandedPlayerKey, setExpandedPlayerKey] = useState<string | null>(null);
   const [archiveOpenId, setArchiveOpenId] = useState<number | null>(null);
   const [archiveDetailsLoadingId, setArchiveDetailsLoadingId] = useState<number | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
@@ -722,6 +728,8 @@ export function Admin() {
         resultsSignature: resultsSubmission.signature,
         players: tournamentPlayers.map(player => ({
           id: player.id,
+          telegramId: player.telegramId,
+          botRegistrationId: player.botRegistrationId,
           name: player.name,
           username: player.username,
           source: player.source,
@@ -2750,6 +2758,27 @@ export function Admin() {
               </div>
             ) : (
               <>
+                {/* Sub-tab switcher */}
+                <div className="flex gap-2">
+                  {(['games', 'players'] as const).map(tab => (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => setArchiveSubTab(tab)}
+                      className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-colors ${
+                        archiveSubTab === tab
+                          ? 'bg-[#C0392B] text-white'
+                          : 'bg-[#111] border border-[#2D2D2D] text-[#888] hover:text-white hover:border-[#555]'
+                      }`}
+                    >
+                      {tab === 'games' ? 'Игры' : 'Игроки'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* ── GAMES sub-tab ─────────────────────────────────────── */}
+                {archiveSubTab === 'games' && (
+                  <>
                 {archiveLoading && (
                   <div className="text-[#444] text-sm text-center py-8">Загрузка...</div>
                 )}
@@ -2968,6 +2997,166 @@ export function Admin() {
                     </div>
                   );
                 })}
+                  </>
+                )}
+
+                {/* ── PLAYERS sub-tab ───────────────────────────────────── */}
+                {archiveSubTab === 'players' && (() => {
+                  const allAggs = aggregatePlayerHistory(tournaments);
+                  const query = playerHistorySearch.trim().toLowerCase();
+                  const filtered = allAggs.filter(a =>
+                    !query ||
+                    a.currentName.toLowerCase().includes(query) ||
+                    (a.currentUsername ?? '').toLowerCase().includes(query)
+                  );
+
+                  return (
+                    <div className="flex flex-col gap-3">
+                      {/* Controls */}
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          value={playerHistorySearch}
+                          onChange={e => setPlayerHistorySearch(e.target.value)}
+                          placeholder="Поиск по нику"
+                          className="admin-input flex-1"
+                        />
+                        <div className="flex gap-1">
+                          {(['30', '90', '365', 'all'] as PeriodFilter[]).map(p => (
+                            <button
+                              key={p}
+                              type="button"
+                              onClick={() => setPlayerHistoryPeriod(p)}
+                              className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
+                                playerHistoryPeriod === p
+                                  ? 'bg-[#C0392B] text-white'
+                                  : 'bg-[#111] border border-[#2D2D2D] text-[#888] hover:text-white hover:border-[#555]'
+                              }`}
+                            >
+                              {p === 'all' ? 'Всё' : `${p}д`}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {archiveLoading && (
+                        <div className="text-[#444] text-sm text-center py-8">Загрузка...</div>
+                      )}
+
+                      {!archiveLoading && filtered.length === 0 && (
+                        <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-8 text-center">
+                          <div className="text-[#555] text-sm">
+                            {allAggs.length === 0 ? 'Нет данных — у турниров нет сохранённых списков игроков' : 'Никто не найден'}
+                          </div>
+                        </div>
+                      )}
+
+                      {filtered.map(agg => {
+                        const entries = filterByPeriod(
+                          [...agg.tournaments].sort((a, b) => new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime()),
+                          playerHistoryPeriod
+                        );
+                        if (entries.length === 0) return null;
+
+                        const periodCash = entries.reduce((s, e) => s + e.cashPaid, 0);
+                        const periodCard = entries.reduce((s, e) => s + e.cardPaid, 0);
+                        const periodRebuys = entries.reduce((s, e) => s + e.rebuyCount, 0);
+                        const periodAddons = entries.reduce((s, e) => s + e.addonCount, 0);
+                        const periodBounty = entries.reduce((s, e) => s + e.bounty, 0);
+                        const placedEntries = entries.map(e => e.place).filter((p): p is number => p !== null);
+                        const periodBest = placedEntries.length > 0 ? Math.min(...placedEntries) : null;
+                        const isExpanded = expandedPlayerKey === agg.key;
+
+                        return (
+                          <div key={agg.key} className="bg-[#111] border border-[#2D2D2D] rounded-2xl overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedPlayerKey(isExpanded ? null : agg.key)}
+                              className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-[#161616] transition-colors"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-white font-black text-sm truncate">{agg.currentName}</div>
+                                {agg.currentUsername && (
+                                  <div className="text-[#555] text-xs mt-0.5">@{agg.currentUsername.replace(/^@/, '')}</div>
+                                )}
+                              </div>
+                              <div className="shrink-0 flex items-center gap-3">
+                                <div className="text-right">
+                                  <div className="text-white font-black text-sm">{entries.length}</div>
+                                  <div className="text-[#555] text-[10px] uppercase">игр</div>
+                                </div>
+                                {periodBest !== null && (
+                                  <div className="text-right">
+                                    <div className="text-white font-black text-sm">#{periodBest}</div>
+                                    <div className="text-[#555] text-[10px] uppercase">лучшее</div>
+                                  </div>
+                                )}
+                                <div className="text-[#555] text-xs font-bold">{isExpanded ? '▲' : '▼'}</div>
+                              </div>
+                            </button>
+
+                            {isExpanded && (
+                              <div className="border-t border-[#2D2D2D] px-4 py-3 flex flex-col gap-3">
+                                {/* Aggregate stats */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                  <div className="rounded-xl bg-[#0A0A0A] px-3 py-2">
+                                    <div className="text-[#555] text-[10px] uppercase">Наличными</div>
+                                    <div className="text-white font-black text-base mt-0.5">{periodCash.toLocaleString('ru-RU')} ₽</div>
+                                  </div>
+                                  <div className="rounded-xl bg-[#0A0A0A] px-3 py-2">
+                                    <div className="text-[#555] text-[10px] uppercase">Картой</div>
+                                    <div className="text-white font-black text-base mt-0.5">{periodCard.toLocaleString('ru-RU')} ₽</div>
+                                  </div>
+                                  <div className="rounded-xl bg-[#0A0A0A] px-3 py-2">
+                                    <div className="text-[#555] text-[10px] uppercase">Итого</div>
+                                    <div className="text-white font-black text-base mt-0.5">{(periodCash + periodCard).toLocaleString('ru-RU')} ₽</div>
+                                  </div>
+                                  <div className="rounded-xl bg-[#0A0A0A] px-3 py-2">
+                                    <div className="text-[#555] text-[10px] uppercase">Ребай / Аддон</div>
+                                    <div className="text-white font-black text-base mt-0.5">{periodRebuys} / {periodAddons}</div>
+                                  </div>
+                                  {periodBounty > 0 && (
+                                    <div className="rounded-xl bg-[#0A0A0A] px-3 py-2">
+                                      <div className="text-[#555] text-[10px] uppercase">Bounty</div>
+                                      <div className="text-white font-black text-base mt-0.5">{periodBounty}</div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Tournament history */}
+                                <div className="flex flex-col gap-1">
+                                  {entries.map(e => (
+                                    <div key={e.tournamentId} className="flex items-center justify-between gap-2 rounded-lg border border-[#1D1D1D] bg-[#0A0A0A] px-3 py-2">
+                                      <div className="min-w-0">
+                                        <div className="text-white text-xs font-bold truncate">{e.title}</div>
+                                        <div className="text-[#555] text-[10px] mt-0.5">
+                                          {new Date(e.finishedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                          {e.rebuyCount > 0 && ` · R${e.rebuyCount}`}
+                                          {e.addonCount > 0 && ` · A${e.addonCount}`}
+                                          {e.bounty > 0 && ` · Bounty ${e.bounty}`}
+                                        </div>
+                                      </div>
+                                      <div className="shrink-0 text-right">
+                                        <div className="text-white font-black text-sm">
+                                          {e.place !== null ? `#${e.place}` : '—'}
+                                        </div>
+                                        <div className="text-[#555] text-[10px]">
+                                          {(e.cashPaid + e.cardPaid) > 0
+                                            ? `${(e.cashPaid + e.cardPaid).toLocaleString('ru-RU')} ₽`
+                                            : ''}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </>
             )}
           </div>
