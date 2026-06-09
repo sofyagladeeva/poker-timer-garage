@@ -293,8 +293,7 @@ export function isEarlyBird(registeredAt: string, tournamentDate?: string | null
   if (tournamentDate) {
     const tDate = new Date(tournamentDate);
     if (!isNaN(tDate.getTime())) {
-      const cutoff = new Date(tDate);
-      cutoff.setHours(16, 0, 0, 0);
+      const cutoff = new Date(tDate.getTime() - 3 * 60 * 60 * 1000);
       return regDate < cutoff;
     }
   }
