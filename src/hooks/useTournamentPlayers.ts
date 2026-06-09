@@ -38,6 +38,7 @@ type UpdateGameState = (patch: Partial<GameState>, immediate?: boolean) => Promi
 type UseTournamentPlayersOptions = {
   gameState: GameState;
   updateGameState: UpdateGameState;
+  tournamentDate?: string | null;
 };
 
 type PlayerSyncState = {
@@ -286,9 +287,18 @@ function createId() {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function isEarlyBird(registeredAt: string): boolean {
-  const date = new Date(registeredAt);
-  return !isNaN(date.getTime()) && date.getHours() < 16;
+export function isEarlyBird(registeredAt: string, tournamentDate?: string | null): boolean {
+  const regDate = new Date(registeredAt);
+  if (isNaN(regDate.getTime())) return false;
+  if (tournamentDate) {
+    const tDate = new Date(tournamentDate);
+    if (!isNaN(tDate.getTime())) {
+      const cutoff = new Date(tDate);
+      cutoff.setHours(16, 0, 0, 0);
+      return regDate < cutoff;
+    }
+  }
+  return regDate.getHours() < 16;
 }
 
 function deriveBaseStatus(registrationSource: LiveTournamentRegistrationSource): LiveTournamentPlayerStatus {
@@ -586,7 +596,8 @@ export function mergeImportedRoster(
   previousPlayers: LiveTournamentPlayer[],
   importedPlayers: ImportedTournamentPlayer[],
   sessionId: number,
-  tournamentBotId: number | null
+  tournamentBotId: number | null,
+  tournamentDate?: string | null
 ) {
   let nextSortOrder = getNextPlayerSortOrder(previousPlayers);
   const mutable = previousPlayers.map(player => ({ ...player }));
@@ -631,7 +642,7 @@ export function mergeImportedRoster(
         continue;
       }
 
-      const nextBonusCount = existing.bonusCount === 0 && nextRegisteredAt && isEarlyBird(nextRegisteredAt)
+      const nextBonusCount = existing.bonusCount === 0 && nextRegisteredAt && isEarlyBird(nextRegisteredAt, tournamentDate)
         ? 1
         : existing.bonusCount;
 
@@ -667,7 +678,7 @@ export function mergeImportedRoster(
       arrivalStatus: isPromoUsername(imported.username) ? 'promo' : 'absent',
       rebuyCount: 0,
       addonCount: 0,
-      bonusCount: imported.registeredAt && isEarlyBird(imported.registeredAt) ? 1 : 0,
+      bonusCount: imported.registeredAt && isEarlyBird(imported.registeredAt, tournamentDate) ? 1 : 0,
       bounty: 0,
       cashPaid: 0,
       cardPaid: 0,
@@ -1107,7 +1118,7 @@ function formatSharedPlayersError(action: string, error: unknown) {
   return `Не удалось ${action} общий список игроков.`;
 }
 
-export function useTournamentPlayers({ gameState, updateGameState }: UseTournamentPlayersOptions) {
+export function useTournamentPlayers({ gameState, updateGameState, tournamentDate }: UseTournamentPlayersOptions) {
   const sharedEnabled = hasSharedPlayersStorage();
   const sessionId = normalizeSessionId(gameState.resetAt);
   const tournamentBotId = gameState.tournamentBotId;
@@ -1139,6 +1150,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
   const gameStateRef = useRef(gameState);
   const sessionIdRef = useRef(sessionId);
   const tournamentBotIdRef = useRef(tournamentBotId);
+  const tournamentDateRef = useRef(tournamentDate);
   const tournamentTitleRef = useRef(tournamentTitle);
   const storageKeyRef = useRef(storageKey);
   const emergencyStorageKeyRef = useRef(emergencyStorageKey);
@@ -1552,6 +1564,10 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
   }, [tournamentBotId]);
 
   useEffect(() => {
+    tournamentDateRef.current = tournamentDate;
+  }, [tournamentDate]);
+
+  useEffect(() => {
     tournamentTitleRef.current = tournamentTitle;
   }, [tournamentTitle]);
 
@@ -1854,7 +1870,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       return false;
     }
 
-    const merged = mergeImportedRoster(baseSnapshot.players, imported, sessionIdRef.current, tournamentBotIdRef.current);
+    const merged = mergeImportedRoster(baseSnapshot.players, imported, sessionIdRef.current, tournamentBotIdRef.current, tournamentDateRef.current);
     if (merged.changedRows.length > 0 || merged.players.length !== baseSnapshot.players.length) {
       const latestSnapshot = await syncLatestSharedPlayersSnapshot();
 
@@ -1874,7 +1890,7 @@ export function useTournamentPlayers({ gameState, updateGameState }: UseTourname
       // then mergeChangedPlayersOntoSnapshot combines both sets → 2N players.
       // Re-merging uses name/username matching to find already-committed players
       // and update rather than duplicate them.
-      const latestMerge = mergeImportedRoster(latestSnapshot.players, imported, sessionIdRef.current, tournamentBotIdRef.current);
+      const latestMerge = mergeImportedRoster(latestSnapshot.players, imported, sessionIdRef.current, tournamentBotIdRef.current, tournamentDateRef.current);
       if (latestMerge.changedRows.length > 0 || latestMerge.players.length !== latestSnapshot.players.length) {
         await commitPlayersSnapshot(
           latestMerge.players,
