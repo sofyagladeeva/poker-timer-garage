@@ -3170,12 +3170,6 @@ export function Admin() {
                                   <div className="text-white font-black text-sm">{entries.length}</div>
                                   <div className="text-[#555] text-[10px] uppercase">игр</div>
                                 </div>
-                                {avgSpend > 0 && (
-                                  <div className="text-right">
-                                    <div className="text-white font-black text-sm">{Math.round(avgSpend).toLocaleString('ru-RU')} ₽</div>
-                                    <div className="text-[#555] text-[10px] uppercase">ср. чек</div>
-                                  </div>
-                                )}
                                 {periodBest !== null && (
                                   <div className="text-right">
                                     <div className="text-white font-black text-sm">#{periodBest}</div>
@@ -3202,6 +3196,12 @@ export function Admin() {
                                     <div className="text-[#555] text-[10px] uppercase">Итого</div>
                                     <div className="text-white font-black text-base mt-0.5">{(periodCash + periodCard).toLocaleString('ru-RU')} ₽</div>
                                   </div>
+                                  {avgSpend > 0 && (
+                                    <div className="rounded-xl bg-[#0A0A0A] px-3 py-2">
+                                      <div className="text-[#555] text-[10px] uppercase">Ср. чек</div>
+                                      <div className="text-white font-black text-base mt-0.5">{Math.round(avgSpend).toLocaleString('ru-RU')} ₽</div>
+                                    </div>
+                                  )}
                                   <div className="rounded-xl bg-[#0A0A0A] px-3 py-2">
                                     <div className="text-[#555] text-[10px] uppercase">Ребай / Аддон</div>
                                     <div className="text-white font-black text-base mt-0.5">{periodRebuys} / {periodAddons}</div>
