@@ -149,7 +149,11 @@ function normalizeImportedPlayer(
   );
   const username = toNullableString(source.username) || toNullableString(nestedUser?.username);
 
-  const registeredAt = toNullableString(source.registered_at) ?? toNullableString(source.registeredAt);
+  const rawRegisteredAt = toNullableString(source.registered_at) ?? toNullableString(source.registeredAt);
+  // Bot sends UTC timestamps without 'Z'; append it so JS parses as UTC, not local time
+  const registeredAt = rawRegisteredAt && !rawRegisteredAt.includes('Z') && !rawRegisteredAt.includes('+')
+    ? rawRegisteredAt + 'Z'
+    : rawRegisteredAt;
 
   return {
     botRegistrationId,

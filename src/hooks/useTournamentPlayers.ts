@@ -290,14 +290,11 @@ function createId() {
 export function isEarlyBird(registeredAt: string, tournamentDate?: string | null): boolean {
   const regDate = new Date(registeredAt);
   if (isNaN(regDate.getTime())) return false;
-  if (tournamentDate) {
-    const tDate = new Date(tournamentDate);
-    if (!isNaN(tDate.getTime())) {
-      const cutoff = new Date(tDate.getTime() - 3 * 60 * 60 * 1000);
-      return regDate < cutoff;
-    }
-  }
-  return regDate.getHours() < 16;
+  if (!tournamentDate) return false;
+  const tDate = new Date(tournamentDate);
+  if (isNaN(tDate.getTime())) return false;
+  const cutoff = new Date(tDate.getTime() - 3 * 60 * 60 * 1000);
+  return regDate < cutoff;
 }
 
 function deriveBaseStatus(registrationSource: LiveTournamentRegistrationSource): LiveTournamentPlayerStatus {
