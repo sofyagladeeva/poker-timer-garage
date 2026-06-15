@@ -302,7 +302,9 @@ function deriveBaseStatus(registrationSource: LiveTournamentRegistrationSource):
 }
 
 function normalizeArrivalStatus(value: unknown): LiveTournamentArrivalStatus {
-  return value === 'paid' || value === 'free' || value === 'promo' ? value : 'absent';
+  return value === 'paid' || value === 'free' || value === 'promo' || value === 'freePromo' || value === 'admin'
+    ? value
+    : 'absent';
 }
 
 function normalizeRegistrationSource(value: unknown): LiveTournamentRegistrationSource {
@@ -328,9 +330,22 @@ export function calcPaymentDue(
   // If buy_in > 0 — entry, rebuys and addons all cost buy_in.
   const entryPrice = tournamentBuyIn !== null ? tournamentBuyIn : TOURNAMENT_UNIT_PRICE;
   const rebuyAddonPrice = (tournamentBuyIn !== null && tournamentBuyIn > 0) ? tournamentBuyIn : TOURNAMENT_UNIT_PRICE;
+  const actions = clampWhole(rebuyCount) + clampWhole(addonCount);
+
+  if (arrivalStatus === 'freePromo') {
+    // Free entry, 50% discount on all rebuys/addons
+    return Math.round(actions * rebuyAddonPrice * PROMO_DISCOUNT_FACTOR);
+  }
+
+  if (arrivalStatus === 'admin') {
+    // Free entry + 3 free rebuys/addons, then standard price per action
+    const ADMIN_FREE_ACTIONS = 3;
+    const paidActions = Math.max(0, actions - ADMIN_FREE_ACTIONS);
+    return paidActions * TOURNAMENT_UNIT_PRICE;
+  }
 
   const entryAmount = arrivalStatus === 'free' ? 0 : entryPrice;
-  const total = entryAmount + (clampWhole(rebuyCount) + clampWhole(addonCount)) * rebuyAddonPrice;
+  const total = entryAmount + actions * rebuyAddonPrice;
   return arrivalStatus === 'promo'
     ? Math.round(total * PROMO_DISCOUNT_FACTOR)
     : total;
@@ -727,7 +742,7 @@ function summarizePlayers(players: LiveTournamentPlayer[]): TournamentPlayersSum
       summary.totalDue += clampWhole(player.paymentDue);
 
       if (player.arrivalStatus === 'paid' || player.arrivalStatus === 'promo') summary.paidEntries += 1;
-      if (player.arrivalStatus === 'free') summary.freeEntries += 1;
+      if (player.arrivalStatus === 'free' || player.arrivalStatus === 'freePromo' || player.arrivalStatus === 'admin') summary.freeEntries += 1;
 
       if (player.status === 'out') {
         summary.bustouts += 1;
@@ -833,7 +848,13 @@ export function buildTournamentFinancePayload(params: {
   const cashTotal = eligiblePlayers.reduce((s, p) => s + p.cashPaid, 0);
   const cardTotal = eligiblePlayers.reduce((s, p) => s + p.cardPaid, 0);
   const totalPaid = cashTotal + cardTotal;
-  const fullTotal = eligiblePlayers.reduce((s, p) => s + (p.arrivalStatus === 'promo' ? p.paymentDue * 2 : p.paymentDue), 0);
+  const fullTotal = eligiblePlayers.reduce((s, p) => {
+    if (p.arrivalStatus === 'promo' || p.arrivalStatus === 'freePromo') return s + p.paymentDue * 2;
+    if (p.arrivalStatus === 'admin') {
+      return s + (1 + clampWhole(p.rebuyCount) + clampWhole(p.addonCount)) * TOURNAMENT_UNIT_PRICE;
+    }
+    return s + p.paymentDue;
+  }, 0);
   const discountTotal = fullTotal - summary.totalDue;
 
   return {
@@ -2052,8 +2073,8 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
         ...player,
         arrivalStatus,
         status: nextStatus,
-        cashPaid: arrivalStatus === 'free' ? 0 : player.cashPaid,
-        cardPaid: arrivalStatus === 'free' ? 0 : player.cardPaid,
+        cashPaid: (arrivalStatus === 'free' || arrivalStatus === 'freePromo' || arrivalStatus === 'admin') ? 0 : player.cashPaid,
+        cardPaid: (arrivalStatus === 'free' || arrivalStatus === 'freePromo' || arrivalStatus === 'admin') ? 0 : player.cardPaid,
         place: arrivalStatus === 'absent' ? null : player.place,
         placeOverride: arrivalStatus === 'absent' ? false : player.placeOverride,
         bustoutOrder: arrivalStatus === 'absent' ? null : player.bustoutOrder,

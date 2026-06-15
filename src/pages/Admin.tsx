@@ -23,6 +23,8 @@ import type {
   TournamentArchivePlayerRecord,
   TournamentRecord,
   GameState,
+  ChipLeaderEntry,
+  LiveTournamentPlayer,
 } from '../types';
 import { SUIT_SYMBOLS } from '../types';
 import {
@@ -123,6 +125,22 @@ type TournamentResultsDispatchOutcome = {
   financeSkipped: boolean;
 };
 
+type AdminTab = 'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings';
+
+type ChipLeaderDraftRow = {
+  id: string;
+  playerId: string;
+  name: string;
+  stack: string;
+};
+
+type ChipLeaderDraftOverride = {
+  levelIndex: number;
+  rows: ChipLeaderDraftRow[];
+} | null;
+
+const CHIP_LEADER_ROW_IDS = ['chip-1', 'chip-2', 'chip-3'] as const;
+
 type PendingTournamentSelection = {
   title: string;
   botId: number | null;
@@ -192,6 +210,27 @@ function formatNextGameFallback(game: { title: string; date: string; confirmed: 
   const dateStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
   const timeStr = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   return `${game.title}\n${dateStr} · ${timeStr}\n${game.confirmed} / ${game.max_players} мест`;
+}
+
+function createBlankChipLeaderDraft(): ChipLeaderDraftRow[] {
+  return CHIP_LEADER_ROW_IDS.map(id => ({ id, playerId: '', name: '', stack: '' }));
+}
+
+function chipLeaderDraftFromEntries(entries: ChipLeaderEntry[]): ChipLeaderDraftRow[] {
+  const blank = createBlankChipLeaderDraft();
+  entries.slice(0, 3).forEach((entry, index) => {
+    blank[index] = {
+      id: entry.id || CHIP_LEADER_ROW_IDS[index],
+      playerId: entry.playerId,
+      name: entry.name,
+      stack: entry.stack > 0 ? String(entry.stack) : '',
+    };
+  });
+  return blank;
+}
+
+function isActiveChipLeaderCandidate(player: LiveTournamentPlayer) {
+  return player.status === 'active' && player.arrivalStatus !== 'absent';
 }
 
 function formatApproxTimeFromNow(secondsFromNow: number) {
@@ -275,8 +314,10 @@ function useTabletAdminLayout() {
 
 function formatArchiveArrivalStatus(value: TournamentArchivePlayerRecord['arrivalStatus']) {
   if (value === 'free') return 'Бесплатно';
-  if (value === 'promo') return 'Промокод';
+  if (value === 'promo') return 'Скидка 50%';
   if (value === 'paid') return 'Платно';
+  if (value === 'freePromo') return 'Бесплатно+скидка';
+  if (value === 'admin') return 'Админ';
   return 'Не в игре';
 }
 
@@ -573,7 +614,7 @@ export function Admin() {
   const [pwError, setPwError] = useState(false);
   const [archivePwInput, setArchivePwInput] = useState('');
   const [archivePwError, setArchivePwError] = useState(false);
-  const [activeTab, setActiveTab] = useState<'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings'>('control');
+  const [activeTab, setActiveTab] = useState<AdminTab>('control');
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
   const [customGameOpen, setCustomGameOpen] = useState(false);
   const [customGameTitle, setCustomGameTitle] = useState('');
@@ -588,6 +629,7 @@ export function Admin() {
   const [backgroundUploadError, setBackgroundUploadError] = useState<string | null>(null);
   const [backgroundUploadNote, setBackgroundUploadNote] = useState<string | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [chipLeaderDraftOverride, setChipLeaderDraftOverride] = useState<ChipLeaderDraftOverride>(null);
   useEffect(() => {
     const onScroll = () => setShowScrollTop(window.scrollY > 400);
     window.addEventListener('scroll', onScroll, { passive: true });
@@ -669,6 +711,18 @@ export function Admin() {
     updateGameState,
     tournamentDate: selectedBotGame?.date ?? null,
   });
+  const chipLeaderCandidatePlayers = tournamentPlayers
+    .filter(isActiveChipLeaderCandidate)
+    .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  const lateRegistrationLevel = getLateRegistrationLevel(blindLevels);
+  const chipLeaderTargetLevelIndex = lateRegistrationLevel
+    ? blindLevels.findIndex(level => level.id === lateRegistrationLevel.id)
+    : -1;
+  const chipLeaderDraft = chipLeaderDraftOverride?.levelIndex === chipLeaderTargetLevelIndex
+    ? chipLeaderDraftOverride.rows
+    : gameState.chipLeaders?.levelIndex === chipLeaderTargetLevelIndex
+    ? chipLeaderDraftFromEntries(gameState.chipLeaders.entries)
+    : createBlankChipLeaderDraft();
 
   useEffect(() => {
     if (!authed || !authoritativeReady) return;
@@ -1751,12 +1805,19 @@ export function Admin() {
   const currentLevel = blindLevels[gameState.currentLevelIndex];
   const regularBlindLevels = blindLevels.filter(level => !level.isBreak);
   const anteStartLevel = regularBlindLevels.find(level => level.ante > 0)?.level ?? 0;
-  const lateRegistrationLevel = getLateRegistrationLevel(blindLevels);
   const currentKnockoutLabel = getKnockoutLabel(currentLevel);
   const nextKnockout = getNextKnockoutInfo(blindLevels, gameState.currentLevelIndex, gameState.timeLeft);
   const nextKnockoutTime = nextKnockout && !nextKnockout.startsNow
     ? formatApproxTimeFromNow(nextKnockout.secondsUntil)
     : null;
+  const chipLeaderTargetLevel = blindLevels[chipLeaderTargetLevelIndex] ?? null;
+  const chipLeadersSavedForTarget = gameState.chipLeaders?.levelIndex === chipLeaderTargetLevelIndex
+    ? gameState.chipLeaders.entries.length
+    : 0;
+  const chipLeaderRowsReady = chipLeaderDraft.filter(row => (
+    row.playerId && Math.round(Number(row.stack.replace(/\s+/g, '')) || 0) > 0
+  )).length;
+  const canSaveChipLeaders = chipLeaderRowsReady === 3;
 
   const updateStackState = (
     patch: Partial<Pick<GameState, 'players' | 'rebuys' | 'addonCount' | 'bonusCount' | 'startStack' | 'addonStack' | 'bonusStack'>>
@@ -1765,7 +1826,62 @@ export function Admin() {
     updateGameState({ ...patch, totalStack: calcTotalStack(nextState) });
   };
 
-  const selectTab = (tabId: 'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings') => {
+  const updateChipLeaderDraft = (rowId: string, patch: Partial<ChipLeaderDraftRow>) => {
+    setChipLeaderDraftOverride(current => {
+      const rows = current?.levelIndex === chipLeaderTargetLevelIndex
+        ? current.rows
+        : chipLeaderDraft;
+
+      return {
+        levelIndex: chipLeaderTargetLevelIndex,
+        rows: rows.map(row => row.id === rowId ? { ...row, ...patch } : row),
+      };
+    });
+  };
+
+  const selectChipLeaderPlayer = (rowId: string, playerId: string) => {
+    const player = chipLeaderCandidatePlayers.find(candidate => candidate.id === playerId);
+    updateChipLeaderDraft(rowId, {
+      playerId,
+      name: player?.name ?? '',
+    });
+  };
+
+  const saveChipLeaders = () => {
+    const entries = chipLeaderDraft
+      .map((row, index): ChipLeaderEntry | null => {
+        const stack = Math.max(0, Math.round(Number(row.stack.replace(/\s+/g, '')) || 0));
+        const player = chipLeaderCandidatePlayers.find(candidate => candidate.id === row.playerId);
+        const name = (player?.name ?? row.name).trim();
+        if (!row.playerId || !name || stack <= 0) return null;
+
+        return {
+          id: row.id || `chip-${index + 1}`,
+          playerId: row.playerId,
+          name,
+          stack,
+        };
+      })
+      .filter((entry): entry is ChipLeaderEntry => entry !== null)
+      .sort((a, b) => b.stack - a.stack)
+      .slice(0, 3);
+
+    updateGameState({
+      chipLeaders: entries.length > 0
+        ? { levelIndex: chipLeaderTargetLevelIndex, entries }
+        : null,
+    }, true);
+  };
+
+  const clearChipLeaders = () => {
+    setChipLeaderDraftOverride({
+      levelIndex: chipLeaderTargetLevelIndex,
+      rows: createBlankChipLeaderDraft(),
+    });
+    updateGameState({ chipLeaders: null }, true);
+  };
+
+  const selectTab = (tabId: AdminTab) => {
     if (tabId === 'archive' && archiveAuthed) {
       setArchiveLoading(true);
     }
@@ -2455,6 +2571,87 @@ export function Admin() {
               </div>
             </div>
 
+            {/* Chip leaders */}
+            <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <div className="text-[#888] text-xs uppercase tracking-widest">Чип-лидеры на табло</div>
+                  <div className="text-[#555] text-xs mt-1">
+                    {chipLeaderTargetLevel
+                      ? `Автопоказ на уровне ${chipLeaderTargetLevel.level} после перерыва перед закрытием поздней регистрации`
+                      : 'Сначала отметьте уровень закрытия поздней регистрации в структуре блайндов'}
+                    {chipLeadersSavedForTarget > 0 ? ` · сохранено ${chipLeadersSavedForTarget}/3` : ''}
+                  </div>
+                </div>
+                {gameState.chipLeaders && (
+                  <button
+                    onClick={clearChipLeaders}
+                    className="text-[#666] hover:text-white text-xs px-2 py-1 rounded-lg bg-[#0A0A0A] border border-[#2D2D2D]"
+                  >
+                    Скрыть
+                  </button>
+                )}
+              </div>
+
+              {chipLeaderCandidatePlayers.length === 0 ? (
+                <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-3 text-[#666] text-sm">
+                  Нет активных игроков. Отметьте игроков во вкладке `Игроки`, чтобы они появились в списке.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {chipLeaderDraft.map((row, index) => {
+                    const selectedPlayerIds = new Set(
+                      chipLeaderDraft
+                        .filter(other => other.id !== row.id && other.playerId)
+                        .map(other => other.playerId)
+                    );
+
+                    return (
+                      <div key={row.id} className="grid grid-cols-[36px_1fr_120px] gap-2 items-center">
+                        <div className="text-[#555] font-black text-lg text-center">{index + 1}</div>
+                        <select
+                          className="admin-input"
+                          value={row.playerId}
+                          onChange={e => selectChipLeaderPlayer(row.id, e.target.value)}
+                        >
+                          <option value="">Игрок</option>
+                          {chipLeaderCandidatePlayers.map(player => (
+                            <option
+                              key={player.id}
+                              value={player.id}
+                              disabled={selectedPlayerIds.has(player.id)}
+                            >
+                              {player.name}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          className="admin-input"
+                          value={row.stack}
+                          onChange={e => updateChipLeaderDraft(row.id, { stack: e.target.value })}
+                          placeholder="Фишки"
+                          inputMode="numeric"
+                          min={0}
+                        />
+                      </div>
+                    );
+                  })}
+
+                  <button
+                    onClick={saveChipLeaders}
+                    disabled={!canSaveChipLeaders || !chipLeaderTargetLevel}
+                    className="admin-btn-primary py-3 text-sm disabled:opacity-30"
+                  >
+                    Показать на уровне закрытия поздней регистрации
+                  </button>
+                  <div className="text-[#555] text-xs">
+                    Табло будет чередовать очки турнира и чип-лидеров каждые 20 секунд на первом уровне после этого перерыва, затем само вернётся к обычному режиму.
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Rating toggle */}
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
               <div className="flex items-center justify-between">
@@ -2851,7 +3048,11 @@ export function Admin() {
                     if (p.cardPaid != null) return sum + p.cardPaid;
                     return sum + (p.paymentMethod === 'card' ? p.paymentDue : 0);
                   }, 0);
-                  const archiveFullTotal = archivePlayers.reduce((sum, p) => sum + (p.arrivalStatus === 'promo' ? p.paymentDue * 2 : p.paymentDue), 0);
+                  const archiveFullTotal = archivePlayers.reduce((sum, p) => {
+                    if (p.arrivalStatus === 'promo' || p.arrivalStatus === 'freePromo') return sum + p.paymentDue * 2;
+                    if (p.arrivalStatus === 'admin') return sum + (1 + p.rebuyCount + p.addonCount) * 1000;
+                    return sum + p.paymentDue;
+                  }, 0);
                   const archiveDiscountTotal = archiveFullTotal - (archiveDetails?.summary?.totalDue ?? 0);
                   return (
                     <div key={t.id} className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-3">
@@ -3019,8 +3220,11 @@ export function Admin() {
                                       <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Bounty: <span className="text-white font-bold">{player.bounty}</span></div>
                                       <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">
                                         К оплате: <span className="text-white font-bold">{player.paymentDue} ₽</span>
-                                        {player.arrivalStatus === 'promo' && (
+                                        {(player.arrivalStatus === 'promo' || player.arrivalStatus === 'freePromo') && (
                                           <div className="text-[#555] text-[10px] mt-0.5">без скидки: {player.paymentDue * 2} ₽</div>
+                                        )}
+                                        {player.arrivalStatus === 'admin' && (
+                                          <div className="text-[#555] text-[10px] mt-0.5">без скидки: {(1 + player.rebuyCount + player.addonCount) * 1000} ₽</div>
                                         )}
                                       </div>
                                       <div className="rounded-lg bg-[#0A0A0A] px-3 py-2 text-[#AAA]">Оплата: <span className="text-white font-bold">{formatArchivePayment(player)}</span></div>
@@ -3061,7 +3265,11 @@ export function Admin() {
                       const periodRebuys = entries.reduce((s, e) => s + e.rebuyCount, 0);
                       const periodAddons = entries.reduce((s, e) => s + e.addonCount, 0);
                       const periodBounty = entries.reduce((s, e) => s + e.bounty, 0);
-                      const periodDiscount = entries.reduce((s, e) => s + (e.arrivalStatus === 'promo' ? e.paymentDue : 0), 0);
+                      const periodDiscount = entries.reduce((s, e) => {
+                        if (e.arrivalStatus === 'promo' || e.arrivalStatus === 'freePromo') return s + e.paymentDue;
+                        if (e.arrivalStatus === 'admin') return s + Math.max(0, (1 + e.rebuyCount + e.addonCount) * 1000 - e.paymentDue);
+                        return s;
+                      }, 0);
                       const placedEntries = entries.map(e => e.place).filter((p): p is number => p !== null);
                       const periodBest = placedEntries.length > 0 ? Math.min(...placedEntries) : null;
                       const avgSpend = entries.length > 0 ? (periodCash + periodCard) / entries.length : 0;
@@ -3223,7 +3431,11 @@ export function Admin() {
                                 {/* Tournament history */}
                                 <div className="flex flex-col gap-1.5">
                                   {entries.map(e => {
-                                    const discount = e.arrivalStatus === 'promo' ? e.paymentDue : 0;
+                                    const discount = (e.arrivalStatus === 'promo' || e.arrivalStatus === 'freePromo')
+                                      ? e.paymentDue
+                                      : e.arrivalStatus === 'admin'
+                                        ? Math.max(0, (1 + e.rebuyCount + e.addonCount) * 1000 - e.paymentDue)
+                                        : 0;
                                     return (
                                       <div key={e.tournamentId} className="rounded-lg border border-[#1D1D1D] bg-[#0A0A0A] px-3 py-2">
                                         <div className="flex items-start justify-between gap-2">
@@ -3260,7 +3472,7 @@ export function Admin() {
                                               <div className="text-[#888] text-[10px]">карта <span className="text-white font-bold">{e.cardPaid.toLocaleString('ru-RU')} ₽</span></div>
                                             )}
                                             {e.cashPaid === 0 && e.cardPaid === 0 && (
-                                              <div className="text-[#555] text-[10px]">{e.arrivalStatus === 'free' ? 'Бесплатно' : 'не оплачено'}</div>
+                                              <div className="text-[#555] text-[10px]">{(e.arrivalStatus === 'free' || e.arrivalStatus === 'freePromo' || e.arrivalStatus === 'admin') ? 'Бесплатно' : 'не оплачено'}</div>
                                             )}
                                           </div>
                                         </div>

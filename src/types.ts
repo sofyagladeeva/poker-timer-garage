@@ -36,6 +36,18 @@ export interface BlindTemplate {
 
 export type GameStatus = 'idle' | 'running' | 'paused' | 'break' | 'ended';
 
+export interface ChipLeaderEntry {
+  id: string;
+  playerId: string;
+  name: string;
+  stack: number;
+}
+
+export interface ChipLeadersState {
+  levelIndex: number;
+  entries: ChipLeaderEntry[];
+}
+
 export interface GameState {
   status: GameStatus;
   currentLevelIndex: number;
@@ -60,13 +72,14 @@ export interface GameState {
   tournamentBotId: number | null; // id игры в боте
   nextGameBotId: number | null; // id следующей игры (выбирается вручную в админке)
   tournamentBuyIn: number | null; // стоимость входа из бота (null = использовать дефолт 1000)
+  chipLeaders: ChipLeadersState | null; // показываются на табло один уровень после перерыва
   resetAt: number; // unix ms timestamp of last resetTournament() — used to detect stale admin devices
 }
 
 export type LiveTournamentPlayerSource = 'bot' | 'manual';
 export type LiveTournamentRegistrationSource = 'registered' | 'waitlist';
 export type LiveTournamentPlayerStatus = 'registered' | 'waitlist' | 'active' | 'out';
-export type LiveTournamentArrivalStatus = 'absent' | 'paid' | 'free' | 'promo';
+export type LiveTournamentArrivalStatus = 'absent' | 'paid' | 'free' | 'promo' | 'freePromo' | 'admin';
 export type LiveTournamentPaymentMethod = 'unpaid' | 'cash' | 'card' | 'split';
 
 export interface LiveTournamentPlayer {

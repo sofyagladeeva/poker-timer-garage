@@ -693,7 +693,11 @@ function MobilePlayerCard({
     ? 'promo'
     : player.arrivalStatus === 'free'
       ? 'free'
-      : 'paid';
+      : player.arrivalStatus === 'freePromo'
+        ? 'freePromo'
+        : player.arrivalStatus === 'admin'
+          ? 'admin'
+          : 'paid';
 
   const handleActiveClick = async () => {
     if (isOut) {
@@ -855,14 +859,16 @@ function MobilePlayerCard({
               value={entryTypeValue}
               disabled={player.arrivalStatus === 'absent' && !isOut}
               onChange={value => {
-                if (value === 'paid' || value === 'free' || value === 'promo') {
+                if (value === 'paid' || value === 'free' || value === 'promo' || value === 'freePromo' || value === 'admin') {
                   void onSetPlayerArrival(player.id, value);
                 }
               }}
               options={[
                 { value: 'paid', label: 'Платно' },
                 { value: 'free', label: 'Бесплатно' },
-                { value: 'promo', label: 'Промокод' },
+                { value: 'promo', label: 'Скидка 50%' },
+                { value: 'freePromo', label: 'Бесплатно+скидка' },
+                { value: 'admin', label: 'Админ' },
               ]}
             />
             <div className="grid grid-cols-2 gap-2">
