@@ -77,6 +77,7 @@ export function TournamentPlayersTab({
   const [outDialogPlayerId, setOutDialogPlayerId] = useState<string | null>(null);
   const [outDialogBountyDraft, setOutDialogBountyDraft] = useState('0');
   const [outDialogBusy, setOutDialogBusy] = useState(false);
+  const [contactPlayer, setContactPlayer] = useState<LiveTournamentPlayer | null>(null);
   const totalPlayers = groupedPlayers.active.length + groupedPlayers.pending.length + groupedPlayers.waitlist.length + groupedPlayers.out.length;
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const rosterPlayers = [
@@ -524,6 +525,7 @@ export function TournamentPlayersTab({
                     onSetPlayerArrival={onSetPlayerArrival}
                     onOpenOutDialog={openOutDialog}
                     onRestorePlayer={onRestorePlayer}
+                    onShowContact={setContactPlayer}
                   />
                 ))}
               </div>
@@ -571,6 +573,7 @@ export function TournamentPlayersTab({
                           onSetPlayerArrival={onSetPlayerArrival}
                           onOpenOutDialog={openOutDialog}
                           onRestorePlayer={onRestorePlayer}
+                          onShowContact={setContactPlayer}
                         />
                       ))}
                     </tbody>
@@ -645,6 +648,91 @@ export function TournamentPlayersTab({
           </div>
         </div>
       )}
+      {contactPlayer && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-3 sm:items-center sm:p-6"
+          onClick={() => setContactPlayer(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl border border-[#2D2D2D] bg-[#111] shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="border-b border-[#2D2D2D] px-5 py-4 flex items-start justify-between gap-3">
+              <div>
+                <div className="text-white font-black text-base break-words">{contactPlayer.name}</div>
+                {contactPlayer.realName && (
+                  <div className="mt-0.5 text-sm text-[#999]">{contactPlayer.realName}</div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setContactPlayer(null)}
+                className="shrink-0 text-[#666] hover:text-white text-lg leading-none"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="px-5 py-4 flex flex-col gap-3">
+              {contactPlayer.phone ? (
+                <a
+                  href={`tel:${contactPlayer.phone}`}
+                  className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 hover:border-[#444] transition-colors"
+                >
+                  <span className="text-lg">📞</span>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Телефон</div>
+                    <div className="text-white font-bold text-sm mt-0.5">{contactPlayer.phone}</div>
+                  </div>
+                </a>
+              ) : (
+                <div className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 opacity-40">
+                  <span className="text-lg">📞</span>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Телефон</div>
+                    <div className="text-[#666] text-sm mt-0.5">Не указан</div>
+                  </div>
+                </div>
+              )}
+              {contactPlayer.instagram && (
+                <a
+                  href={`https://instagram.com/${contactPlayer.instagram.replace(/^@/, '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 hover:border-[#444] transition-colors"
+                >
+                  <span className="text-lg">📸</span>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Instagram</div>
+                    <div className="text-white font-bold text-sm mt-0.5">{contactPlayer.instagram}</div>
+                  </div>
+                </a>
+              )}
+              {contactPlayer.username ? (
+                <a
+                  href={`https://t.me/${contactPlayer.username}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 hover:border-[#444] transition-colors"
+                >
+                  <span className="text-lg">✈️</span>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Telegram</div>
+                    <div className="text-white font-bold text-sm mt-0.5">@{contactPlayer.username}</div>
+                  </div>
+                </a>
+              ) : contactPlayer.telegramId ? (
+                <div className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3">
+                  <span className="text-lg">✈️</span>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Telegram ID</div>
+                    <div className="text-white font-bold text-sm mt-0.5">{contactPlayer.telegramId}</div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -676,6 +764,7 @@ function MobilePlayerCard({
   onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
   onOpenOutDialog: (player: LiveTournamentPlayer) => void;
   onRestorePlayer: (playerId: string) => Promise<void>;
+  onShowContact: (player: LiveTournamentPlayer) => void;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
@@ -735,7 +824,15 @@ function MobilePlayerCard({
     <div className="rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-white font-black text-base leading-tight break-words">{player.name}</div>
+          <div className="flex items-center gap-1.5">
+              <div className="text-white font-black text-base leading-tight break-words">{player.name}</div>
+              <button
+                type="button"
+                onClick={() => onShowContact(player)}
+                className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full border border-[#3D3D3D] text-[#888] text-[11px] hover:border-[#888] hover:text-white transition-colors"
+                title="Контакты"
+              >ⓘ</button>
+            </div>
           <div className="mt-1 flex flex-wrap gap-1">
             <div className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.12em] ${nameBadgeTone}`}>
               {nameBadgeLabel}
@@ -993,6 +1090,7 @@ function PlayerRow({
   onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
   onOpenOutDialog: (player: LiveTournamentPlayer) => void;
   onRestorePlayer: (playerId: string) => Promise<void>;
+  onShowContact: (player: LiveTournamentPlayer) => void;
 }) {
   const [openField, setOpenField] = useState<'entry' | 'split' | null>(null);
   const canEditCounters = player.arrivalStatus !== 'absent';
@@ -1052,7 +1150,15 @@ function PlayerRow({
     <tr className="rounded-2xl bg-[#0A0A0A]">
       <td className="px-1 py-1 sm:px-1.5 sm:py-1.5 align-top rounded-l-2xl border-y border-l border-[#2D2D2D]">
         <div className="flex min-w-0 flex-col gap-1">
-          <div className="text-white font-black text-[11px] sm:text-sm truncate">{player.name}</div>
+          <div className="flex items-center gap-1">
+              <div className="text-white font-black text-[11px] sm:text-sm truncate">{player.name}</div>
+              <button
+                type="button"
+                onClick={() => onShowContact(player)}
+                className="shrink-0 inline-flex items-center justify-center w-4 h-4 sm:w-5 sm:h-5 rounded-full border border-[#3D3D3D] text-[#888] text-[9px] sm:text-[11px] hover:border-[#888] hover:text-white transition-colors"
+                title="Контакты"
+              >ⓘ</button>
+            </div>
           <div className="flex flex-wrap gap-1">
             <div className={`inline-flex w-fit items-center rounded-full border px-1.5 py-0.5 text-[8px] sm:px-2 sm:text-[9px] uppercase tracking-[0.12em] sm:tracking-[0.14em] ${nameBadgeTone}`}>
               {nameBadgeLabel}

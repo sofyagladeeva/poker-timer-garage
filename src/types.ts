@@ -90,6 +90,9 @@ export interface LiveTournamentPlayer {
   telegramId: number | null;
   name: string;
   username: string | null;
+  realName: string | null;
+  phone: string | null;
+  instagram: string | null;
   source: LiveTournamentPlayerSource;
   registrationSource: LiveTournamentRegistrationSource;
   status: LiveTournamentPlayerStatus;

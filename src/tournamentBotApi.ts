@@ -28,6 +28,9 @@ export interface ImportedTournamentPlayer {
   registrationSource: LiveTournamentRegistrationSource;
   registeredAt: string | null;
   sortOrder: number;
+  realName: string | null;
+  phone: string | null;
+  instagram: string | null;
 }
 
 function fillUrlTemplate(template: string, tournamentBotId: number | null) {
@@ -163,6 +166,9 @@ function normalizeImportedPlayer(
     registrationSource: inferRegistrationSource(source, fallback),
     registeredAt,
     sortOrder,
+    realName: toNullableString(source.real_name) ?? toNullableString(nestedUser?.real_name),
+    phone: toNullableString(source.phone) ?? toNullableString(nestedUser?.phone),
+    instagram: toNullableString(source.instagram) ?? toNullableString(nestedUser?.instagram),
   };
 }
 
