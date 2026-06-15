@@ -7,6 +7,7 @@ import {
   shouldApplyRemoteGameStateUpdate,
   shouldForceForegroundSyncBeforeWrite,
   stripUnsupportedBonusColumns,
+  stripUnsupportedChipLeaderColumns,
 } from '../src/gameStateSync.ts';
 import type { GameState } from '../src/types.ts';
 
@@ -119,6 +120,28 @@ test('legacy bonus-column fallback keeps the write scoped to the current patch',
   });
   assert.equal('currentLevelIndex' in patch, false);
   assert.equal('timeLeft' in patch, false);
+});
+
+test('legacy chip-leader fallback keeps the write scoped to the current patch', () => {
+  const state = createGameState({
+    chipLeaders: {
+      levelIndex: 5,
+      entries: [
+        { id: 'chip-1', playerId: 'p1', name: 'Anna', stack: 120000 },
+      ],
+    },
+    lastTickAt: 22_000,
+  });
+
+  const patch = buildGameStatePersistencePatch(state, {
+    chipLeaders: state.chipLeaders,
+  });
+
+  assert.deepEqual(stripUnsupportedChipLeaderColumns({ id: 1, ...patch }), {
+    id: 1,
+    lastTickAt: 22_000,
+    resetAt: 100,
+  });
 });
 
 test('foreground wake sync is forced only for long inactive running timers', () => {

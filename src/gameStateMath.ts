@@ -1,4 +1,4 @@
-import type { GameState, GameStatus } from './types.ts';
+import type { ChipLeaderEntry, ChipLeadersState, GameState, GameStatus } from './types.ts';
 
 function toNumber(value: unknown, fallback = 0) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -33,6 +33,39 @@ function toBoolean(value: unknown, fallback = false) {
 
 function isGameStatus(value: unknown): value is GameStatus {
   return value === 'idle' || value === 'running' || value === 'paused' || value === 'break' || value === 'ended';
+}
+
+function normalizeChipLeaderEntry(raw: unknown, index: number): ChipLeaderEntry | null {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const source = raw as Record<string, unknown>;
+  const name = toStringValue(source.name).trim();
+  const stack = toWholeNumber(source.stack, 0);
+  if (!name || stack <= 0) return null;
+
+  return {
+    id: toStringValue(source.id, `${index + 1}`),
+    playerId: toStringValue(source.playerId, toStringValue(source.player_id, '')),
+    name,
+    stack,
+  };
+}
+
+function normalizeChipLeaders(raw: unknown, fallback: ChipLeadersState | null): ChipLeadersState | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  if (!raw || typeof raw !== 'object') return fallback;
+
+  const source = raw as Record<string, unknown>;
+  const levelIndex = toWholeNumber(source.levelIndex ?? source.level_index, fallback?.levelIndex ?? 0);
+  const entries = Array.isArray(source.entries)
+    ? source.entries
+        .map((entry, index) => normalizeChipLeaderEntry(entry, index))
+        .filter((entry): entry is ChipLeaderEntry => entry !== null)
+        .slice(0, 3)
+    : fallback?.entries ?? [];
+
+  if (entries.length === 0) return null;
+  return { levelIndex, entries };
 }
 
 export function calcTotalStack(state: Pick<GameState, 'players' | 'rebuys' | 'startStack' | 'addonCount' | 'addonStack' | 'bonusCount' | 'bonusStack'>) {
@@ -71,6 +104,7 @@ export function normalizeGameState(raw: unknown, fallback: GameState): GameState
     tournamentBotId: toNullableNumber(source.tournamentBotId, fallback.tournamentBotId),
     nextGameBotId: toNullableNumber(source.nextGameBotId, fallback.nextGameBotId),
     tournamentBuyIn: toNullableNumber(source.tournamentBuyIn, fallback.tournamentBuyIn),
+    chipLeaders: normalizeChipLeaders(source.chipLeaders ?? source.chip_leaders, fallback.chipLeaders),
     resetAt: toWholeNumber(source.resetAt, fallback.resetAt ?? 0),
   };
 
@@ -107,9 +141,18 @@ export function hasMissingBonusColumns(error: unknown) {
   );
 }
 
+export function hasMissingChipLeaders(error: unknown) {
+  const message = typeof error === 'object' && error && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : '';
+
+  return message.includes('chipLeaders') || message.includes('chip_leaders');
+}
+
 export function toLegacyGameState(state: GameState) {
-  const { bonusCount, bonusStack, ...legacy } = state;
+  const { bonusCount, bonusStack, chipLeaders, ...legacy } = state;
   void bonusCount;
   void bonusStack;
+  void chipLeaders;
   return legacy;
 }

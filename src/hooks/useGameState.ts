@@ -5,8 +5,9 @@ import {
   shouldApplyRemoteGameStateUpdate,
   shouldForceForegroundSyncBeforeWrite,
   stripUnsupportedBonusColumns,
+  stripUnsupportedChipLeaderColumns,
 } from '../gameStateSync';
-import { hasMissingBonusColumns, hasMissingNextGameBotId, hasMissingResetAt, normalizeGameState } from '../gameStateMath';
+import { hasMissingBonusColumns, hasMissingChipLeaders, hasMissingNextGameBotId, hasMissingResetAt, normalizeGameState } from '../gameStateMath';
 import { buildAdvanceLevelPatch, buildAutoAdvanceAnchor } from '../levelAdvance';
 import type {
   GameState,
@@ -486,6 +487,11 @@ export function useGameState(readOnly = false) {
 
       if (hasMissingBonusColumns(error)) {
         payload = stripUnsupportedBonusColumns(payload);
+        continue;
+      }
+
+      if (hasMissingChipLeaders(error)) {
+        payload = stripUnsupportedChipLeaderColumns(payload);
         continue;
       }
 
