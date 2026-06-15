@@ -998,10 +998,14 @@ function PlayerRow({
   const canEditCounters = player.arrivalStatus !== 'absent';
   const isOut = player.status === 'out';
   const entryTypeLabel = player.arrivalStatus === 'promo'
-    ? 'Промокод'
+    ? 'Скидка 50%'
     : player.arrivalStatus === 'free'
       ? 'Бесплатно'
-      : 'Платно';
+      : player.arrivalStatus === 'freePromo'
+        ? 'Бесплатно+скидка'
+        : player.arrivalStatus === 'admin'
+          ? 'Админ'
+          : 'Платно';
 
   const toggleField = (field: typeof openField) => {
     setOpenField(current => current === field ? null : field);
@@ -1235,7 +1239,19 @@ function PlayerRow({
                 await onSetPlayerArrival(player.id, 'promo');
                 setOpenField(null);
               }}>
-                Промокод
+                Скидка 50%
+              </MiniChoice>
+              <MiniChoice active={player.arrivalStatus === 'freePromo'} onClick={async () => {
+                await onSetPlayerArrival(player.id, 'freePromo');
+                setOpenField(null);
+              }}>
+                Бесплатно+скидка
+              </MiniChoice>
+              <MiniChoice active={player.arrivalStatus === 'admin'} onClick={async () => {
+                await onSetPlayerArrival(player.id, 'admin');
+                setOpenField(null);
+              }}>
+                Админ
               </MiniChoice>
             </div>
           )}
