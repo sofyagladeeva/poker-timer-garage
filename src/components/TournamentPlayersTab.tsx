@@ -543,6 +543,7 @@ export function TournamentPlayersTab({
                       onSetPlayerArrival={onSetPlayerArrival}
                       onOpenOutDialog={openOutDialog}
                       onRestorePlayer={onRestorePlayer}
+                      onShowContact={setContactPlayer}
                     />
                   ))}
                 </div>
@@ -755,6 +756,7 @@ function MobilePlayerCard({
   onSetPlayerArrival,
   onOpenOutDialog,
   onRestorePlayer,
+  onShowContact,
 }: {
   player: LiveTournamentPlayer;
   tournamentDate?: string | null;
@@ -1081,6 +1083,7 @@ function PlayerRow({
   onSetPlayerArrival,
   onOpenOutDialog,
   onRestorePlayer,
+  onShowContact,
 }: {
   player: LiveTournamentPlayer;
   tournamentDate?: string | null;
