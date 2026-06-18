@@ -624,6 +624,8 @@ export function Admin() {
   const [templateBusy, setTemplateBusy] = useState(false);
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [templateNote, setTemplateNote] = useState<string | null>(null);
+  const [chipLeaderSaveError, setChipLeaderSaveError] = useState<string | null>(null);
+  const [chipLeaderSaveNote, setChipLeaderSaveNote] = useState<string | null>(null);
   const [backgroundLibrary, setBackgroundLibrary] = useState<StoredBackground[]>(() => loadBackgroundLibrary());
   const [backgroundUploadBusy, setBackgroundUploadBusy] = useState(false);
   const [backgroundUploadError, setBackgroundUploadError] = useState<string | null>(null);
@@ -1847,7 +1849,10 @@ export function Admin() {
     });
   };
 
-  const saveChipLeaders = () => {
+  const saveChipLeaders = async () => {
+    setChipLeaderSaveError(null);
+    setChipLeaderSaveNote(null);
+
     const entries = chipLeaderDraft
       .map((row, index): ChipLeaderEntry | null => {
         const stack = Math.max(0, Math.round(Number(row.stack.replace(/\s+/g, '')) || 0));
@@ -1866,14 +1871,29 @@ export function Admin() {
       .sort((a, b) => b.stack - a.stack)
       .slice(0, 3);
 
-    updateGameState({
+    const saved = await updateGameState({
       chipLeaders: entries.length > 0
         ? { levelIndex: chipLeaderTargetLevelIndex, entries }
         : null,
     }, true);
+
+    if (!saved) {
+      setChipLeaderSaveError(
+        'Не удалось сохранить чип-лидеров в Supabase. Примените supabase/chip_leaders.sql к базе и нажмите кнопку еще раз.'
+      );
+      return;
+    }
+
+    setChipLeaderSaveNote(
+      chipLeaderTargetLevel
+        ? `Сохранено для уровня ${chipLeaderTargetLevel.level}.`
+        : 'Чип-лидеры сохранены.'
+    );
   };
 
   const clearChipLeaders = () => {
+    setChipLeaderSaveError(null);
+    setChipLeaderSaveNote(null);
     setChipLeaderDraftOverride({
       levelIndex: chipLeaderTargetLevelIndex,
       rows: createBlankChipLeaderDraft(),
@@ -2639,12 +2659,22 @@ export function Admin() {
                   })}
 
                   <button
-                    onClick={saveChipLeaders}
+                    onClick={() => void saveChipLeaders()}
                     disabled={!canSaveChipLeaders || !chipLeaderTargetLevel}
                     className="admin-btn-primary py-3 text-sm disabled:opacity-30"
                   >
                     Показать на уровне закрытия поздней регистрации
                   </button>
+                  {chipLeaderSaveError && (
+                    <div className="rounded-xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-red-300 text-xs">
+                      {chipLeaderSaveError}
+                    </div>
+                  )}
+                  {chipLeaderSaveNote && !chipLeaderSaveError && (
+                    <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/20 px-3 py-2 text-emerald-300 text-xs">
+                      {chipLeaderSaveNote}
+                    </div>
+                  )}
                   <div className="text-[#555] text-xs">
                     Табло будет чередовать очки турнира и чип-лидеров каждые 20 секунд на первом уровне после этого перерыва, затем само вернётся к обычному режиму.
                   </div>

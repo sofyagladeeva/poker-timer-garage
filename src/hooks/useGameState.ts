@@ -116,6 +116,11 @@ function normalizeBlindNumber(value: number) {
   return Math.max(0, Math.round(value));
 }
 
+function hasPersistableChipLeaders(payload: Record<string, unknown>) {
+  if (!Object.prototype.hasOwnProperty.call(payload, 'chipLeaders')) return false;
+  return payload.chipLeaders !== null && payload.chipLeaders !== undefined;
+}
+
 function createClientId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -491,6 +496,10 @@ export function useGameState(readOnly = false) {
       }
 
       if (hasMissingChipLeaders(error)) {
+        if (hasPersistableChipLeaders(payload)) {
+          console.error('Cannot persist chip leaders: game_state.chipLeaders column is missing', error);
+          return false;
+        }
         payload = stripUnsupportedChipLeaderColumns(payload);
         continue;
       }
