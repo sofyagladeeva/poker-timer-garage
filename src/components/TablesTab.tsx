@@ -55,7 +55,8 @@ export function TablesTab({ tableCount, players, onUpdateTableCount, onAssignSea
   });
   // Пустые столы не считаются — только столы с игроками
   const nonEmptyTables = tableOccupancy.filter(t => t.count > 0);
-  const canMerge = totalActive > 0 && nonEmptyTables.length > neededTables;
+  const tablesToClear = nonEmptyTables.filter(t => t.tableNumber > neededTables);
+  const canMerge = totalActive > 0 && tablesToClear.length > 0;
   const balanceTableNumbers = nonEmptyTables.map(t => t.tableNumber);
   const seatedCounts = balanceTableNumbers.map(tableNumber =>
     activePlayers.filter(p => p.tableNumber === tableNumber && p.seatNumber != null).length
@@ -65,10 +66,6 @@ export function TablesTab({ tableCount, players, onUpdateTableCount, onAssignSea
   const balanceIdealMin = balanceTableCount > 0 ? Math.floor(totalActive / balanceTableCount) : 0;
   const isUnbalanced = balanceTableCount > 1 && totalActive > 0 && !canMerge &&
     Math.max(...seatedCounts) - Math.min(...seatedCounts) > 1;
-  const tablesToClear = canMerge
-    ? [...nonEmptyTables].sort((a, b) => a.count - b.count).slice(0, nonEmptyTables.length - neededTables)
-    : [];
-
   const handleMerge = async () => {
     setMerging(true);
     try {

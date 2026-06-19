@@ -234,7 +234,9 @@ export function useFloorNotifications(sessionId: number) {
         n.id === id ? { ...n, status: 'confirmed', bounty, confirmedAt } : n
       )));
       if (ok) {
-        setNotifications(prev => prev.filter(n => n.id !== id));
+        setNotifications(prev => prev.map(n => (
+          n.id === id ? { ...n, status: 'confirmed', bounty, confirmedAt } : n
+        )));
       }
       return ok;
     }
@@ -244,7 +246,7 @@ export function useFloorNotifications(sessionId: number) {
       .update({
         status: 'confirmed',
         bounty,
-      confirmed_at: new Date().toISOString(),
+        confirmed_at: new Date().toISOString(),
       })
       .eq('id', id);
 
