@@ -696,6 +696,7 @@ export function Admin() {
   const displayPresenceEnabled = isDisplayPresenceEnabled();
   const [displayClients, setDisplayClients] = useState<DisplayClient[]>([]);
   const [displayClientsError, setDisplayClientsError] = useState<string | null>(null);
+  const [displayClientsCollapsed, setDisplayClientsCollapsed] = useState(false);
   const [presenceNow, setPresenceNow] = useState(() => Date.now());
 
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([]);
@@ -2435,12 +2436,21 @@ export function Admin() {
                     Supabase: {syncReady && authoritativeReady && !syncError ? 'онлайн' : 'проверка связи'}
                   </div>
                 </div>
-                <div className={`rounded-full px-3 py-1 text-xs font-bold ${
-                  onlineDisplayClients.length > 0
-                    ? 'bg-emerald-950/50 text-emerald-300 border border-emerald-900/60'
-                    : 'bg-[#0A0A0A] text-[#777] border border-[#2D2D2D]'
-                }`}>
-                  Экраны: {onlineDisplayClients.length} онлайн
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setDisplayClientsCollapsed(prev => !prev)}
+                    className="rounded-full border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-1 text-xs font-bold text-[#999] active:scale-95 transition-transform"
+                  >
+                    {displayClientsCollapsed ? 'Показать' : 'Скрыть'}
+                  </button>
+                  <div className={`rounded-full px-3 py-1 text-xs font-bold ${
+                    onlineDisplayClients.length > 0
+                      ? 'bg-emerald-950/50 text-emerald-300 border border-emerald-900/60'
+                      : 'bg-[#0A0A0A] text-[#777] border border-[#2D2D2D]'
+                  }`}>
+                    Экраны: {onlineDisplayClients.length} онлайн
+                  </div>
                 </div>
               </div>
 
@@ -2450,7 +2460,11 @@ export function Admin() {
                 </div>
               )}
 
-              {!displayPresenceEnabled ? (
+              {displayClientsCollapsed ? (
+                <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-3 text-[#666] text-sm">
+                  Список экранов скрыт · всего {displayClients.length}
+                </div>
+              ) : !displayPresenceEnabled ? (
                 <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-3 text-[#666] text-sm">
                   Supabase не настроен, статусы экранов доступны только на рабочем сайте.
                 </div>
