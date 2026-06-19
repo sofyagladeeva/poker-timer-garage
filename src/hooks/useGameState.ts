@@ -215,7 +215,6 @@ export function useGameState(readOnly = false) {
   const pendingUpsertPatch = useRef<Partial<GameState> | null>(null);
   const autoAdvancePending = useRef(false);
   const lastAutoAdvanceAnchor = useRef<string | null>(null);
-  const readOnlySpeculativeAdvance = useRef(false);
 
   // Broadcast channel ref — for low-latency state push (<100ms)
   const broadcastChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -353,24 +352,9 @@ export function useGameState(readOnly = false) {
     authoritativeSource = false
   ) => {
     markServerSync();
-    if (readOnly && readOnlySpeculativeAdvance.current && authoritativeSource) {
-      const incomingLevelIndex = typeof data.currentLevelIndex === 'number' ? data.currentLevelIndex : null;
-      const incomingTick = typeof data.lastTickAt === 'number' ? data.lastTickAt : 0;
-      const localTick = gameStateRef.current.lastTickAt ?? 0;
-      const incomingResetAt = typeof data.resetAt === 'number' ? data.resetAt : null;
-      const localResetAt = gameStateRef.current.resetAt;
-
-      if (
-        (incomingResetAt !== null && incomingResetAt > localResetAt) ||
-        (incomingLevelIndex !== null && incomingLevelIndex >= gameStateRef.current.currentLevelIndex) ||
-        incomingTick > localTick
-      ) {
-        readOnlySpeculativeAdvance.current = false;
-        applySync(data, source);
-        return true;
-      }
-
-      return false;
+    if (readOnly && authoritativeSource) {
+      applySync(data, source);
+      return true;
     }
 
     if (!shouldApplyRemoteGameState(data, authoritativeSource)) return false;
@@ -975,35 +959,6 @@ export function useGameState(readOnly = false) {
 
     lastAutoAdvanceAnchor.current = null;
   }, [gameState.status, gameState.timeLeft]);
-
-  // Read-only Display screens must keep showing the next scheduled level even
-  // when they are offline. This is local-only and never writes to Supabase.
-  useEffect(() => {
-    if (!readOnly) return;
-    if (!serverLoaded.current) return;
-    if (gameState.timeLeft !== 0) return;
-    if (gameState.status !== 'running' && gameState.status !== 'break') return;
-    if (autoAdvancePending.current) return;
-
-    const autoAdvanceAnchor = buildAutoAdvanceAnchor(gameState);
-    if (lastAutoAdvanceAnchor.current === autoAdvanceAnchor) return;
-
-    const targetIndex = gameState.currentLevelIndex + 1;
-    const patch = buildAdvanceLevelPatch(blindLevelsRef.current, targetIndex, getAuthoritativeNow());
-    const updated = normalizeGameState({ ...gameStateRef.current, ...patch }, gameStateRef.current);
-
-    lastAutoAdvanceAnchor.current = autoAdvanceAnchor;
-    readOnlySpeculativeAdvance.current = true;
-
-    if (updated.lastTickAt) {
-      baseTimeLeft.current = updated.timeLeft;
-      baseTimestamp.current = updated.lastTickAt;
-    }
-
-    setGameState(updated);
-    gameStateRef.current = updated;
-    saveLocal(STATE_KEY, updated);
-  }, [gameState, getAuthoritativeNow, readOnly]);
 
   // ─── Авто-переход: таймер дошёл до 0 → следующий уровень ──────────────
   // Only the admin client advances levels. Read-only Display screens can have
