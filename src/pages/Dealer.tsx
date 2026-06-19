@@ -81,31 +81,32 @@ export function Dealer() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A]">
+    <div className="bg-[#0A0A0A]">
       <div
-        className="h-screen p-3 grid gap-2"
+        className="p-1.5 grid gap-1"
         style={{
+          height: '100dvh',
           gridTemplateColumns: 'repeat(3, 1fr)',
           gridTemplateRows: 'repeat(4, 1fr)',
         }}
       >
         {/* Центральная панель — стол + кнопка флора (строки 2–3) */}
         <div
-          className="flex flex-col items-center justify-center gap-2 px-1"
+          className="flex flex-col items-center justify-center gap-1.5 px-1"
           style={{ gridColumn: 2, gridRow: '2 / 4' }}
         >
-          <div className="text-white font-bold text-sm whitespace-nowrap">Стол {tableNumber}</div>
+          <div className="text-white font-bold text-xs whitespace-nowrap">Стол {tableNumber}</div>
           <button
             type="button"
             onClick={() => void handleCallFloor()}
             disabled={floorBusy}
-            className={`px-3 py-2 rounded-2xl border font-bold text-sm transition-all ${
+            className={`w-full px-2 py-2 rounded-xl border font-bold text-xs text-center leading-tight transition-all ${
               floorCalled
                 ? 'border-amber-500 bg-amber-950/60 text-amber-300'
                 : 'border-[#C0392B] bg-[#2A0C0A] text-white active:scale-95'
             }`}
           >
-            {floorCalled ? '✓ Флор вызван' : 'Позвать флора'}
+            {floorCalled ? '✓ Флор\nвызван' : 'Позвать\nфлора'}
           </button>
         </div>
 
@@ -114,7 +115,7 @@ export function Dealer() {
           className="flex items-center justify-center"
           style={{ gridColumn: 2, gridRow: 4 }}
         >
-          <div className="px-3 py-1.5 rounded-full bg-[#1A1500] border border-yellow-800/50 text-yellow-600/80 text-xs font-black tracking-widest uppercase select-none">
+          <div className="px-2 py-1 rounded-full bg-[#1A1500] border border-yellow-800/50 text-yellow-600/80 text-[9px] font-black tracking-widest uppercase select-none">
             dealer
           </div>
         </div>
@@ -247,26 +248,26 @@ function SeatCard({
       : 'border-[#1A1A1A] bg-[#0D0D0D]'
     }`}>
       {/* Хедер: бокс + счётчики */}
-      <div className="px-3 pt-2.5 pb-1 flex items-center justify-between gap-1">
-        <div className="text-[9px] uppercase tracking-[0.16em] text-[#3A3A3A]">Бокс {seatNumber}</div>
-        <div className="flex items-center gap-1">
+      <div className="px-2 pt-1.5 pb-0.5 flex items-center justify-between gap-1">
+        <div className="text-[8px] uppercase tracking-[0.14em] text-[#3A3A3A]">Бокс {seatNumber}</div>
+        <div className="flex items-center gap-0.5">
           {rebuys > 0 && (
-            <div className="px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px] font-black tracking-wide">
-              ×{rebuys} R
+            <div className="px-1 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[9px] font-black">
+              ×{rebuys}R
             </div>
           )}
           {addons > 0 && (
-            <div className="px-1.5 py-0.5 rounded-md bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[10px] font-black tracking-wide">
-              ×{addons} A
+            <div className="px-1 py-0.5 rounded bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[9px] font-black">
+              ×{addons}A
             </div>
           )}
         </div>
       </div>
 
       {player && !isOut ? (
-        <div className="flex-1 flex flex-col px-3 pb-3 justify-between">
+        <div className="flex-1 flex flex-col px-2 pb-2 justify-between min-h-0">
           {/* Имя (редактируемое) + никнейм */}
-          <div className="flex flex-col gap-0.5">
+          <div className="flex flex-col gap-0.5 min-h-0">
             {editing ? (
               <input
                 autoFocus
@@ -274,47 +275,47 @@ function SeatCard({
                 onChange={e => setDraft(e.target.value)}
                 onBlur={saveEdit}
                 onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditing(false); }}
-                className="w-full bg-[#1A1A1A] border border-[#555] rounded-lg px-2 py-1 text-[#DDD] text-sm outline-none"
+                className="w-full bg-[#1A1A1A] border border-[#555] rounded-md px-1.5 py-0.5 text-[#DDD] text-xs outline-none"
                 placeholder="Имя..."
               />
             ) : (
               <button type="button" onClick={startEdit}
-                className="text-left flex items-center gap-1 group min-w-0">
-                <span className="text-sm font-black text-white group-hover:text-[#EEE] truncate leading-tight">
+                className="text-left flex items-center gap-0.5 group min-w-0">
+                <span className="text-xs font-black text-white group-hover:text-[#EEE] truncate leading-tight">
                   {player.realName || <span className="italic text-[#333] font-normal">имя...</span>}
                 </span>
-                <span className="shrink-0 text-[10px] text-[#2A2A2A] group-hover:text-[#555]">✏</span>
+                <span className="shrink-0 text-[9px] text-[#2A2A2A] group-hover:text-[#555]">✏</span>
               </button>
             )}
-            <div className="text-[#555] text-xs leading-tight truncate">{player.name}</div>
+            <div className="text-[#555] text-[10px] leading-tight truncate">{player.name}</div>
           </div>
 
           {/* Кнопки */}
-          <div className={`grid gap-1.5 mt-3 ${addonOpen ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          <div className={`grid gap-1 mt-1.5 ${addonOpen ? 'grid-cols-3' : 'grid-cols-2'}`}>
             <button type="button" onClick={onRebuy}
-              className="rounded-xl bg-[#0D2B0D] border border-green-900/50 text-green-400 font-bold py-3 flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
-              <span className="text-lg leading-none font-black">+</span>
-              <span className="text-xs">Rebuy</span>
+              className="rounded-lg bg-[#0D2B0D] border border-green-900/50 text-green-400 font-bold py-2 flex items-center justify-center gap-1 active:scale-95 transition-transform">
+              <span className="text-sm leading-none font-black">+</span>
+              <span className="text-[10px]">Rebuy</span>
             </button>
             {addonOpen && (
               <button
                 type="button"
                 onClick={addons < 2 ? onAddon : undefined}
                 disabled={addons >= 2}
-                className={`rounded-xl font-bold py-3 flex items-center justify-center gap-1 transition-transform ${
+                className={`rounded-lg font-bold py-2 flex items-center justify-center gap-0.5 transition-transform ${
                   addons < 2
                     ? 'bg-[#0D1B2B] border border-blue-900/50 text-blue-400 active:scale-95'
                     : 'bg-[#111] border border-[#2A2A2A] text-[#333] cursor-not-allowed'
                 }`}
               >
-                <span className="text-lg leading-none font-black">+</span>
-                <span className="text-xs">Addon</span>
+                <span className="text-sm leading-none font-black">+</span>
+                <span className="text-[10px]">Addon</span>
               </button>
             )}
             <button type="button" onClick={onBustOut}
-              className="rounded-xl bg-[#1F0808] border border-red-900/50 text-red-400 font-bold py-3 flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
-              <span className="text-sm leading-none">✕</span>
-              <span className="text-xs">Выбыл</span>
+              className="rounded-lg bg-[#1F0808] border border-red-900/50 text-red-400 font-bold py-2 flex items-center justify-center gap-1 active:scale-95 transition-transform">
+              <span className="text-xs leading-none">✕</span>
+              <span className="text-[10px]">Выбыл</span>
             </button>
           </div>
         </div>
