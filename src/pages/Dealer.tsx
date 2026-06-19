@@ -91,30 +91,30 @@ export function Dealer() {
       >
         {/* Центральная панель — стол + кнопка флора (строки 2–3) */}
         <div
-          className="flex flex-col items-center justify-center gap-1.5 px-1"
+          className="min-h-0 overflow-hidden flex flex-col items-center justify-center gap-2 px-1"
           style={{ gridColumn: 2, gridRow: '2 / 4' }}
         >
-          <div className="text-white font-bold text-xs whitespace-nowrap">Стол {tableNumber}</div>
+          <div className="text-white font-bold text-base whitespace-nowrap">Стол {tableNumber}</div>
           <button
             type="button"
             onClick={() => void handleCallFloor()}
             disabled={floorBusy}
-            className={`w-full px-2 py-2 rounded-xl border font-bold text-xs text-center leading-tight transition-all ${
+            className={`px-4 py-3 rounded-2xl border font-bold text-sm text-center whitespace-nowrap transition-all ${
               floorCalled
                 ? 'border-amber-500 bg-amber-950/60 text-amber-300'
                 : 'border-[#C0392B] bg-[#2A0C0A] text-white active:scale-95'
             }`}
           >
-            {floorCalled ? '✓ Флор\nвызван' : 'Позвать\nфлора'}
+            {floorCalled ? '✓ Флор вызван' : 'Позвать флора'}
           </button>
         </div>
 
         {/* Метка дилера — нижний центр */}
         <div
-          className="flex items-center justify-center"
+          className="min-h-0 overflow-hidden flex items-center justify-center"
           style={{ gridColumn: 2, gridRow: 4 }}
         >
-          <div className="px-2 py-1 rounded-full bg-[#1A1500] border border-yellow-800/50 text-yellow-600/80 text-[9px] font-black tracking-widest uppercase select-none">
+          <div className="px-3 py-1.5 rounded-full bg-[#1A1500] border border-yellow-800/50 text-yellow-600/80 text-xs font-black tracking-widest uppercase select-none">
             dealer
           </div>
         </div>
@@ -122,7 +122,7 @@ export function Dealer() {
         {seats.map(({ seatNumber, player }) => {
           const grid = SEAT_GRID[seatNumber];
           return (
-            <div key={seatNumber} style={{ gridColumn: grid.col, gridRow: grid.row }}>
+            <div key={seatNumber} className="min-h-0 h-full overflow-hidden" style={{ gridColumn: grid.col, gridRow: grid.row }}>
               <SeatCard
                 seatNumber={seatNumber}
                 player={player}
@@ -274,47 +274,47 @@ function SeatCard({
                 onChange={e => setDraft(e.target.value)}
                 onBlur={saveEdit}
                 onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditing(false); }}
-                className="w-full bg-[#1A1A1A] border border-[#555] rounded-md px-2 py-1 text-[#DDD] text-sm outline-none"
+                className="w-full bg-[#1A1A1A] border border-[#555] rounded-md px-2 py-1 text-[#DDD] text-base outline-none"
                 placeholder="Имя..."
               />
             ) : (
               <button type="button" onClick={startEdit}
                 className="text-left flex items-center gap-1 group min-w-0">
-                <span className="text-sm font-black text-white group-hover:text-[#EEE] truncate leading-tight">
-                  {player.realName || <span className="italic text-[#333] font-normal text-xs">имя...</span>}
+                <span className="text-base font-black text-white group-hover:text-[#EEE] truncate leading-tight">
+                  {player.realName || <span className="italic text-[#444] font-normal text-sm">имя...</span>}
                 </span>
-                <span className="shrink-0 text-[10px] text-[#2A2A2A] group-hover:text-[#555]">✏</span>
+                <span className="shrink-0 text-[11px] text-[#333] group-hover:text-[#666]">✏</span>
               </button>
             )}
-            <div className="text-[#666] text-xs leading-tight truncate">{player.name}</div>
+            <div className="text-[#666] text-sm leading-tight truncate">{player.name}</div>
           </div>
 
           {/* Кнопки вертикально */}
-          <div className="flex flex-col gap-1 mt-2">
+          <div className="flex flex-col gap-1.5 mt-2">
             <button type="button" onClick={onRebuy}
-              className="w-full rounded-lg bg-[#0D2B0D] border border-green-900/50 text-green-400 font-bold py-2.5 flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
-              <span className="text-base leading-none font-black">+</span>
-              <span className="text-xs font-bold">Rebuy</span>
+              className="w-full rounded-xl bg-[#0D2B0D] border border-green-900/50 text-green-400 font-bold py-3 flex items-center justify-center gap-2 active:scale-95 transition-transform">
+              <span className="text-lg leading-none font-black">+</span>
+              <span className="text-sm font-bold">Rebuy</span>
             </button>
             {addonOpen && (
               <button
                 type="button"
                 onClick={addons < 2 ? onAddon : undefined}
                 disabled={addons >= 2}
-                className={`w-full rounded-lg font-bold py-2.5 flex items-center justify-center gap-1.5 transition-transform ${
+                className={`w-full rounded-xl font-bold py-3 flex items-center justify-center gap-2 transition-transform ${
                   addons < 2
                     ? 'bg-[#0D1B2B] border border-blue-900/50 text-blue-400 active:scale-95'
                     : 'bg-[#111] border border-[#2A2A2A] text-[#333] cursor-not-allowed'
                 }`}
               >
-                <span className="text-base leading-none font-black">+</span>
-                <span className="text-xs font-bold">Addon</span>
+                <span className="text-lg leading-none font-black">+</span>
+                <span className="text-sm font-bold">Addon</span>
               </button>
             )}
             <button type="button" onClick={onBustOut}
-              className="w-full rounded-lg bg-[#1F0808] border border-red-900/50 text-red-400 font-bold py-2.5 flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
-              <span className="text-sm leading-none">✕</span>
-              <span className="text-xs font-bold">Выбыл</span>
+              className="w-full rounded-xl bg-[#1F0808] border border-red-900/50 text-red-400 font-bold py-3 flex items-center justify-center gap-2 active:scale-95 transition-transform">
+              <span className="text-base leading-none">✕</span>
+              <span className="text-sm font-bold">Выбыл</span>
             </button>
           </div>
         </div>
