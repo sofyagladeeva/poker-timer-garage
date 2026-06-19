@@ -249,13 +249,13 @@ function formatPresenceAge(iso: string, now = Date.now()) {
   const seenAt = Date.parse(iso);
   if (!Number.isFinite(seenAt)) return 'нет данных';
 
-  const seconds = Math.max(0, Math.round((now - seenAt) / 1000));
+  const seconds = Math.max(0, Math.floor((now - seenAt) / 1000));
   if (seconds < 60) return `${seconds} сек назад`;
 
-  const minutes = Math.round(seconds / 60);
+  const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes} мин назад`;
 
-  const hours = Math.round(minutes / 60);
+  const hours = Math.floor(minutes / 60);
   return `${hours} ч назад`;
 }
 
