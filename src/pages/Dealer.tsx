@@ -91,21 +91,21 @@ export function Dealer() {
       >
         {/* Центральная панель — стол + кнопка флора (строки 2–3) */}
         <div
-          className="min-h-0 overflow-hidden flex flex-col items-center justify-center gap-2 px-1"
+          className="min-h-0 overflow-hidden flex flex-col items-center justify-center gap-1.5 px-1"
           style={{ gridColumn: 2, gridRow: '2 / 4' }}
         >
-          <div className="text-white font-bold text-base whitespace-nowrap">Стол {tableNumber}</div>
+          <div className="text-white font-bold text-sm landscape:text-xs whitespace-nowrap">Стол {tableNumber}</div>
           <button
             type="button"
             onClick={() => void handleCallFloor()}
             disabled={floorBusy}
-            className={`px-4 py-3 rounded-2xl border font-bold text-sm text-center whitespace-nowrap transition-all ${
+            className={`px-3 py-2.5 landscape:py-1.5 rounded-2xl border font-bold text-xs text-center leading-snug transition-all ${
               floorCalled
                 ? 'border-amber-500 bg-amber-950/60 text-amber-300'
                 : 'border-[#C0392B] bg-[#2A0C0A] text-white active:scale-95'
             }`}
           >
-            {floorCalled ? '✓ Флор вызван' : 'Позвать флора'}
+            {floorCalled ? '✓ Флор\nвызван' : 'Позвать\nфлора'}
           </button>
         </div>
 
@@ -247,7 +247,7 @@ function SeatCard({
       : 'border-[#1A1A1A] bg-[#0D0D0D]'
     }`}>
       {/* Хедер: бокс + счётчики */}
-      <div className="px-2 pt-1.5 pb-0.5 flex items-center justify-between gap-1">
+      <div className="px-2 pt-1.5 pb-0.5 landscape:pt-1 flex items-center justify-between gap-1">
         <div className="text-[8px] uppercase tracking-[0.14em] text-[#3A3A3A]">Бокс {seatNumber}</div>
         <div className="flex items-center gap-0.5">
           {rebuys > 0 && (
@@ -264,9 +264,9 @@ function SeatCard({
       </div>
 
       {player && !isOut ? (
-        <div className="flex-1 flex flex-col px-2 pb-2 justify-between min-h-0">
+        <div className="flex-1 flex flex-col px-2 pb-2 landscape:pb-1 justify-between min-h-0">
           {/* Имя (редактируемое) + никнейм */}
-          <div className="flex flex-col gap-1 min-h-0">
+          <div className="flex flex-col gap-0.5 min-h-0">
             {editing ? (
               <input
                 autoFocus
@@ -274,47 +274,47 @@ function SeatCard({
                 onChange={e => setDraft(e.target.value)}
                 onBlur={saveEdit}
                 onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditing(false); }}
-                className="w-full bg-[#1A1A1A] border border-[#555] rounded-md px-2 py-1 text-[#DDD] text-base outline-none"
+                className="w-full bg-[#1A1A1A] border border-[#555] rounded-md px-2 py-1 text-[#DDD] text-base landscape:text-sm outline-none"
                 placeholder="Имя..."
               />
             ) : (
               <button type="button" onClick={startEdit}
                 className="text-left flex items-center gap-1 group min-w-0">
-                <span className="text-base font-black text-white group-hover:text-[#EEE] truncate leading-tight">
-                  {player.realName || <span className="italic text-[#444] font-normal text-sm">имя...</span>}
+                <span className="text-base landscape:text-sm pointer-fine:text-sm font-black text-white group-hover:text-[#EEE] truncate leading-tight">
+                  {player.realName || <span className="italic text-[#444] font-normal">имя...</span>}
                 </span>
-                <span className="shrink-0 text-[11px] text-[#333] group-hover:text-[#666]">✏</span>
+                <span className="shrink-0 text-[10px] text-[#333] group-hover:text-[#666]">✏</span>
               </button>
             )}
-            <div className="text-[#666] text-sm leading-tight truncate">{player.name}</div>
+            <div className="text-[#666] text-sm landscape:text-xs pointer-fine:text-xs leading-tight truncate">{player.name}</div>
           </div>
 
-          {/* Кнопки вертикально */}
-          <div className="flex flex-col gap-1.5 mt-2">
+          {/* В portrait — кнопки вертикально, в landscape — горизонтально */}
+          <div className="flex flex-col landscape:flex-row gap-1.5 landscape:gap-1 mt-2 landscape:mt-1 pointer-fine:gap-1 pointer-fine:mt-1">
             <button type="button" onClick={onRebuy}
-              className="w-full rounded-xl bg-[#0D2B0D] border border-green-900/50 text-green-400 font-bold py-3 flex items-center justify-center gap-2 active:scale-95 transition-transform">
-              <span className="text-lg leading-none font-black">+</span>
-              <span className="text-sm font-bold">Rebuy</span>
+              className="flex-1 rounded-xl bg-[#0D2B0D] border border-green-900/50 text-green-400 font-bold py-3 landscape:py-1.5 pointer-fine:py-2 flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
+              <span className="text-lg landscape:text-sm pointer-fine:text-sm leading-none font-black">+</span>
+              <span className="text-sm landscape:text-xs pointer-fine:text-[10px] font-bold">Rebuy</span>
             </button>
             {addonOpen && (
               <button
                 type="button"
                 onClick={addons < 2 ? onAddon : undefined}
                 disabled={addons >= 2}
-                className={`w-full rounded-xl font-bold py-3 flex items-center justify-center gap-2 transition-transform ${
+                className={`flex-1 rounded-xl font-bold py-3 landscape:py-1.5 pointer-fine:py-2 flex items-center justify-center gap-1.5 transition-transform ${
                   addons < 2
                     ? 'bg-[#0D1B2B] border border-blue-900/50 text-blue-400 active:scale-95'
                     : 'bg-[#111] border border-[#2A2A2A] text-[#333] cursor-not-allowed'
                 }`}
               >
-                <span className="text-lg leading-none font-black">+</span>
-                <span className="text-sm font-bold">Addon</span>
+                <span className="text-lg landscape:text-sm pointer-fine:text-sm leading-none font-black">+</span>
+                <span className="text-sm landscape:text-xs pointer-fine:text-[10px] font-bold">Addon</span>
               </button>
             )}
             <button type="button" onClick={onBustOut}
-              className="w-full rounded-xl bg-[#1F0808] border border-red-900/50 text-red-400 font-bold py-3 flex items-center justify-center gap-2 active:scale-95 transition-transform">
-              <span className="text-base leading-none">✕</span>
-              <span className="text-sm font-bold">Выбыл</span>
+              className="flex-1 rounded-xl bg-[#1F0808] border border-red-900/50 text-red-400 font-bold py-3 landscape:py-1.5 pointer-fine:py-2 flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
+              <span className="text-base landscape:text-sm pointer-fine:text-sm leading-none">✕</span>
+              <span className="text-sm landscape:text-xs pointer-fine:text-[10px] font-bold">Выбыл</span>
             </button>
           </div>
         </div>

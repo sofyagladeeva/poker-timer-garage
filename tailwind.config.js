@@ -6,6 +6,10 @@ export default {
   ],
   theme: {
     extend: {
+      screens: {
+        'landscape': { 'raw': '(orientation: landscape)' },
+        'pointer-fine': { 'raw': '(pointer: fine)' },
+      },
       colors: {
         'poker-red': '#C0392B',
         'poker-red-light': '#E74C3C',
