@@ -106,41 +106,24 @@ export function useDealerTable(tableNumber: number) {
 
   const doBustOut = useCallback(async (playerId: string) => {
     const { sessionId } = gameContextRef.current;
-    let bustPlayer: LiveTournamentPlayer | null = null;
-    let projectedPlace: number | null = null;
-    let totalOuts = 0;
-    let totalActive = 0;
+    const latest = await loadSharedPlayers(sessionId, gameContextRef.current.tournamentBotId);
+    const bustPlayer = latest.find(p => p.id === playerId) ?? playersRef.current.find(p => p.id === playerId) ?? null;
+    if (!bustPlayer || bustPlayer.status === 'out' || bustPlayer.arrivalStatus === 'absent') return;
 
-    await applyMutation(current => {
-      const maxOutOrder = current.reduce((max, p) => Math.max(max, p.bustoutOrder ?? 0), 0);
-      const entrants = current.filter(p => p.arrivalStatus !== 'absent').length;
-      const nextOutOrder = maxOutOrder + 1;
-      projectedPlace = Math.max(1, entrants - nextOutOrder + 1);
+    const maxOutOrder = latest.reduce((max, p) => Math.max(max, p.bustoutOrder ?? 0), 0);
+    const entrants = latest.filter(p => p.arrivalStatus !== 'absent').length;
+    const projectedPlace = Math.max(1, entrants - maxOutOrder);
 
-      const result = current.map(p => {
-        if (p.id !== playerId) return p;
-        bustPlayer = p;
-        return { ...p, status: 'out' as const, bustoutOrder: nextOutOrder };
-      });
-      totalOuts = result.filter(p => p.status === 'out' && p.arrivalStatus !== 'absent').length;
-      totalActive = result.filter(p => p.status !== 'out' && p.arrivalStatus !== 'absent').length;
-      return result;
+    const ok = await createNotification({
+      type: 'bustout',
+      tableNumber,
+      sessionId,
+      playerId,
+      playerName: bustPlayer.name,
+      projectedPlace,
     });
-
-    await supabase.from('game_state').update({ outs: totalOuts, players: totalActive }).eq('id', 1);
-
-    if (bustPlayer) {
-      const ok = await createNotification({
-        type: 'bustout',
-        tableNumber,
-        sessionId,
-        playerId,
-        playerName: (bustPlayer as LiveTournamentPlayer).name,
-        projectedPlace,
-      });
-      if (!ok) console.error('[dealer] createNotification failed', { sessionId, tableNumber, playerId });
-    }
-  }, [applyMutation, createNotification, tableNumber]);
+    if (!ok) console.error('[dealer] createNotification failed', { sessionId, tableNumber, playerId });
+  }, [createNotification, tableNumber]);
 
   const callFloor = useCallback(async () => {
     const { sessionId } = gameContextRef.current;

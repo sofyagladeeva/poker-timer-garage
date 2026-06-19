@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, Component } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, Component } from 'react';
 import type { ChangeEvent, ReactNode } from 'react';
 import { useGameState } from '../hooks/useGameState';
 import { useTournamentBotLiveSync } from '../hooks/useTournamentBotLiveSync';
@@ -25,6 +25,7 @@ import type {
   GameState,
   ChipLeaderEntry,
   LiveTournamentPlayer,
+  FloorNotification,
 } from '../types';
 import { SUIT_SYMBOLS } from '../types';
 import {
@@ -785,14 +786,34 @@ export function Admin() {
   });
   const floorSessionId = Math.max(1, Math.round(gameState.resetAt || 0));
   const { notifications: floorNotifications, pendingCount: floorPendingCount, confirmNotification } = useFloorNotifications(floorSessionId);
+  const pendingFloorNotifications = useMemo(
+    () => floorNotifications.filter(notification => notification.status === 'pending'),
+    [floorNotifications]
+  );
+  const [floorPopupNotificationId, setFloorPopupNotificationId] = useState<string | null>(null);
+  const [dismissedFloorPopupIds, setDismissedFloorPopupIds] = useState<string[]>([]);
+  const activeFloorPopupNotification = pendingFloorNotifications.find(notification => notification.id === floorPopupNotificationId) ?? null;
 
   const handleConfirmNotification = async (id: string, bounty: number) => {
     const notif = floorNotifications.find(n => n.id === id);
     if (notif?.type === 'bustout' && notif.playerId) {
-      await updatePlayerField(notif.playerId, { bounty });
+      await markPlayerOut(notif.playerId, { bounty });
     }
+    setFloorPopupNotificationId(current => current === id ? null : current);
+    setDismissedFloorPopupIds(prev => prev.filter(notificationId => notificationId !== id));
     return confirmNotification(id, bounty);
   };
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      if (floorPopupNotificationId && pendingFloorNotifications.some(notification => notification.id === floorPopupNotificationId)) {
+        return;
+      }
+
+      const nextNotification = pendingFloorNotifications.find(notification => !dismissedFloorPopupIds.includes(notification.id));
+      setFloorPopupNotificationId(nextNotification?.id ?? null);
+    });
+  }, [dismissedFloorPopupIds, floorPopupNotificationId, pendingFloorNotifications]);
 
   const chipLeaderCandidatePlayers = tournamentPlayers
     .filter(isActiveChipLeaderCandidate)
@@ -2144,6 +2165,26 @@ export function Admin() {
   return (
     <ErrorBoundary>
     <div className={`admin-shell min-h-screen bg-[#0A0A0A] text-white ${tabletAdminLayout ? 'admin-tablet-shell' : ''}`}>
+      {activeFloorPopupNotification && (
+        <FloorNotificationPopup
+          key={activeFloorPopupNotification.id}
+          notification={activeFloorPopupNotification}
+          onConfirm={handleConfirmNotification}
+          onOpenNotifications={() => {
+            setActiveTab('notifications');
+            setDismissedFloorPopupIds(prev => (
+              prev.includes(activeFloorPopupNotification.id) ? prev : [...prev, activeFloorPopupNotification.id]
+            ));
+            setFloorPopupNotificationId(null);
+          }}
+          onDismiss={() => {
+            setDismissedFloorPopupIds(prev => (
+              prev.includes(activeFloorPopupNotification.id) ? prev : [...prev, activeFloorPopupNotification.id]
+            ));
+            setFloorPopupNotificationId(null);
+          }}
+        />
+      )}
 
       {/* Header */}
       <div className="bg-[#111] border-b border-[#2D2D2D] px-3 sm:px-6 py-3 flex items-center justify-between gap-2">
@@ -4075,6 +4116,99 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${c.color}`}>
       {c.label}
     </span>
+  );
+}
+
+function FloorNotificationPopup({
+  notification,
+  onConfirm,
+  onOpenNotifications,
+  onDismiss,
+}: {
+  notification: FloorNotification;
+  onConfirm: (id: string, bounty: number) => Promise<boolean>;
+  onOpenNotifications: () => void;
+  onDismiss: () => void;
+}) {
+  const [bountyDraft, setBountyDraft] = useState(String(notification.bounty || 0));
+  const [busy, setBusy] = useState(false);
+  const createdAt = new Date(notification.createdAt);
+  const timeLabel = createdAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  const dateLabel = createdAt.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  const isBustout = notification.type === 'bustout';
+
+  const handleConfirm = async () => {
+    setBusy(true);
+    try {
+      const bounty = isBustout ? Math.max(0, parseInt(bountyDraft, 10) || 0) : 0;
+      await onConfirm(notification.id, bounty);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-4 py-6">
+      <div className="w-full max-w-md rounded-2xl border border-[#C0392B] bg-[#111] shadow-2xl shadow-black/60">
+        <div className="border-b border-[#2D2D2D] px-5 py-4">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-[#C0392B]">Новое уведомление</div>
+          <div className="mt-2 text-2xl font-black text-white">
+            {isBustout ? 'Игрок выбыл' : 'Стол зовёт флора'}
+          </div>
+          <div className="mt-1 text-sm text-[#777]">
+            {dateLabel}, {timeLabel}
+          </div>
+        </div>
+
+        <div className="px-5 py-5">
+          <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3">
+            <div className="text-[10px] uppercase tracking-[0.16em] text-[#666]">Стол</div>
+            <div className="mt-1 text-white text-3xl font-black">{notification.tableNumber}</div>
+          </div>
+
+          <div className="mt-4 text-white text-base font-bold">
+            {isBustout
+              ? `${notification.playerName ?? 'Игрок'} ожидает подтверждения выбывания`
+              : `Стол ${notification.tableNumber} вызвал флора`}
+          </div>
+          {isBustout && notification.projectedPlace !== null && (
+            <div className="mt-1 text-sm text-[#777]">Предварительное место: #{notification.projectedPlace}</div>
+          )}
+
+          {isBustout && (
+            <label className="mt-4 block">
+              <div className="mb-1 text-[10px] uppercase tracking-[0.16em] text-[#666]">Bounty</div>
+              <input
+                type="number"
+                min="0"
+                inputMode="numeric"
+                value={bountyDraft}
+                onChange={event => setBountyDraft(event.target.value)}
+                className="admin-input w-full"
+                autoFocus
+              />
+            </label>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2 border-t border-[#2D2D2D] px-5 py-4 sm:flex-row">
+          <button type="button" onClick={onDismiss} disabled={busy} className="admin-btn-secondary flex-1 py-3 text-sm">
+            Скрыть
+          </button>
+          <button type="button" onClick={onOpenNotifications} disabled={busy} className="admin-btn-secondary flex-1 py-3 text-sm">
+            Открыть уведомления
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleConfirm()}
+            disabled={busy}
+            className={`${isBustout ? 'admin-btn-primary' : 'admin-btn-danger'} flex-1 py-3 text-sm`}
+          >
+            {busy ? '...' : isBustout ? 'Подтвердить' : 'Принято'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

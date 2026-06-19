@@ -16,6 +16,30 @@ type RawRow = {
   confirmed_at: string | null;
 };
 
+type StoredNotificationsPayload = {
+  version: 1;
+  sessionId: number;
+  updatedAt: string;
+  notifications: FloorNotification[];
+};
+
+const FALLBACK_NOTIFICATIONS_PREFIX = '__floor_notifications__';
+
+function fallbackNotificationsKey(sessionId: number) {
+  return `${FALLBACK_NOTIFICATIONS_PREFIX}:${sessionId}`;
+}
+
+function createFallbackId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `floor-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
 function rowToNotification(row: RawRow): FloorNotification {
   return {
     id: row.id,
@@ -32,6 +56,63 @@ function rowToNotification(row: RawRow): FloorNotification {
   };
 }
 
+function normalizeStoredNotification(raw: unknown, sessionId: number): FloorNotification | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const source = raw as Partial<FloorNotification>;
+  if (source.type !== 'floor_call' && source.type !== 'bustout') return null;
+  if (source.status !== 'pending' && source.status !== 'confirmed') return null;
+
+  return {
+    id: typeof source.id === 'string' && source.id ? source.id : createFallbackId(),
+    sessionId,
+    type: source.type,
+    tableNumber: typeof source.tableNumber === 'number' ? Math.max(1, Math.round(source.tableNumber)) : 1,
+    playerId: typeof source.playerId === 'string' && source.playerId ? source.playerId : null,
+    playerName: typeof source.playerName === 'string' && source.playerName ? source.playerName : null,
+    projectedPlace: typeof source.projectedPlace === 'number' ? Math.max(1, Math.round(source.projectedPlace)) : null,
+    bounty: typeof source.bounty === 'number' ? Math.max(0, Math.round(source.bounty)) : 0,
+    status: source.status,
+    createdAt: typeof source.createdAt === 'string' && source.createdAt ? source.createdAt : nowIso(),
+    confirmedAt: typeof source.confirmedAt === 'string' && source.confirmedAt ? source.confirmedAt : null,
+  };
+}
+
+async function loadFallbackNotifications(sessionId: number) {
+  const { data, error } = await supabase
+    .from('blind_templates')
+    .select('levels')
+    .eq('id', fallbackNotificationsKey(sessionId))
+    .maybeSingle();
+
+  if (error || !data) return [];
+
+  const payload = (data as { levels?: unknown }).levels as Partial<StoredNotificationsPayload> | undefined;
+  if (!payload || payload.version !== 1 || payload.sessionId !== sessionId || !Array.isArray(payload.notifications)) {
+    return [];
+  }
+
+  return payload.notifications
+    .map(notification => normalizeStoredNotification(notification, sessionId))
+    .filter((notification): notification is FloorNotification => Boolean(notification));
+}
+
+async function saveFallbackNotifications(sessionId: number, notifications: FloorNotification[]) {
+  const payload: StoredNotificationsPayload = {
+    version: 1,
+    sessionId,
+    updatedAt: nowIso(),
+    notifications,
+  };
+  const { error } = await supabase
+    .from('blind_templates')
+    .upsert({
+      id: fallbackNotificationsKey(sessionId),
+      name: `floor_notifications:${sessionId}:${payload.updatedAt}`,
+      levels: payload,
+    });
+  return !error;
+}
+
 export function useFloorNotifications(sessionId: number) {
   const [notifications, setNotifications] = useState<FloorNotification[]>([]);
   const [tableNotExists, setTableNotExists] = useState(false);
@@ -46,7 +127,6 @@ export function useFloorNotifications(sessionId: number) {
       .from('floor_notifications')
       .select('*')
       .eq('session_id', sid)
-      .eq('status', 'pending')
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -54,21 +134,37 @@ export function useFloorNotifications(sessionId: number) {
       if (msg.includes('floor_notifications') || msg.includes('42P01')) {
         setTableNotExists(true);
       }
+      const fallback = await loadFallbackNotifications(sid);
+      setNotifications(fallback);
       return;
     }
 
     setTableNotExists(false);
-    setNotifications((data ?? []).map(row => rowToNotification(row as RawRow)));
+    const tableNotifications = (data ?? []).map(row => rowToNotification(row as RawRow));
+    const fallbackNotifications = await loadFallbackNotifications(sid);
+    const byId = new Map<string, FloorNotification>();
+    [...tableNotifications, ...fallbackNotifications].forEach(notification => {
+      byId.set(notification.id, notification);
+    });
+    setNotifications(Array.from(byId.values()).sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
   }, []);
 
   useEffect(() => {
     if (!sessionId) return;
-    void loadNotifications(sessionId);
+    queueMicrotask(() => {
+      void loadNotifications(sessionId);
+    });
 
     const channel = supabase
       .channel(`floor-notifications:${sessionId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'floor_notifications' }, () => {
         void loadNotifications(sessionIdRef.current);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_templates' }, payload => {
+        const row = (payload.new ?? payload.old) as { id?: unknown } | null;
+        if (row?.id === fallbackNotificationsKey(sessionIdRef.current)) {
+          void loadNotifications(sessionIdRef.current);
+        }
       })
       .subscribe();
 
@@ -90,7 +186,22 @@ export function useFloorNotifications(sessionId: number) {
     playerName?: string | null;
     projectedPlace?: number | null;
   }) => {
+    const notification: FloorNotification = {
+      id: createFallbackId(),
+      sessionId: params.sessionId,
+      type: params.type,
+      tableNumber: params.tableNumber,
+      playerId: params.playerId ?? null,
+      playerName: params.playerName ?? null,
+      projectedPlace: params.projectedPlace ?? null,
+      bounty: 0,
+      status: 'pending',
+      createdAt: nowIso(),
+      confirmedAt: null,
+    };
+
     const { error } = await supabase.from('floor_notifications').insert({
+      id: notification.id,
       session_id: params.sessionId,
       type: params.type,
       table_number: params.tableNumber,
@@ -100,26 +211,53 @@ export function useFloorNotifications(sessionId: number) {
       bounty: 0,
       status: 'pending',
     });
-    return !error;
+    if (!error) {
+      setNotifications(prev => [...prev, notification].sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+      return true;
+    }
+
+    const current = await loadFallbackNotifications(params.sessionId);
+    const ok = await saveFallbackNotifications(params.sessionId, [...current, notification]);
+    if (ok) {
+      setNotifications(prev => [...prev, notification].sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+    }
+    return ok;
   }, []);
 
   const confirmNotification = useCallback(async (id: string, bounty = 0) => {
+    const sid = sessionIdRef.current;
+    const fallback = await loadFallbackNotifications(sid);
+    const fallbackNotification = fallback.find(n => n.id === id);
+    if (fallbackNotification) {
+      const confirmedAt = nowIso();
+      const ok = await saveFallbackNotifications(sid, fallback.map(n => (
+        n.id === id ? { ...n, status: 'confirmed', bounty, confirmedAt } : n
+      )));
+      if (ok) {
+        setNotifications(prev => prev.filter(n => n.id !== id));
+      }
+      return ok;
+    }
+
     const { error } = await supabase
       .from('floor_notifications')
       .update({
         status: 'confirmed',
         bounty,
-        confirmed_at: new Date().toISOString(),
+      confirmed_at: new Date().toISOString(),
       })
       .eq('id', id);
 
     if (!error) {
-      setNotifications(prev => prev.filter(n => n.id !== id));
+      setNotifications(prev => prev.map(n => (
+        n.id === id ? { ...n, status: 'confirmed', bounty, confirmedAt: nowIso() } : n
+      )));
     }
     return !error;
   }, []);
 
-  const pendingCount = notifications.length;
+  const pendingNotifications = notifications.filter(n => n.status === 'pending');
+  const pendingCount = pendingNotifications.length;
 
-  return { notifications, pendingCount, tableNotExists, createNotification, confirmNotification };
+  return { notifications, pendingNotifications, pendingCount, tableNotExists, createNotification, confirmNotification };
 }
