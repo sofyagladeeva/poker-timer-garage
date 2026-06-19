@@ -27,6 +27,7 @@ export function Dealer() {
   const [floorBusy, setFloorBusy] = useState(false);
   const [floorCalled, setFloorCalled] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
+  const [bustBountyDraft, setBustBountyDraft] = useState('0');
 
   const handleRebuyConfirm = async () => {
     if (!rebuyDialog) return;
@@ -43,8 +44,9 @@ export function Dealer() {
     if (!bustDialog) return;
     setActionBusy(true);
     try {
-      await doBustOut(bustDialog.id);
+      await doBustOut(bustDialog.id, Math.max(0, parseInt(bustBountyDraft, 10) || 0));
       setBustDialog(null);
+      setBustBountyDraft('0');
     } finally {
       setActionBusy(false);
     }
@@ -198,9 +200,21 @@ export function Dealer() {
             <div className="px-5 py-4 text-[#AAA] text-sm">
               Подтвердить выбывание <span className="text-white font-bold">{bustDialog.name}</span>?
               Администратору придёт уведомление для подтверждения.
+              <label className="block mt-4">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-[#666] mb-1">Bounty</div>
+                <input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  value={bustBountyDraft}
+                  onChange={event => setBustBountyDraft(event.target.value)}
+                  className="admin-input !py-2 !text-sm w-full"
+                  autoFocus
+                />
+              </label>
             </div>
             <div className="border-t border-[#2D2D2D] px-5 py-4 flex gap-2">
-              <button type="button" onClick={() => setBustDialog(null)} disabled={actionBusy}
+              <button type="button" onClick={() => { setBustDialog(null); setBustBountyDraft('0'); }} disabled={actionBusy}
                 className="flex-1 admin-btn-secondary py-3 text-sm">Отмена</button>
               <button type="button" onClick={() => void handleBustConfirm()} disabled={actionBusy}
                 className="flex-1 admin-btn-danger py-3 text-sm">

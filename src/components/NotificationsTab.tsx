@@ -60,7 +60,7 @@ function NotificationCard({
   notification: FloorNotification;
   onConfirm: (id: string, bounty: number) => Promise<boolean>;
 }) {
-  const [bountyDraft, setBountyDraft] = useState('0');
+  const [bountyDraft, setBountyDraft] = useState(String(notification.bounty || 0));
   const [busy, setBusy] = useState(false);
 
   const handleConfirm = async () => {

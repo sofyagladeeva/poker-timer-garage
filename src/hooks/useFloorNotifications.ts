@@ -185,7 +185,9 @@ export function useFloorNotifications(sessionId: number) {
     playerId?: string | null;
     playerName?: string | null;
     projectedPlace?: number | null;
+    bounty?: number;
   }) => {
+    const bounty = Math.max(0, Math.round(params.bounty ?? 0));
     const notification: FloorNotification = {
       id: createFallbackId(),
       sessionId: params.sessionId,
@@ -194,7 +196,7 @@ export function useFloorNotifications(sessionId: number) {
       playerId: params.playerId ?? null,
       playerName: params.playerName ?? null,
       projectedPlace: params.projectedPlace ?? null,
-      bounty: 0,
+      bounty,
       status: 'pending',
       createdAt: nowIso(),
       confirmedAt: null,
@@ -208,7 +210,7 @@ export function useFloorNotifications(sessionId: number) {
       player_id: params.playerId ?? null,
       player_name: params.playerName ?? null,
       projected_place: params.projectedPlace ?? null,
-      bounty: 0,
+      bounty,
       status: 'pending',
     });
     if (!error) {

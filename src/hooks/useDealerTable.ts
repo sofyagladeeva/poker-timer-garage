@@ -104,7 +104,7 @@ export function useDealerTable(tableNumber: number) {
     await supabase.from('game_state').update({ rebuys: totalRebuys }).eq('id', 1);
   }, [applyMutation]);
 
-  const doBustOut = useCallback(async (playerId: string) => {
+  const doBustOut = useCallback(async (playerId: string, bounty = 0) => {
     const { sessionId } = gameContextRef.current;
     const latest = await loadSharedPlayers(sessionId, gameContextRef.current.tournamentBotId);
     const bustPlayer = latest.find(p => p.id === playerId) ?? playersRef.current.find(p => p.id === playerId) ?? null;
@@ -121,6 +121,7 @@ export function useDealerTable(tableNumber: number) {
       playerId,
       playerName: bustPlayer.name,
       projectedPlace,
+      bounty,
     });
     if (!ok) console.error('[dealer] createNotification failed', { sessionId, tableNumber, playerId });
   }, [createNotification, tableNumber]);
