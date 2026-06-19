@@ -37,6 +37,7 @@ export function TablesTab({ tableCount, players, onUpdateTableCount, onAssignSea
   const [movingPlayer, setMovingPlayer] = useState<LiveTournamentPlayer | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [merging, setMerging] = useState(false);
+  const [balancing, setBalancing] = useState(false);
 
   const activePlayers = players.filter(p => p.arrivalStatus !== 'absent' && p.status !== 'out');
   const unseated = activePlayers.filter(p => p.tableNumber == null || p.seatNumber == null);
@@ -55,6 +56,12 @@ export function TablesTab({ tableCount, players, onUpdateTableCount, onAssignSea
   // Пустые столы не считаются — только столы с игроками
   const nonEmptyTables = tableOccupancy.filter(t => t.count > 0);
   const canMerge = totalActive > 0 && nonEmptyTables.length > neededTables;
+  const seatedCounts = Array.from({ length: tableCount }, (_, i) => {
+    const t = i + 1;
+    return activePlayers.filter(p => p.tableNumber === t && p.seatNumber != null).length;
+  });
+  const isUnbalanced = tableCount > 1 && totalActive > 0 && !canMerge &&
+    Math.max(...seatedCounts) - Math.min(...seatedCounts) > 1;
   const tablesToClear = canMerge
     ? [...nonEmptyTables].sort((a, b) => a.count - b.count).slice(0, nonEmptyTables.length - neededTables)
     : [];
@@ -94,6 +101,52 @@ export function TablesTab({ tableCount, players, onUpdateTableCount, onAssignSea
       onUpdateTableCount(neededTables);
     } finally {
       setMerging(false);
+    }
+  };
+
+  const handleBalance = async () => {
+    setBalancing(true);
+    try {
+      const perTableMin = Math.floor(totalActive / tableCount);
+      const remainder = totalActive % tableCount;
+
+      const tableStats = Array.from({ length: tableCount }, (_, i) => {
+        const t = i + 1;
+        return { t, seated: activePlayers.filter(p => p.tableNumber === t && p.seatNumber != null) };
+      }).sort((a, b) => b.seated.length - a.seated.length);
+
+      const target: Record<number, number> = {};
+      tableStats.forEach(({ t }, idx) => { target[t] = perTableMin + (idx < remainder ? 1 : 0); });
+
+      const toMove: LiveTournamentPlayer[] = [];
+      for (const { t, seated } of tableStats) {
+        if (seated.length > target[t]) toMove.push(...seated.slice(target[t]));
+      }
+      if (toMove.length === 0) return;
+
+      const toMoveIds = new Set(toMove.map(p => p.id));
+      const occupiedSeats = new Set(
+        activePlayers
+          .filter(p => p.tableNumber != null && p.seatNumber != null && !toMoveIds.has(p.id))
+          .map(p => `${p.tableNumber}:${p.seatNumber}`)
+      );
+
+      const freeSeats: { tableNumber: number; seatNumber: number }[] = [];
+      for (const { t, seated } of [...tableStats].reverse()) {
+        if (seated.length < target[t]) {
+          let needed = target[t] - seated.length;
+          for (let s = 1; s <= SEATS_PER_TABLE && needed > 0; s++) {
+            const key = `${t}:${s}`;
+            if (!occupiedSeats.has(key)) { freeSeats.push({ tableNumber: t, seatNumber: s }); occupiedSeats.add(key); needed--; }
+          }
+        }
+      }
+
+      for (let i = 0; i < toMove.length && i < freeSeats.length; i++) {
+        await onAssignSeat(toMove[i].id, freeSeats[i].tableNumber, freeSeats[i].seatNumber);
+      }
+    } finally {
+      setBalancing(false);
     }
   };
 
@@ -189,6 +242,30 @@ export function TablesTab({ tableCount, players, onUpdateTableCount, onAssignSea
               {neededTables === 1 ? '1 столом' : `${neededTables} столами`} — по{' '}
               {optimalIdealMin === optimalIdealMax ? optimalIdealMax : `${optimalIdealMin}–${optimalIdealMax}`} человек.{' '}
               {`Пересадите игроков ${tablesToClear.map(t => `со стола ${t.tableNumber}`).join(' и ')}.`}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isUnbalanced && (
+        <div className="bg-[#0A0D1A] border border-blue-700/70 rounded-2xl p-4 flex items-start gap-3">
+          <div className="text-2xl mt-0.5">⚖</div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-blue-300 font-black text-sm">Неравномерное распределение</div>
+              <button
+                type="button"
+                onClick={() => void handleBalance()}
+                disabled={balancing}
+                className="shrink-0 px-3 py-1.5 rounded-xl bg-blue-700/40 border border-blue-600/60 text-blue-200 text-xs font-bold hover:bg-blue-700/60 transition-colors disabled:opacity-50"
+              >
+                {balancing ? '...' : 'Выровнять'}
+              </button>
+            </div>
+            <div className="text-blue-200/70 text-xs mt-1 leading-relaxed">
+              {totalActive} {totalActive < 5 ? 'игрока' : 'игроков'} за {tableCount} столами — идеально{' '}
+              {optimalIdealMin === optimalIdealMax ? optimalIdealMax : `${optimalIdealMin}–${optimalIdealMax}`} за каждым.
+              Разница больше 1 — можно пересадить автоматически.
             </div>
           </div>
         </div>
