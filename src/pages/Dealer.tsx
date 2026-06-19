@@ -266,7 +266,7 @@ function SeatCard({
       {player && !isOut ? (
         <div className="flex-1 flex flex-col px-2 pb-2 justify-between min-h-0">
           {/* Имя (редактируемое) + никнейм */}
-          <div className="flex flex-col gap-0.5 min-h-0">
+          <div className="flex flex-col gap-1 min-h-0">
             {editing ? (
               <input
                 autoFocus
@@ -274,47 +274,47 @@ function SeatCard({
                 onChange={e => setDraft(e.target.value)}
                 onBlur={saveEdit}
                 onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditing(false); }}
-                className="w-full bg-[#1A1A1A] border border-[#555] rounded-md px-1.5 py-0.5 text-[#DDD] text-xs outline-none"
+                className="w-full bg-[#1A1A1A] border border-[#555] rounded-md px-2 py-1 text-[#DDD] text-sm outline-none"
                 placeholder="Имя..."
               />
             ) : (
               <button type="button" onClick={startEdit}
-                className="text-left flex items-center gap-0.5 group min-w-0">
-                <span className="text-xs font-black text-white group-hover:text-[#EEE] truncate leading-tight">
-                  {player.realName || <span className="italic text-[#333] font-normal">имя...</span>}
+                className="text-left flex items-center gap-1 group min-w-0">
+                <span className="text-sm font-black text-white group-hover:text-[#EEE] truncate leading-tight">
+                  {player.realName || <span className="italic text-[#333] font-normal text-xs">имя...</span>}
                 </span>
-                <span className="shrink-0 text-[9px] text-[#2A2A2A] group-hover:text-[#555]">✏</span>
+                <span className="shrink-0 text-[10px] text-[#2A2A2A] group-hover:text-[#555]">✏</span>
               </button>
             )}
-            <div className="text-[#555] text-[10px] leading-tight truncate">{player.name}</div>
+            <div className="text-[#666] text-xs leading-tight truncate">{player.name}</div>
           </div>
 
-          {/* Кнопки */}
-          <div className={`grid gap-1 mt-1.5 ${addonOpen ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          {/* Кнопки вертикально */}
+          <div className="flex flex-col gap-1 mt-2">
             <button type="button" onClick={onRebuy}
-              className="rounded-lg bg-[#0D2B0D] border border-green-900/50 text-green-400 font-bold py-2 flex items-center justify-center gap-1 active:scale-95 transition-transform">
-              <span className="text-sm leading-none font-black">+</span>
-              <span className="text-[10px]">Rebuy</span>
+              className="w-full rounded-lg bg-[#0D2B0D] border border-green-900/50 text-green-400 font-bold py-2.5 flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
+              <span className="text-base leading-none font-black">+</span>
+              <span className="text-xs font-bold">Rebuy</span>
             </button>
             {addonOpen && (
               <button
                 type="button"
                 onClick={addons < 2 ? onAddon : undefined}
                 disabled={addons >= 2}
-                className={`rounded-lg font-bold py-2 flex items-center justify-center gap-0.5 transition-transform ${
+                className={`w-full rounded-lg font-bold py-2.5 flex items-center justify-center gap-1.5 transition-transform ${
                   addons < 2
                     ? 'bg-[#0D1B2B] border border-blue-900/50 text-blue-400 active:scale-95'
                     : 'bg-[#111] border border-[#2A2A2A] text-[#333] cursor-not-allowed'
                 }`}
               >
-                <span className="text-sm leading-none font-black">+</span>
-                <span className="text-[10px]">Addon</span>
+                <span className="text-base leading-none font-black">+</span>
+                <span className="text-xs font-bold">Addon</span>
               </button>
             )}
             <button type="button" onClick={onBustOut}
-              className="rounded-lg bg-[#1F0808] border border-red-900/50 text-red-400 font-bold py-2 flex items-center justify-center gap-1 active:scale-95 transition-transform">
-              <span className="text-xs leading-none">✕</span>
-              <span className="text-[10px]">Выбыл</span>
+              className="w-full rounded-lg bg-[#1F0808] border border-red-900/50 text-red-400 font-bold py-2.5 flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
+              <span className="text-sm leading-none">✕</span>
+              <span className="text-xs font-bold">Выбыл</span>
             </button>
           </div>
         </div>
