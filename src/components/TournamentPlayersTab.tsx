@@ -73,6 +73,7 @@ export function TournamentPlayersTab({
   const [placeConflictNotice, setPlaceConflictNotice] = useState<string | null>(null);
   const [backupRestoreBusyId, setBackupRestoreBusyId] = useState<string | null>(null);
   const [backupRestoreNotice, setBackupRestoreNotice] = useState<string | null>(null);
+  const [cashSummaryOpen, setCashSummaryOpen] = useState(false);
   const [backupsOpen, setBackupsOpen] = useState(false);
   const [outDialogPlayerId, setOutDialogPlayerId] = useState<string | null>(null);
   const [outDialogBountyDraft, setOutDialogBountyDraft] = useState('0');
@@ -365,53 +366,64 @@ export function TournamentPlayersTab({
 
         {arrivedPlayers.length > 0 && (
           <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-3">
-            <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-2">Касса</div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className="rounded-lg bg-[#111] px-3 py-2">
-                <div className="text-[#555] text-[10px] uppercase">К оплате</div>
-                <div className="text-white font-black text-base mt-0.5">{payTotalDue.toLocaleString('ru-RU')} ₽</div>
-              </div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Касса</div>
               <button
                 type="button"
-                onClick={() => setViewFilter(f => f === 'cash' ? 'all' : 'cash')}
-                className={`rounded-lg px-3 py-2 text-left transition-colors ${
-                  viewFilter === 'cash'
-                    ? 'border border-[#C0392B] bg-[#2A0C0A]'
-                    : 'bg-[#111] hover:bg-[#1A1A1A]'
-                }`}
+                onClick={() => setCashSummaryOpen(open => !open)}
+                className="admin-btn-secondary px-3 py-1.5 text-xs"
               >
-                <div className="text-[#555] text-[10px] uppercase">Наличными</div>
-                <div className="text-white font-black text-base mt-0.5">{payCash.toLocaleString('ru-RU')} ₽</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewFilter(f => f === 'card' ? 'all' : 'card')}
-                className={`rounded-lg px-3 py-2 text-left transition-colors ${
-                  viewFilter === 'card'
-                    ? 'border border-[#C0392B] bg-[#2A0C0A]'
-                    : 'bg-[#111] hover:bg-[#1A1A1A]'
-                }`}
-              >
-                <div className="text-[#555] text-[10px] uppercase">Картой</div>
-                <div className="text-white font-black text-base mt-0.5">{payCard.toLocaleString('ru-RU')} ₽</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewFilter(f => f === 'unpaid' ? 'all' : 'unpaid')}
-                className={`rounded-lg px-3 py-2 text-left transition-colors ${
-                  viewFilter === 'unpaid'
-                    ? 'border border-amber-600 bg-amber-950/50'
-                    : payUnpaid > 0
-                      ? 'bg-amber-950/30 border border-amber-900/50 hover:bg-amber-950/50'
-                      : 'bg-[#111] hover:bg-[#1A1A1A]'
-                }`}
-              >
-                <div className="text-[#555] text-[10px] uppercase">Не оплачено</div>
-                <div className={`font-black text-base mt-0.5 ${payUnpaid > 0 ? 'text-amber-300' : 'text-white'}`}>
-                  {payUnpaid.toLocaleString('ru-RU')} ₽
-                </div>
+                {cashSummaryOpen ? 'Скрыть' : 'Показать'}
               </button>
             </div>
+            {cashSummaryOpen && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+                <div className="rounded-lg bg-[#111] px-3 py-2">
+                  <div className="text-[#555] text-[10px] uppercase">К оплате</div>
+                  <div className="text-white font-black text-base mt-0.5">{payTotalDue.toLocaleString('ru-RU')} ₽</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewFilter(f => f === 'cash' ? 'all' : 'cash')}
+                  className={`rounded-lg px-3 py-2 text-left transition-colors ${
+                    viewFilter === 'cash'
+                      ? 'border border-[#C0392B] bg-[#2A0C0A]'
+                      : 'bg-[#111] hover:bg-[#1A1A1A]'
+                  }`}
+                >
+                  <div className="text-[#555] text-[10px] uppercase">Наличными</div>
+                  <div className="text-white font-black text-base mt-0.5">{payCash.toLocaleString('ru-RU')} ₽</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewFilter(f => f === 'card' ? 'all' : 'card')}
+                  className={`rounded-lg px-3 py-2 text-left transition-colors ${
+                    viewFilter === 'card'
+                      ? 'border border-[#C0392B] bg-[#2A0C0A]'
+                      : 'bg-[#111] hover:bg-[#1A1A1A]'
+                  }`}
+                >
+                  <div className="text-[#555] text-[10px] uppercase">Картой</div>
+                  <div className="text-white font-black text-base mt-0.5">{payCard.toLocaleString('ru-RU')} ₽</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewFilter(f => f === 'unpaid' ? 'all' : 'unpaid')}
+                  className={`rounded-lg px-3 py-2 text-left transition-colors ${
+                    viewFilter === 'unpaid'
+                      ? 'border border-amber-600 bg-amber-950/50'
+                      : payUnpaid > 0
+                        ? 'bg-amber-950/30 border border-amber-900/50 hover:bg-amber-950/50'
+                        : 'bg-[#111] hover:bg-[#1A1A1A]'
+                  }`}
+                >
+                  <div className="text-[#555] text-[10px] uppercase">Не оплачено</div>
+                  <div className={`font-black text-base mt-0.5 ${payUnpaid > 0 ? 'text-amber-300' : 'text-white'}`}>
+                    {payUnpaid.toLocaleString('ru-RU')} ₽
+                  </div>
+                </button>
+              </div>
+            )}
           </div>
         )}
 
