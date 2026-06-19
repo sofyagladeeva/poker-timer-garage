@@ -6,6 +6,11 @@ import { useNextGame } from '../hooks/useNextGame';
 import { getKnockoutLabel, getNextKnockoutInfo, isKnockoutLevel } from '../blindLevelMarkers';
 import { getRankPoints, RED_SUITS, SUIT_SYMBOLS } from '../types';
 import type { Card } from '../types';
+import {
+  getDisplayClientId,
+  getDisplayHeartbeatInterval,
+  sendDisplayHeartbeat,
+} from '../displayPresence';
 import logoUrl from '../assets/logo.png';
 import medal1Url from '../assets/medal-1.png';
 import medal2Url from '../assets/medal-2.png';
@@ -215,11 +220,59 @@ export function Display() {
 
   const currentLevel = blindLevels[gameState.currentLevelIndex] ?? null;
   const nextLevel    = blindLevels[gameState.currentLevelIndex + 1] ?? null;
+  const heartbeatGameStateRef = useRef(gameState);
+  const heartbeatLevelLabelRef = useRef<string | null>(null);
   const currentKnockoutLabel = getKnockoutLabel(currentLevel);
   const nextKnockout = getNextKnockoutInfo(blindLevels, gameState.currentLevelIndex, gameState.timeLeft);
   const nextKnockoutTime = nextKnockout && !nextKnockout.startsNow
     ? fmtApproxTimeFromNow(nextKnockout.secondsUntil)
     : null;
+
+  useEffect(() => {
+    heartbeatGameStateRef.current = gameState;
+    heartbeatLevelLabelRef.current = currentLevel
+      ? currentLevel.isBreak
+        ? currentLevel.breakLabel || 'ПЕРЕРЫВ'
+        : `Уровень ${currentLevel.level}`
+      : null;
+  }, [currentLevel, gameState]);
+
+  useEffect(() => {
+    const clientId = getDisplayClientId();
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const sendHeartbeat = () => {
+      void sendDisplayHeartbeat({
+        id: clientId,
+        name: 'TV экран',
+        gameState: heartbeatGameStateRef.current,
+        currentLevelLabel: heartbeatLevelLabelRef.current,
+      }).catch(error => {
+        console.warn('Display heartbeat failed', error);
+      });
+    };
+
+    const schedule = () => {
+      if (disposed) return;
+      sendHeartbeat();
+      timer = setTimeout(schedule, getDisplayHeartbeatInterval());
+    };
+
+    const onVisibilityChange = () => {
+      if (timer) clearTimeout(timer);
+      schedule();
+    };
+
+    schedule();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, []);
 
   const isBreak   = gameState.status === 'break' || currentLevel?.isBreak;
   const isWarning = gameState.timeLeft <= 60 && gameState.status === 'running';

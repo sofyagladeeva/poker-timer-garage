@@ -60,6 +60,12 @@ import {
   upsertSharedBackgrounds,
 } from '../backgroundLibrary';
 import type { StoredBackground } from '../backgroundLibrary';
+import {
+  DISPLAY_PRESENCE_ONLINE_MS,
+  fetchDisplayClients,
+  isDisplayPresenceEnabled,
+} from '../displayPresence';
+import type { DisplayClient } from '../displayPresence';
 
 // ─── Error Boundary ────────────────────────────────────────────────────────
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
@@ -98,6 +104,7 @@ const SHARED_LIBRARY_TIMEOUT_MS = 20_000;
 const SHARED_LIBRARY_RETRY_COUNT = 2;
 const ADMIN_AUTH_STORAGE_KEY = 'admin_authed';
 const ARCHIVE_AUTH_STORAGE_KEY = 'archive_authed';
+const DISPLAY_CLIENTS_REFRESH_MS = 10_000;
 
 type BotGameSummary = {
   id: number;
@@ -227,6 +234,36 @@ function chipLeaderDraftFromEntries(entries: ChipLeaderEntry[]): ChipLeaderDraft
     };
   });
   return blank;
+}
+
+function isDisplayClientOnline(client: DisplayClient, now = Date.now()) {
+  const seenAt = Date.parse(client.lastSeenAt);
+  return Number.isFinite(seenAt) && now - seenAt <= DISPLAY_PRESENCE_ONLINE_MS;
+}
+
+function formatPresenceAge(iso: string, now = Date.now()) {
+  const seenAt = Date.parse(iso);
+  if (!Number.isFinite(seenAt)) return 'нет данных';
+
+  const seconds = Math.max(0, Math.round((now - seenAt) / 1000));
+  if (seconds < 60) return `${seconds} сек назад`;
+
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} мин назад`;
+
+  const hours = Math.round(minutes / 60);
+  return `${hours} ч назад`;
+}
+
+function formatDisplayStatus(status: GameState['status']) {
+  const labels: Record<GameState['status'], string> = {
+    idle: 'ожидает',
+    running: 'идёт',
+    paused: 'пауза',
+    break: 'перерыв',
+    ended: 'завершён',
+  };
+  return labels[status];
 }
 
 function isActiveChipLeaderCandidate(player: LiveTournamentPlayer) {
@@ -652,6 +689,10 @@ export function Admin() {
     updateBlindLevels, updateCombinations, saveTournament, fetchTournaments, fetchTournamentArchiveDetails, deleteTournament,
   } = useGameState();
   const gameStateSnapshotRef = useRef(gameState);
+  const displayPresenceEnabled = isDisplayPresenceEnabled();
+  const [displayClients, setDisplayClients] = useState<DisplayClient[]>([]);
+  const [displayClientsError, setDisplayClientsError] = useState<string | null>(null);
+  const [presenceNow, setPresenceNow] = useState(() => Date.now());
 
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([]);
   const [archiveDetailsById, setArchiveDetailsById] = useState<Record<number, TournamentArchiveDetails | null>>({});
@@ -687,6 +728,31 @@ export function Admin() {
       .then(setBotGames)
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!authed || !displayPresenceEnabled) return;
+
+    let cancelled = false;
+
+    const refreshDisplayClients = async () => {
+      const result = await fetchDisplayClients();
+      if (cancelled) return;
+
+      setPresenceNow(Date.now());
+      setDisplayClients(result.clients);
+      setDisplayClientsError(result.error ? 'Не удалось загрузить статусы экранов. Проверьте SQL supabase/display_clients.sql.' : null);
+    };
+
+    void refreshDisplayClients();
+    const interval = setInterval(() => {
+      void refreshDisplayClients();
+    }, DISPLAY_CLIENTS_REFRESH_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [authed, displayPresenceEnabled]);
 
   const selectedBotGame = botGames.find(g => g.id === gameState.tournamentBotId) ?? null;
 
@@ -1820,6 +1886,8 @@ export function Admin() {
     row.playerId && Math.round(Number(row.stack.replace(/\s+/g, '')) || 0) > 0
   )).length;
   const canSaveChipLeaders = chipLeaderRowsReady === 3;
+  const onlineDisplayClients = displayClients.filter(client => isDisplayClientOnline(client, presenceNow));
+  const offlineDisplayClients = displayClients.filter(client => !isDisplayClientOnline(client, presenceNow));
 
   const updateStackState = (
     patch: Partial<Pick<GameState, 'players' | 'rebuys' | 'addonCount' | 'bonusCount' | 'startStack' | 'addonStack' | 'bonusStack'>>
@@ -2265,6 +2333,75 @@ export function Admin() {
                       Сбросить выбор
                     </button>
                   )}
+                </div>
+              )}
+            </div>
+
+            {/* ── Связь экранов ───────────────────────────────────── */}
+            <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <div className="text-white font-bold text-sm">Связь</div>
+                  <div className="text-[#555] text-xs mt-0.5">
+                    Supabase: {syncReady && authoritativeReady && !syncError ? 'онлайн' : 'проверка связи'}
+                  </div>
+                </div>
+                <div className={`rounded-full px-3 py-1 text-xs font-bold ${
+                  onlineDisplayClients.length > 0
+                    ? 'bg-emerald-950/50 text-emerald-300 border border-emerald-900/60'
+                    : 'bg-[#0A0A0A] text-[#777] border border-[#2D2D2D]'
+                }`}>
+                  Экраны: {onlineDisplayClients.length} онлайн
+                </div>
+              </div>
+
+              {syncError && (
+                <div className="mb-3 rounded-xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-red-300 text-xs">
+                  {syncError}
+                </div>
+              )}
+
+              {!displayPresenceEnabled ? (
+                <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-3 text-[#666] text-sm">
+                  Supabase не настроен, статусы экранов доступны только на рабочем сайте.
+                </div>
+              ) : displayClientsError ? (
+                <div className="rounded-xl border border-amber-900/60 bg-amber-950/30 px-3 py-3 text-amber-200 text-sm">
+                  {displayClientsError}
+                </div>
+              ) : displayClients.length === 0 ? (
+                <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-3 text-[#666] text-sm">
+                  Откройте экран Display на телевизоре, и он появится здесь в течение нескольких секунд.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {[...onlineDisplayClients, ...offlineDisplayClients].slice(0, 6).map((client, index) => {
+                    const online = isDisplayClientOnline(client, presenceNow);
+
+                    return (
+                      <div
+                        key={client.id}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-white text-sm font-bold truncate">
+                            {client.name} #{index + 1}
+                          </div>
+                          <div className="text-[#666] text-xs truncate">
+                            {client.currentLevelLabel || `Уровень ${client.currentLevelIndex + 1}`} · {formatDisplayStatus(client.status)}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className={`text-xs font-bold ${online ? 'text-emerald-300' : 'text-[#777]'}`}>
+                            {online ? 'онлайн' : 'офлайн'}
+                          </div>
+                          <div className="text-[#555] text-[11px]">
+                            {formatPresenceAge(client.lastSeenAt, presenceNow)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
