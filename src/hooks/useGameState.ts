@@ -458,6 +458,7 @@ export function useGameState(readOnly = false) {
       event: 'time_sync_request',
       payload: {
         _cid: clientId.current,
+        requestSentAt: Date.now(),
         source,
       },
     });
@@ -654,9 +655,10 @@ export function useGameState(readOnly = false) {
       })
       .on('broadcast', { event: 'time_sync_request' }, (msg) => {
         const requesterCid = typeof msg.payload?._cid === 'string' ? msg.payload._cid : null;
+        const requestSentAt = typeof msg.payload?.requestSentAt === 'number' ? msg.payload.requestSentAt : null;
         if (!requesterCid || requesterCid === clientId.current) return;
         if (!broadcastChannelRef.current) return;
-        if (serverClockOffsetMs.current === null) return;
+        if (readOnly) return;
 
         broadcastChannelRef.current.send({
           type: 'broadcast',
@@ -664,6 +666,7 @@ export function useGameState(readOnly = false) {
           payload: {
             _cid: clientId.current,
             targetCid: requesterCid,
+            requestSentAt,
             serverNow: getAuthoritativeNow(),
           },
         });
@@ -671,9 +674,13 @@ export function useGameState(readOnly = false) {
       .on('broadcast', { event: 'time_sync_response' }, (msg) => {
         const targetCid = typeof msg.payload?.targetCid === 'string' ? msg.payload.targetCid : null;
         const peerServerNow = typeof msg.payload?.serverNow === 'number' ? msg.payload.serverNow : null;
+        const requestSentAt = typeof msg.payload?.requestSentAt === 'number' ? msg.payload.requestSentAt : null;
         if (targetCid !== clientId.current || peerServerNow === null) return;
 
-        syncAuthoritativeClock(peerServerNow, 'peer-sync');
+        const estimatedPeerNow = requestSentAt === null
+          ? peerServerNow
+          : peerServerNow + Math.max(0, Date.now() - requestSentAt) / 2;
+        syncAuthoritativeClock(estimatedPeerNow, 'peer-sync');
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
@@ -721,6 +728,7 @@ export function useGameState(readOnly = false) {
     syncAuthoritativeClock,
     syncBlindLevelsFromServer,
     syncCombinationsFromServer,
+    readOnly,
   ]);
 
   // ─── Re-sync when page becomes visible (fixes fullscreen WebSocket drop) ─
@@ -871,7 +879,7 @@ export function useGameState(readOnly = false) {
         payload: {
           ...persistedPatch,
           _cid: clientId.current,
-          _serverNow: serverClockOffsetMs.current === null ? undefined : getAuthoritativeNow(),
+          _serverNow: getAuthoritativeNow(),
         },
       });
     }
