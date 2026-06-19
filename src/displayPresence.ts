@@ -28,6 +28,7 @@ const DISPLAY_CLIENT_ID_KEY = 'poker_display_client_id';
 const HEARTBEAT_VISIBLE_MS = 5_000;
 const HEARTBEAT_HIDDEN_MS = 15_000;
 const DISPLAY_ONLINE_MS = 25_000;
+const DISPLAY_CLIENT_RETENTION_MS = 60 * 60 * 1_000;
 
 export const DISPLAY_PRESENCE_ONLINE_MS = DISPLAY_ONLINE_MS;
 
@@ -73,6 +74,11 @@ function toDisplayClient(row: DisplayClientRow): DisplayClient {
   };
 }
 
+function isDisplayClientRetained(row: DisplayClientRow, now = Date.now()) {
+  const seenAt = Date.parse(row.last_seen_at);
+  return Number.isFinite(seenAt) && now - seenAt < DISPLAY_CLIENT_RETENTION_MS;
+}
+
 export async function sendDisplayHeartbeat(input: {
   id: string;
   name: string;
@@ -98,6 +104,13 @@ export async function sendDisplayHeartbeat(input: {
 export async function fetchDisplayClients() {
   if (!isDisplayPresenceEnabled()) return { clients: [] as DisplayClient[], error: null };
 
+  const now = Date.now();
+  const staleBefore = new Date(now - DISPLAY_CLIENT_RETENTION_MS).toISOString();
+  await supabase
+    .from(TABLE)
+    .delete()
+    .lt('last_seen_at', staleBefore);
+
   const { data, error } = await supabase
     .from(TABLE)
     .select('*')
@@ -105,7 +118,7 @@ export async function fetchDisplayClients() {
     .limit(20);
 
   return {
-    clients: ((data ?? []) as DisplayClientRow[]).map(toDisplayClient),
+    clients: ((data ?? []) as DisplayClientRow[]).filter(row => isDisplayClientRetained(row, now)).map(toDisplayClient),
     error,
   };
 }
