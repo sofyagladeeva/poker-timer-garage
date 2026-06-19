@@ -154,12 +154,10 @@ export function Display() {
   const {
     players: ratingPlayers,
     loading: ratingLoading,
-    error: ratingError,
   } = useBotRating();
   const {
     players: bountyPlayers,
     loading: bountyLoading,
-    error: bountyError,
   } = useBotBounty();
   const nextGame = useNextGame(gameState.nextGameBotId ?? null);
   const { k, x, y } = useScale();
@@ -305,7 +303,6 @@ export function Display() {
   const activeCombos = combinations.filter(c => c.enabled);
   const sidebarLeaderboardTitle = sidebarLeaderboardMode === 'rating' ? 'Топ-3 месяца' : 'Топ-3 баунти';
   const sidebarLeaderboardPlayers = sidebarLeaderboardMode === 'rating' ? top3 : top3Bounty;
-  const sidebarLeaderboardError = sidebarLeaderboardMode === 'rating' ? ratingError : bountyError;
   const sidebarLeaderboardLoading = sidebarLeaderboardMode === 'rating' ? ratingLoading : bountyLoading;
   const fallbackNextGameLines = formatFallbackNextGameLines(gameState.nextGameInfo);
 
@@ -672,7 +669,7 @@ export function Display() {
               {sidebarLeaderboardPlayers.length === 0 && sidebarLeaderboardLoading
                 ? <div className="text-[#252525] text-sm">Загрузка...</div>
                 : sidebarLeaderboardPlayers.length === 0
-                ? <div className="text-[#444] text-sm">{sidebarLeaderboardError ? 'Нет связи с рейтингом' : 'Нет данных'}</div>
+                ? <div className="text-[#444] text-sm">Нет данных</div>
                 : sidebarLeaderboardPlayers.map((player, i) => {
                     const value = sidebarLeaderboardMode === 'rating'
                       ? (player as { points: number }).points.toFixed(1)
@@ -696,9 +693,6 @@ export function Display() {
                     );
                   })
               }
-              {sidebarLeaderboardError && sidebarLeaderboardPlayers.length > 0 && (
-                <div className="text-[#555] text-xs">Нет связи с ботом, показаны последние сохранённые данные</div>
-              )}
             </div>
 
             <div className="h-px bg-[#181818]" />

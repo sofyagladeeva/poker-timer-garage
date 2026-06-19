@@ -942,11 +942,12 @@ export function useGameState(readOnly = false) {
   }, [gameState.status, gameState.timeLeft]);
 
   // ─── Авто-переход: таймер дошёл до 0 → следующий уровень ──────────────
-  // Any live client may advance the level if the timer reaches 0.
-  // This avoids a hard dependency on the admin tab staying open and awake.
+  // Only the admin client advances levels. Read-only Display screens can have
+  // weak network or stale local state; letting them write creates level races.
   // serverLoaded guard prevents stale localStorage from triggering nextLevel()
-  // on a second device before authoritative server state is received.
+  // before authoritative server state is received.
   useEffect(() => {
+    if (readOnly) return;
     if (!serverLoaded.current) return;
     if (gameState.timeLeft !== 0) return;
     if (gameState.status !== 'running' && gameState.status !== 'break') return;
@@ -970,8 +971,6 @@ export function useGameState(readOnly = false) {
     // Before advancing, check server state to ensure this device isn't stale.
     // If another admin already reset/advanced (server tick > local tick), sync
     // instead of writing a stale nextLevel() to Supabase.
-    // But never wait on this check for seconds — moving off 00:00 is more
-    // important than a perfect preflight on a live game screen.
     if (!isSupabaseConfigured) {
       advanceImmediately();
       autoAdvancePending.current = false;
@@ -990,6 +989,11 @@ export function useGameState(readOnly = false) {
         }
         const serverTick = typeof data.lastTickAt === 'number' ? data.lastTickAt : 0;
         const localTick = gameStateRef.current.lastTickAt ?? 0;
+        const serverLevelIndex = typeof data.currentLevelIndex === 'number' ? data.currentLevelIndex : null;
+        if (serverLevelIndex !== null && serverLevelIndex !== gameStateRef.current.currentLevelIndex) {
+          applyAuthoritativeGameState(data as Record<string, unknown>, 'auto-advance-level-mismatch');
+          return;
+        }
         if (serverTick > localTick) {
           // Server is ahead — someone else already acted, just sync
           applyAuthoritativeGameState(data as Record<string, unknown>, 'auto-advance-server-ahead');
@@ -998,7 +1002,9 @@ export function useGameState(readOnly = false) {
         }
       })
       .catch(() => {
-        advanceImmediately();
+        if (lastAutoAdvanceAnchor.current === autoAdvanceAnchor) {
+          lastAutoAdvanceAnchor.current = null;
+        }
       })
       .finally(() => {
         autoAdvancePending.current = false;
