@@ -799,19 +799,21 @@ export function Admin() {
   const handleConfirmNotification = async (id: string, bounty: number) => {
     const notif = floorNotifications.find(n => n.id === id);
     if (notif?.type === 'bustout' && notif.playerId) {
+      const playerById = new Map(tournamentPlayers.map(player => [player.id, player]));
       const chronologicalBustouts = floorNotifications
         .filter(n => n.type === 'bustout' && n.playerId)
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
       const entriesToMark = chronologicalBustouts
-        .map((n, index) => ({
-          notification: n,
-          requestOrder: index + 1,
-        }))
-        .filter(({ notification }) => notification.id === id || notification.status === 'confirmed')
-        .map(({ notification, requestOrder }) => ({
+        .filter(notification => {
+          if (notification.id === id) return true;
+          if (notification.status !== 'confirmed' || !notification.playerId) return false;
+
+          return playerById.get(notification.playerId)?.status === 'out';
+        })
+        .map((notification, index) => ({
           playerId: notification.playerId!,
           bounty: notification.id === id ? bounty : notification.bounty,
-          requestOrder,
+          requestOrder: index + 1,
         }));
 
       await markPlayersOutInOrder(entriesToMark);
