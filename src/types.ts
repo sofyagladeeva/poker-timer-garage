@@ -74,6 +74,8 @@ export interface GameState {
   tournamentBuyIn: number | null; // стоимость входа из бота (null = использовать дефолт 1000)
   chipLeaders: ChipLeadersState | null; // показываются на табло один уровень после перерыва
   resetAt: number; // unix ms timestamp of last resetTournament() — used to detect stale admin devices
+  tableCount: number; // количество открытых столов для дилерских планшетов
+  addonOpen: boolean; // активирован ли приём аддонов
 }
 
 export type LiveTournamentPlayerSource = 'bot' | 'manual';
@@ -113,6 +115,25 @@ export interface LiveTournamentPlayer {
   registeredAt: string | null;
   createdAt: string;
   updatedAt: string;
+  tableNumber: number | null;
+  seatNumber: number | null;
+}
+
+export type FloorNotificationType = 'floor_call' | 'bustout';
+export type FloorNotificationStatus = 'pending' | 'confirmed';
+
+export interface FloorNotification {
+  id: string;
+  sessionId: number;
+  type: FloorNotificationType;
+  tableNumber: number;
+  playerId: string | null;
+  playerName: string | null;
+  projectedPlace: number | null;
+  bounty: number;
+  status: FloorNotificationStatus;
+  createdAt: string;
+  confirmedAt: string | null;
 }
 
 export interface TournamentPlayersSummary {

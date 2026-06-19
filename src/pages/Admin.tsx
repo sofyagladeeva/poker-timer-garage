@@ -37,6 +37,9 @@ import { aggregatePlayerHistory, filterByPeriod } from '../playerHistory';
 import type { PeriodFilter } from '../playerHistory';
 import { PokerCard } from '../components/PokerCard';
 import { TournamentPlayersTab } from '../components/TournamentPlayersTab';
+import { TablesTab } from '../components/TablesTab';
+import { NotificationsTab } from '../components/NotificationsTab';
+import { useFloorNotifications } from '../hooks/useFloorNotifications';
 import {
   buildBlindTemplate,
   deleteSharedBlindTemplates,
@@ -132,7 +135,7 @@ type TournamentResultsDispatchOutcome = {
   financeSkipped: boolean;
 };
 
-type AdminTab = 'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings';
+type AdminTab = 'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings' | 'tables' | 'notifications';
 
 type ChipLeaderDraftRow = {
   id: string;
@@ -771,6 +774,7 @@ export function Admin() {
     setPlayerArrival,
     markPlayerOut,
     restorePlayer,
+    assignPlayerSeat,
     restorePlayersFromBackup,
     prepareTournamentPlayersContext,
     exportTournamentResults,
@@ -779,6 +783,17 @@ export function Admin() {
     updateGameState,
     tournamentDate: selectedBotGame?.date ?? null,
   });
+  const floorSessionId = Math.max(1, Math.round(gameState.resetAt || 0));
+  const { notifications: floorNotifications, pendingCount: floorPendingCount, confirmNotification } = useFloorNotifications(floorSessionId);
+
+  const handleConfirmNotification = async (id: string, bounty: number) => {
+    const notif = floorNotifications.find(n => n.id === id);
+    if (notif?.type === 'bustout' && notif.playerId) {
+      await updatePlayerField(notif.playerId, { bounty });
+    }
+    return confirmNotification(id, bounty);
+  };
+
   const chipLeaderCandidatePlayers = tournamentPlayers
     .filter(isActiveChipLeaderCandidate)
     .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
@@ -1805,6 +1820,21 @@ export function Admin() {
   const allBlindTemplates = mergeBlindTemplates(PRESET_BLIND_TEMPLATES, blindTemplates);
   const allBackgrounds = [...PRESET_BACKGROUNDS, ...backgroundLibrary];
 
+  // Auto-manage addonOpen: opens during the last break for classic tournaments only
+  useEffect(() => {
+    if (!blindLevels.length) return;
+    const currentLevel = blindLevels[gameState.currentLevelIndex];
+    if (!currentLevel) return;
+    const isClassic = selectedBotGame?.format === 'Классический турнир';
+    const breaks = blindLevels.filter(l => l.isBreak);
+    const lastBreak = breaks[breaks.length - 1];
+    const shouldBeOpen = isClassic && currentLevel.isBreak && !!lastBreak && lastBreak.id === currentLevel.id;
+    if (gameState.addonOpen !== shouldBeOpen) {
+      void updateGameState({ addonOpen: shouldBeOpen });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState.currentLevelIndex, blindLevels, selectedBotGame?.format]);
+
   if (!authed) {
     return (
       <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center px-4">
@@ -2102,6 +2132,8 @@ export function Admin() {
   const tabs = [
     { id: 'control', label: '▶ Управление' },
     { id: 'players', label: '👥 Игроки' },
+    { id: 'tables',  label: '🪑 Столы' },
+    { id: 'notifications', label: floorPendingCount > 0 ? `🔔 Уведомления (${floorPendingCount})` : '🔔 Уведомления' },
     { id: 'blinds',  label: '💰 Блайнды' },
     { id: 'combos',  label: '🃏 Комбо' },
     { id: 'archive', label: '📋 Архив' },
@@ -2873,6 +2905,7 @@ export function Admin() {
             isTournamentEnded={false}
             preferMobileCards={tabletAdminLayout}
             reviewPlayers={[]}
+            tableCount={gameState.tableCount}
             onOpenControlTab={() => {}}
             onRefreshFromBot={refreshFromBot}
             onAddManualPlayer={addManualPlayer}
@@ -2881,6 +2914,29 @@ export function Admin() {
             onMarkPlayerOut={markPlayerOut}
             onRestorePlayer={restorePlayer}
             onRestorePlayersFromBackup={restorePlayersFromBackup}
+            onAssignSeat={async (playerId, tableNumber, seatNumber) => {
+              await assignPlayerSeat(playerId, tableNumber, seatNumber);
+            }}
+          />
+        )}
+
+        {/* ─── TABLES TAB ──────────────────────────────────────────────── */}
+        {activeTab === 'tables' && (
+          <TablesTab
+            tableCount={gameState.tableCount}
+            players={tournamentPlayers}
+            onUpdateTableCount={count => void updateGameState({ tableCount: count })}
+            onAssignSeat={async (playerId, tableNumber, seatNumber) => {
+              await assignPlayerSeat(playerId, tableNumber, seatNumber);
+            }}
+          />
+        )}
+
+        {/* ─── NOTIFICATIONS TAB ───────────────────────────────────────── */}
+        {activeTab === 'notifications' && (
+          <NotificationsTab
+            notifications={floorNotifications}
+            onConfirm={handleConfirmNotification}
           />
         )}
 
@@ -3863,6 +3919,7 @@ export function Admin() {
                   isTournamentEnded={false}
                   preferMobileCards={tabletAdminLayout}
                   reviewPlayers={[]}
+                  tableCount={gameState.tableCount}
                   onOpenControlTab={() => {}}
                   onRefreshFromBot={refreshFromBot}
                   onAddManualPlayer={addManualPlayer}
@@ -3871,6 +3928,9 @@ export function Admin() {
                   onMarkPlayerOut={markPlayerOut}
                   onRestorePlayer={restorePlayer}
                   onRestorePlayersFromBackup={restorePlayersFromBackup}
+                  onAssignSeat={async (playerId, tableNumber, seatNumber) => {
+                    await assignPlayerSeat(playerId, tableNumber, seatNumber);
+                  }}
                 />
               </div>
             </div>

@@ -424,6 +424,8 @@ function normalizePlayer(
     registeredAt: typeof raw.registeredAt === 'string' && raw.registeredAt ? raw.registeredAt : null,
     createdAt,
     updatedAt,
+    tableNumber: typeof raw.tableNumber === 'number' && raw.tableNumber > 0 ? Math.round(raw.tableNumber) : null,
+    seatNumber: typeof raw.seatNumber === 'number' && raw.seatNumber > 0 ? Math.round(raw.seatNumber) : null,
   };
 }
 
@@ -439,7 +441,7 @@ export function rosterGroupSort(a: LiveTournamentPlayer, b: LiveTournamentPlayer
   return b.sortOrder - a.sortOrder || b.updatedAt.localeCompare(a.updatedAt) || b.createdAt.localeCompare(a.createdAt) || a.name.localeCompare(b.name, 'ru');
 }
 
-function recalculatePlayers(players: LiveTournamentPlayer[], tournamentBuyIn: number | null = null) {
+export function recalculatePlayers(players: LiveTournamentPlayer[], tournamentBuyIn: number | null = null) {
   const normalized = players.map(player => normalizePlayer(player, player.sessionId, player.tournamentBotId, tournamentBuyIn));
   const entrants = normalized.filter(player => player.arrivalStatus !== 'absent').length;
   const sortedOut = normalized
@@ -548,7 +550,9 @@ function playersEqual(a: LiveTournamentPlayer | undefined, b: LiveTournamentPlay
     a.sortOrder === b.sortOrder &&
     a.registeredAt === b.registeredAt &&
     a.createdAt === b.createdAt &&
-    a.updatedAt === b.updatedAt
+    a.updatedAt === b.updatedAt &&
+    a.tableNumber === b.tableNumber &&
+    a.seatNumber === b.seatNumber
   );
 }
 
@@ -2114,6 +2118,17 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     });
   }, [applyPlayerMutation, sessionId, tournamentBotId]);
 
+  const assignPlayerSeat = useCallback(async (
+    playerId: string,
+    tableNumber: number | null,
+    seatNumber: number | null
+  ) => {
+    await applyPlayerMutation(current => current.map(player => {
+      if (player.id !== playerId) return player;
+      return { ...player, tableNumber, seatNumber, updatedAt: nowIso() };
+    }));
+  }, [applyPlayerMutation]);
+
   const restorePlayer = useCallback(async (playerId: string) => {
     await applyPlayerMutation(current => {
       const nextSortOrder = getNextPlayerSortOrder(current);
@@ -2288,6 +2303,7 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     setPlayerArrival,
     markPlayerOut,
     restorePlayer,
+    assignPlayerSeat,
     restorePlayersFromBackup,
     prepareTournamentPlayersContext,
     exportTournamentResults,

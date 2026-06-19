@@ -50,4 +50,6 @@ export const DEFAULT_GAME_STATE = {
   tournamentBuyIn: null,
   chipLeaders: null,
   resetAt: 0,
+  tableCount: 4,
+  addonOpen: false,
 };

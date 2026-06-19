@@ -7,7 +7,7 @@ import {
   stripUnsupportedBonusColumns,
   stripUnsupportedChipLeaderColumns,
 } from '../gameStateSync';
-import { hasMissingBonusColumns, hasMissingChipLeaders, hasMissingNextGameBotId, hasMissingResetAt, normalizeGameState } from '../gameStateMath';
+import { hasMissingAddonOpen, hasMissingBonusColumns, hasMissingChipLeaders, hasMissingNextGameBotId, hasMissingResetAt, hasMissingTableCount, normalizeGameState } from '../gameStateMath';
 import { buildAdvanceLevelPatch, buildAutoAdvanceAnchor } from '../levelAdvance';
 import type {
   GameState,
@@ -536,6 +536,20 @@ export function useGameState(readOnly = false) {
         const { resetAt, ...noReset } = payload;
         void resetAt;
         payload = noReset;
+        continue;
+      }
+
+      if (hasMissingTableCount(error)) {
+        const { tableCount, ...noTableCount } = payload;
+        void tableCount;
+        payload = noTableCount;
+        continue;
+      }
+
+      if (hasMissingAddonOpen(error)) {
+        const { addonOpen, ...noAddonOpen } = payload;
+        void addonOpen;
+        payload = noAddonOpen;
         continue;
       }
 

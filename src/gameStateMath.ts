@@ -106,6 +106,8 @@ export function normalizeGameState(raw: unknown, fallback: GameState): GameState
     tournamentBuyIn: toNullableNumber(source.tournamentBuyIn, fallback.tournamentBuyIn),
     chipLeaders: normalizeChipLeaders(source.chipLeaders ?? source.chip_leaders, fallback.chipLeaders),
     resetAt: toWholeNumber(source.resetAt, fallback.resetAt ?? 0),
+    tableCount: Math.max(1, toWholeNumber(source.tableCount ?? source.table_count, fallback.tableCount ?? 4)),
+    addonOpen: toBoolean(source.addonOpen ?? source.addon_open, fallback.addonOpen ?? false),
   };
 
   const explicitTotal = source.totalStack ?? source.total_stack;
@@ -139,6 +141,20 @@ export function hasMissingBonusColumns(error: unknown) {
     message.includes('bonus_count') ||
     message.includes('bonus_stack')
   );
+}
+
+export function hasMissingTableCount(error: unknown) {
+  const message = typeof error === 'object' && error && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : '';
+  return message.includes('tableCount') || message.includes('table_count');
+}
+
+export function hasMissingAddonOpen(error: unknown) {
+  const message = typeof error === 'object' && error && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : '';
+  return message.includes('addonOpen') || message.includes('addon_open');
 }
 
 export function hasMissingChipLeaders(error: unknown) {

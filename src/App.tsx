@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { Display } from './pages/Display';
 import { Admin } from './pages/Admin';
+import { Dealer } from './pages/Dealer';
 import './index.css';
 
 const BUILD_CHECK_INTERVAL_MS = 60_000;
@@ -93,6 +94,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Display />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/dealer/:tableNumber" element={<Dealer />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </HashRouter>

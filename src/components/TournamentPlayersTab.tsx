@@ -46,6 +46,8 @@ type Props = {
   onMarkPlayerOut: (playerId: string, options?: { bounty?: number }) => Promise<void>;
   onRestorePlayer: (playerId: string) => Promise<void>;
   onRestorePlayersFromBackup: (backupId: string) => Promise<boolean>;
+  tableCount?: number;
+  onAssignSeat?: (playerId: string, tableNumber: number | null, seatNumber: number | null) => Promise<void>;
 };
 
 export function TournamentPlayersTab({
@@ -66,6 +68,8 @@ export function TournamentPlayersTab({
   onMarkPlayerOut,
   onRestorePlayer,
   onRestorePlayersFromBackup,
+  tableCount = 4,
+  onAssignSeat,
 }: Props) {
   const [manualPlayerName, setManualPlayerName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -77,8 +81,41 @@ export function TournamentPlayersTab({
   const [backupsOpen, setBackupsOpen] = useState(false);
   const [outDialogPlayerId, setOutDialogPlayerId] = useState<string | null>(null);
   const [outDialogBountyDraft, setOutDialogBountyDraft] = useState('0');
+  const [seatModalPlayer, setSeatModalPlayer] = useState<LiveTournamentPlayer | null>(null);
+  const [seatModalBusy, setSeatModalBusy] = useState(false);
   const [outDialogBusy, setOutDialogBusy] = useState(false);
   const [contactPlayer, setContactPlayer] = useState<LiveTournamentPlayer | null>(null);
+
+  const handleRequestActivate = (player: LiveTournamentPlayer) => {
+    if (onAssignSeat && tableCount > 0) {
+      setSeatModalPlayer(player);
+    } else {
+      void onSetPlayerArrival(player.id, 'paid');
+    }
+  };
+
+  const handleSeatConfirm = async (tableNumber: number, seatNumber: number) => {
+    if (!seatModalPlayer) return;
+    setSeatModalBusy(true);
+    try {
+      await onSetPlayerArrival(seatModalPlayer.id, 'paid');
+      await onAssignSeat?.(seatModalPlayer.id, tableNumber, seatNumber);
+      setSeatModalPlayer(null);
+    } finally {
+      setSeatModalBusy(false);
+    }
+  };
+
+  const handleSeatSkip = async () => {
+    if (!seatModalPlayer) return;
+    setSeatModalBusy(true);
+    try {
+      await onSetPlayerArrival(seatModalPlayer.id, 'paid');
+      setSeatModalPlayer(null);
+    } finally {
+      setSeatModalBusy(false);
+    }
+  };
   const totalPlayers = groupedPlayers.active.length + groupedPlayers.pending.length + groupedPlayers.waitlist.length + groupedPlayers.out.length;
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const rosterPlayers = [
@@ -98,7 +135,9 @@ export function TournamentPlayersTab({
 
   const matchesSearch = (player: LiveTournamentPlayer) => {
     if (!normalizedQuery) return true;
-    return player.name.toLowerCase().includes(normalizedQuery);
+    if (player.name.toLowerCase().includes(normalizedQuery)) return true;
+    if (player.realName?.toLowerCase().includes(normalizedQuery)) return true;
+    return false;
   };
 
   const matchesViewFilter = (player: LiveTournamentPlayer) => {
@@ -535,6 +574,7 @@ export function TournamentPlayersTab({
                     onPlaceConflict={setPlaceConflictNotice}
                     onUpdatePlayerField={onUpdatePlayerField}
                     onSetPlayerArrival={onSetPlayerArrival}
+                    onRequestActivate={handleRequestActivate}
                     onOpenOutDialog={openOutDialog}
                     onRestorePlayer={onRestorePlayer}
                     onShowContact={setContactPlayer}
@@ -553,6 +593,7 @@ export function TournamentPlayersTab({
                       onPlaceConflict={setPlaceConflictNotice}
                       onUpdatePlayerField={onUpdatePlayerField}
                       onSetPlayerArrival={onSetPlayerArrival}
+                      onRequestActivate={handleRequestActivate}
                       onOpenOutDialog={openOutDialog}
                       onRestorePlayer={onRestorePlayer}
                       onShowContact={setContactPlayer}
@@ -587,6 +628,7 @@ export function TournamentPlayersTab({
                           onOpenOutDialog={openOutDialog}
                           onRestorePlayer={onRestorePlayer}
                           onShowContact={setContactPlayer}
+                          onRequestActivate={handleRequestActivate}
                         />
                       ))}
                     </tbody>
@@ -746,6 +788,109 @@ export function TournamentPlayersTab({
           </div>
         </div>
       )}
+      {seatModalPlayer && (
+        <SeatAssignModal
+          player={seatModalPlayer}
+          tableCount={tableCount}
+          rosterPlayers={rosterPlayers}
+          busy={seatModalBusy}
+          onConfirm={handleSeatConfirm}
+          onSkip={() => void handleSeatSkip()}
+          onClose={() => setSeatModalPlayer(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function SeatAssignModal({
+  player,
+  tableCount,
+  rosterPlayers,
+  busy,
+  onConfirm,
+  onSkip,
+  onClose,
+}: {
+  player: LiveTournamentPlayer;
+  tableCount: number;
+  rosterPlayers: LiveTournamentPlayer[];
+  busy: boolean;
+  onConfirm: (tableNumber: number, seatNumber: number) => Promise<void>;
+  onSkip: () => void;
+  onClose: () => void;
+}) {
+  const SEATS = 9;
+
+  const occupiedSeats = new Set(
+    rosterPlayers
+      .filter(p => p.arrivalStatus !== 'absent' && p.status !== 'out' && p.tableNumber && p.seatNumber)
+      .map(p => `${p.tableNumber}-${p.seatNumber}`)
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-6"
+      onClick={busy ? undefined : onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-3xl border border-[#2D2D2D] bg-[#111] shadow-2xl max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="border-b border-[#2D2D2D] px-5 py-4">
+          <div className="text-white font-black text-base">За какой стол посадить?</div>
+          <div className="text-[#777] text-sm mt-0.5 break-words">{player.name}</div>
+        </div>
+
+        <div className="px-4 py-4 flex flex-col gap-4">
+          {Array.from({ length: tableCount }, (_, i) => i + 1).map(tableNumber => (
+            <div key={tableNumber}>
+              <div className="text-[10px] uppercase tracking-[0.16em] text-[#555] mb-2">
+                Стол {tableNumber}
+              </div>
+              <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-9">
+                {Array.from({ length: SEATS }, (_, j) => j + 1).map(seatNumber => {
+                  const taken = occupiedSeats.has(`${tableNumber}-${seatNumber}`);
+                  return (
+                    <button
+                      key={seatNumber}
+                      type="button"
+                      disabled={taken || busy}
+                      onClick={() => void onConfirm(tableNumber, seatNumber)}
+                      className={`rounded-xl border py-2 text-xs font-bold transition-colors ${
+                        taken
+                          ? 'border-[#2D2D2D] bg-[#1A1A1A] text-[#444] cursor-not-allowed'
+                          : 'border-[#3D3D3D] bg-[#0A0A0A] text-white hover:border-[#C0392B] hover:bg-[#2A0C0A] active:scale-95'
+                      }`}
+                    >
+                      {seatNumber}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="border-t border-[#2D2D2D] px-5 py-4 flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="admin-btn-secondary px-4 py-3 text-sm"
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            onClick={onSkip}
+            disabled={busy}
+            className="flex-1 admin-btn-secondary py-3 text-sm"
+          >
+            {busy ? 'Сохранение...' : 'Пропустить — без места'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -766,6 +911,7 @@ function MobilePlayerCard({
   onPlaceConflict,
   onUpdatePlayerField,
   onSetPlayerArrival,
+  onRequestActivate,
   onOpenOutDialog,
   onRestorePlayer,
   onShowContact,
@@ -776,6 +922,7 @@ function MobilePlayerCard({
   onPlaceConflict: (message: string | null) => void;
   onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<boolean>;
   onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
+  onRequestActivate: (player: LiveTournamentPlayer) => void;
   onOpenOutDialog: (player: LiveTournamentPlayer) => void;
   onRestorePlayer: (playerId: string) => Promise<void>;
   onShowContact: (player: LiveTournamentPlayer) => void;
@@ -809,7 +956,7 @@ function MobilePlayerCard({
     }
 
     if (player.arrivalStatus === 'absent') {
-      await onSetPlayerArrival(player.id, 'paid');
+      onRequestActivate(player);
     }
   };
 
@@ -862,6 +1009,9 @@ function MobilePlayerCard({
               </div>
             )}
           </div>
+          {player.arrivalStatus !== 'absent' && !isOut && player.tableNumber != null && player.seatNumber != null && (
+            <div className="mt-1 text-[10px] text-[#555]">Стол {player.tableNumber}, бокс {player.seatNumber}</div>
+          )}
         </div>
 
         <div className="shrink-0 grid grid-cols-2 gap-2 min-w-[156px]">
@@ -1096,6 +1246,7 @@ function PlayerRow({
   onOpenOutDialog,
   onRestorePlayer,
   onShowContact,
+  onRequestActivate,
 }: {
   player: LiveTournamentPlayer;
   tournamentDate?: string | null;
@@ -1106,6 +1257,7 @@ function PlayerRow({
   onOpenOutDialog: (player: LiveTournamentPlayer) => void;
   onRestorePlayer: (playerId: string) => Promise<void>;
   onShowContact: (player: LiveTournamentPlayer) => void;
+  onRequestActivate: (player: LiveTournamentPlayer) => void;
 }) {
   const [openField, setOpenField] = useState<'entry' | 'split' | null>(null);
   const canEditCounters = player.arrivalStatus !== 'absent';
@@ -1140,7 +1292,7 @@ function PlayerRow({
     }
 
     if (player.arrivalStatus === 'absent') {
-      await onSetPlayerArrival(player.id, 'paid');
+      onRequestActivate(player);
     }
   };
 
@@ -1189,6 +1341,9 @@ function PlayerRow({
               </div>
             )}
           </div>
+          {player.arrivalStatus !== 'absent' && !isOut && player.tableNumber != null && player.seatNumber != null && (
+            <div className="text-[8px] sm:text-[9px] text-[#555]">Стол {player.tableNumber}, бокс {player.seatNumber}</div>
+          )}
         </div>
       </td>
 
