@@ -971,6 +971,8 @@ export function useGameState(readOnly = false) {
     // Before advancing, check server state to ensure this device isn't stale.
     // If another admin already reset/advanced (server tick > local tick), sync
     // instead of writing a stale nextLevel() to Supabase.
+    // If the check itself fails, keep the tournament moving from the local
+    // timer anchor. Displays are read-only, so they cannot race this write.
     if (!isSupabaseConfigured) {
       advanceImmediately();
       autoAdvancePending.current = false;
@@ -1002,9 +1004,7 @@ export function useGameState(readOnly = false) {
         }
       })
       .catch(() => {
-        if (lastAutoAdvanceAnchor.current === autoAdvanceAnchor) {
-          lastAutoAdvanceAnchor.current = null;
-        }
+        advanceImmediately();
       })
       .finally(() => {
         autoAdvancePending.current = false;
