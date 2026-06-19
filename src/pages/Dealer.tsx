@@ -81,11 +81,10 @@ export function Dealer() {
   }
 
   return (
-    <div className="bg-[#0A0A0A]">
+    <div className="bg-[#0A0A0A] overflow-hidden" style={{ height: '100dvh' }}>
       <div
-        className="p-1.5 grid gap-1"
+        className="p-1.5 grid gap-1 h-full overflow-hidden"
         style={{
-          height: '100dvh',
           gridTemplateColumns: 'repeat(3, 1fr)',
           gridTemplateRows: 'repeat(4, 1fr)',
         }}

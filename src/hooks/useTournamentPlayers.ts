@@ -1811,7 +1811,26 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
       })
       .subscribe();
 
+    const pollInterval = window.setInterval(() => {
+      void loadSharedPlayersSnapshot().then(sharedSnapshot => {
+        if (!sharedSnapshot?.found) return;
+        if (isIncomingPlayersSnapshotStale(
+          snapshotUpdatedAtRef.current,
+          sharedSnapshot.lastSyncedAt,
+          snapshotRevisionRef.current,
+          sharedSnapshot.revision
+        )) return;
+        applyPlayersSnapshot(
+          sharedSnapshot.players,
+          sharedSnapshot.resultsSubmission,
+          sharedSnapshot.lastSyncedAt ?? nowIso(),
+          sharedSnapshot.revision
+        );
+      });
+    }, 10_000);
+
     return () => {
+      window.clearInterval(pollInterval);
       void supabase.removeChannel(channel);
     };
   }, [applyPlayersSnapshot, loadSharedPlayersBackups, loadSharedPlayersSnapshot, sharedEnabled, sharedStorageId]);
