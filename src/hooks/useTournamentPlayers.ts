@@ -2137,6 +2137,33 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     });
   }, [applyPlayerMutation, sessionId, tournamentBotId]);
 
+  const markPlayersOutInOrder = useCallback(async (
+    entries: Array<{ playerId: string; bounty: number; requestOrder: number }>
+  ) => {
+    if (entries.length === 0) return;
+
+    await applyPlayerMutation(current => {
+      const entrants = current.filter(player => player.arrivalStatus !== 'absent').length;
+      const entryByPlayerId = new Map(entries.map(entry => [entry.playerId, entry]));
+
+      return current.map(player => {
+        const entry = entryByPlayerId.get(player.id);
+        if (!entry) return player;
+        if (player.arrivalStatus === 'absent') return player;
+
+        return normalizePlayer({
+          ...player,
+          status: 'out',
+          bounty: Math.max(0, Math.round(entry.bounty)),
+          place: Math.max(1, entrants - Math.max(1, Math.round(entry.requestOrder)) + 1),
+          placeOverride: true,
+          bustoutOrder: Math.max(1, Math.round(entry.requestOrder)),
+          updatedAt: nowIso(),
+        }, sessionId, tournamentBotId);
+      });
+    });
+  }, [applyPlayerMutation, sessionId, tournamentBotId]);
+
   const assignPlayerSeat = useCallback(async (
     playerId: string,
     tableNumber: number | null,
@@ -2321,6 +2348,7 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     updatePlayerField,
     setPlayerArrival,
     markPlayerOut,
+    markPlayersOutInOrder,
     restorePlayer,
     assignPlayerSeat,
     restorePlayersFromBackup,

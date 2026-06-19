@@ -774,6 +774,7 @@ export function Admin() {
     updatePlayerField,
     setPlayerArrival,
     markPlayerOut,
+    markPlayersOutInOrder,
     restorePlayer,
     assignPlayerSeat,
     restorePlayersFromBackup,
@@ -797,7 +798,22 @@ export function Admin() {
   const handleConfirmNotification = async (id: string, bounty: number) => {
     const notif = floorNotifications.find(n => n.id === id);
     if (notif?.type === 'bustout' && notif.playerId) {
-      await markPlayerOut(notif.playerId, { bounty });
+      const chronologicalBustouts = floorNotifications
+        .filter(n => n.type === 'bustout' && n.playerId)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+      const entriesToMark = chronologicalBustouts
+        .map((n, index) => ({
+          notification: n,
+          requestOrder: index + 1,
+        }))
+        .filter(({ notification }) => notification.id === id || notification.status === 'confirmed')
+        .map(({ notification, requestOrder }) => ({
+          playerId: notification.playerId!,
+          bounty: notification.id === id ? bounty : notification.bounty,
+          requestOrder,
+        }));
+
+      await markPlayersOutInOrder(entriesToMark);
     }
     setFloorPopupNotificationId(current => current === id ? null : current);
     setDismissedFloorPopupIds(prev => prev.filter(notificationId => notificationId !== id));
