@@ -56,11 +56,14 @@ export function TablesTab({ tableCount, players, onUpdateTableCount, onAssignSea
   // Пустые столы не считаются — только столы с игроками
   const nonEmptyTables = tableOccupancy.filter(t => t.count > 0);
   const canMerge = totalActive > 0 && nonEmptyTables.length > neededTables;
-  const seatedCounts = Array.from({ length: tableCount }, (_, i) => {
-    const t = i + 1;
-    return activePlayers.filter(p => p.tableNumber === t && p.seatNumber != null).length;
-  });
-  const isUnbalanced = tableCount > 1 && totalActive > 0 && !canMerge &&
+  const balanceTableNumbers = nonEmptyTables.map(t => t.tableNumber);
+  const seatedCounts = balanceTableNumbers.map(tableNumber =>
+    activePlayers.filter(p => p.tableNumber === tableNumber && p.seatNumber != null).length
+  );
+  const balanceTableCount = balanceTableNumbers.length;
+  const balanceIdealMax = balanceTableCount > 0 ? Math.ceil(totalActive / balanceTableCount) : 0;
+  const balanceIdealMin = balanceTableCount > 0 ? Math.floor(totalActive / balanceTableCount) : 0;
+  const isUnbalanced = balanceTableCount > 1 && totalActive > 0 && !canMerge &&
     Math.max(...seatedCounts) - Math.min(...seatedCounts) > 1;
   const tablesToClear = canMerge
     ? [...nonEmptyTables].sort((a, b) => a.count - b.count).slice(0, nonEmptyTables.length - neededTables)
@@ -105,13 +108,13 @@ export function TablesTab({ tableCount, players, onUpdateTableCount, onAssignSea
   };
 
   const handleBalance = async () => {
+    if (balanceTableNumbers.length === 0) return;
     setBalancing(true);
     try {
-      const perTableMin = Math.floor(totalActive / tableCount);
-      const remainder = totalActive % tableCount;
+      const perTableMin = Math.floor(totalActive / balanceTableNumbers.length);
+      const remainder = totalActive % balanceTableNumbers.length;
 
-      const tableStats = Array.from({ length: tableCount }, (_, i) => {
-        const t = i + 1;
+      const tableStats = balanceTableNumbers.map(t => {
         return { t, seated: activePlayers.filter(p => p.tableNumber === t && p.seatNumber != null) };
       }).sort((a, b) => b.seated.length - a.seated.length);
 
@@ -263,8 +266,8 @@ export function TablesTab({ tableCount, players, onUpdateTableCount, onAssignSea
               </button>
             </div>
             <div className="text-blue-200/70 text-xs mt-1 leading-relaxed">
-              {totalActive} {totalActive < 5 ? 'игрока' : 'игроков'} за {tableCount} столами — идеально{' '}
-              {optimalIdealMin === optimalIdealMax ? optimalIdealMax : `${optimalIdealMin}–${optimalIdealMax}`} за каждым.
+              {totalActive} {totalActive < 5 ? 'игрока' : 'игроков'} за {balanceTableCount} столами — идеально{' '}
+              {balanceIdealMin === balanceIdealMax ? balanceIdealMax : `${balanceIdealMin}–${balanceIdealMax}`} за каждым.
               Разница больше 1 — можно пересадить автоматически.
             </div>
           </div>
