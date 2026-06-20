@@ -814,6 +814,7 @@ export function Admin() {
           playerId: notification.playerId!,
           bounty: notification.id === id ? bounty : notification.bounty,
           requestOrder: index + 1,
+          requireExistingOut: notification.id !== id,
         }));
 
       await markPlayersOutInOrder(entriesToMark);

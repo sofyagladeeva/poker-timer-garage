@@ -2138,7 +2138,7 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
   }, [applyPlayerMutation, sessionId, tournamentBotId]);
 
   const markPlayersOutInOrder = useCallback(async (
-    entries: Array<{ playerId: string; bounty: number; requestOrder: number }>
+    entries: Array<{ playerId: string; bounty: number; requestOrder: number; requireExistingOut?: boolean }>
   ) => {
     if (entries.length === 0) return;
 
@@ -2150,6 +2150,7 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
         const entry = entryByPlayerId.get(player.id);
         if (!entry) return player;
         if (player.arrivalStatus === 'absent') return player;
+        if (entry.requireExistingOut && player.status !== 'out') return player;
 
         return normalizePlayer({
           ...player,
