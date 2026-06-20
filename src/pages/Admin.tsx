@@ -690,7 +690,7 @@ export function Admin() {
   const {
     gameState, blindLevels, combinations, syncReady, authoritativeReady, syncError, getAuthoritativeNow, retrySync,
     updateGameState, forceSyncDisplays, startTimer, pauseTimer, nextLevel, prevLevel, resetTournament,
-    updateBlindLevels, updateCombinations, saveTournament, fetchTournaments, fetchTournamentArchiveDetails, deleteTournament,
+    updateBlindLevels, updateCombinations, saveTournament, fetchTournaments, fetchTournamentArchiveDetails, fetchTournamentArchiveDetailsBatch, deleteTournament,
   } = useGameState();
   const gameStateSnapshotRef = useRef(gameState);
   const displayPresenceEnabled = isDisplayPresenceEnabled();
@@ -1464,13 +1464,13 @@ export function Admin() {
 
     const loadAll = async () => {
       try {
-        const results = await Promise.all(
-          missingIds.map(id => fetchTournamentArchiveDetails(id).then(d => ({ id, d })))
-        );
+        const results = await fetchTournamentArchiveDetailsBatch(missingIds);
         if (!cancelled) {
           setArchiveDetailsById(prev => {
             const next = { ...prev };
-            for (const { id, d } of results) next[id] = d;
+            for (const [id, details] of Object.entries(results)) {
+              next[Number(id)] = details;
+            }
             return next;
           });
         }
@@ -1481,7 +1481,7 @@ export function Admin() {
 
     void loadAll();
     return () => { cancelled = true; };
-  }, [activeTab, archiveAuthed, archiveSubTab, tournaments, fetchTournamentArchiveDetails]);
+  }, [activeTab, archiveAuthed, archiveSubTab, tournaments, fetchTournamentArchiveDetailsBatch]);
 
   const toggleArchiveDetails = async (tournamentId: number) => {
     if (archiveOpenId === tournamentId) {
@@ -3570,6 +3570,9 @@ export function Admin() {
                 {/* ── PLAYERS sub-tab ───────────────────────────────────── */}
                 {archiveSubTab === 'players' && (() => {
                   const allAggs = aggregatePlayerHistory(tournaments, archiveDetailsById);
+                  const loadedArchiveDetailsCount = tournaments.reduce((count, tournament) => (
+                    archiveDetailsById[tournament.id]?.players?.length ? count + 1 : count
+                  ), 0);
                   const query = playerHistorySearch.trim().toLowerCase();
 
                   const aggsWithStats = allAggs
@@ -3662,6 +3665,9 @@ export function Admin() {
                               {label}
                             </button>
                           ))}
+                        </div>
+                        <div className="text-[#555] text-[11px]">
+                          Загружены списки игроков: {loadedArchiveDetailsCount} / {tournaments.length}
                         </div>
                       </div>
 

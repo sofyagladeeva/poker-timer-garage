@@ -137,6 +137,25 @@ function buildArchiveDetailsStorageName(finishedAt: string) {
   return `archive_tournament:${finishedAt}`;
 }
 
+function parseArchiveDetailsPayload(payload: unknown): TournamentArchiveDetails | null {
+  if (!payload || typeof payload !== 'object') return null;
+
+  const details = payload as Partial<TournamentArchiveDetails>;
+  if (!Array.isArray(details.players) || typeof details.savedAt !== 'string') {
+    return null;
+  }
+
+  return {
+    tournamentBotId: details.tournamentBotId ?? null,
+    tournamentTitle: details.tournamentTitle,
+    resultsSentAt: details.resultsSentAt ?? null,
+    resultsSignature: details.resultsSignature ?? null,
+    players: details.players,
+    summary: details.summary && typeof details.summary === 'object' ? details.summary : null,
+    savedAt: details.savedAt,
+  } as TournamentArchiveDetails;
+}
+
 function normalizeBlindLevels(levels: BlindLevel[]) {
   let currentLevelNumber = 1;
 
@@ -1222,16 +1241,44 @@ export function useGameState(readOnly = false) {
       return null;
     }
 
-    const payload = data.levels as Partial<TournamentArchiveDetails>;
-    if (!Array.isArray(payload.players) || typeof payload.savedAt !== 'string') {
-      return null;
+    return parseArchiveDetailsPayload(data.levels);
+  }, [isSupabaseConfigured]);
+
+  const fetchTournamentArchiveDetailsBatch = useCallback(async (ids: number[]): Promise<Record<number, TournamentArchiveDetails | null>> => {
+    const uniqueIds = Array.from(new Set(ids.filter(id => Number.isFinite(id))));
+    if (uniqueIds.length === 0) return {};
+
+    if (!isSupabaseConfigured) {
+      const existing = loadLocal<TournamentRecord[]>(TOURNAMENTS_KEY, []);
+      return uniqueIds.reduce<Record<number, TournamentArchiveDetails | null>>((acc, id) => {
+        acc[id] = existing.find(t => t.id === id)?.archive_details ?? null;
+        return acc;
+      }, {});
     }
 
-    return {
-      players: payload.players,
-      summary: payload.summary && typeof payload.summary === 'object' ? payload.summary : null,
-      savedAt: payload.savedAt,
-    } as TournamentArchiveDetails;
+    const storageIds = uniqueIds.map(archiveDetailsStorageId);
+    const { data, error } = await supabase
+      .from(ARCHIVE_DETAILS_TABLE)
+      .select('id, levels')
+      .in('id', storageIds);
+
+    const next = uniqueIds.reduce<Record<number, TournamentArchiveDetails | null>>((acc, id) => {
+      acc[id] = null;
+      return acc;
+    }, {});
+
+    if (error || !data) {
+      return next;
+    }
+
+    for (const row of data) {
+      const rawId = typeof row.id === 'string' ? row.id : '';
+      const tournamentId = Number(rawId.slice(`${ARCHIVE_DETAILS_PREFIX}:`.length));
+      if (!Number.isFinite(tournamentId)) continue;
+      next[tournamentId] = parseArchiveDetailsPayload(row.levels);
+    }
+
+    return next;
   }, [isSupabaseConfigured]);
 
   const deleteTournament = useCallback(async (id: number): Promise<void> => {
@@ -1294,6 +1341,7 @@ export function useGameState(readOnly = false) {
     saveTournament,
     fetchTournaments,
     fetchTournamentArchiveDetails,
+    fetchTournamentArchiveDetailsBatch,
     deleteTournament,
   };
 }
