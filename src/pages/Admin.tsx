@@ -108,7 +108,7 @@ const SHARED_LIBRARY_TIMEOUT_MS = 20_000;
 const SHARED_LIBRARY_RETRY_COUNT = 2;
 const ADMIN_AUTH_STORAGE_KEY = 'admin_authed';
 const ARCHIVE_AUTH_STORAGE_KEY = 'archive_authed';
-const DISPLAY_CLIENTS_REFRESH_MS = 10_000;
+const DISPLAY_CLIENTS_REFRESH_MS = 3_000;
 
 type BotGameSummary = {
   id: number;

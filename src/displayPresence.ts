@@ -25,9 +25,9 @@ interface DisplayClientRow {
 
 const TABLE = 'display_clients';
 const DISPLAY_CLIENT_ID_KEY = 'poker_display_client_id';
-const HEARTBEAT_VISIBLE_MS = 5_000;
-const HEARTBEAT_HIDDEN_MS = 15_000;
-const DISPLAY_ONLINE_MS = 90_000;
+const HEARTBEAT_VISIBLE_MS = 3_000;
+const HEARTBEAT_HIDDEN_MS = 5_000;
+const DISPLAY_ONLINE_MS = 12_000;
 const DISPLAY_CLIENT_RETENTION_MS = 60 * 60 * 1_000;
 
 export const DISPLAY_PRESENCE_ONLINE_MS = DISPLAY_ONLINE_MS;
