@@ -30,17 +30,33 @@ export interface PlayerAggregate {
   totalBounty: number;
 }
 
-function playerKey(p: TournamentArchivePlayerRecord): string {
-  if (p.telegramId != null) return `tg:${p.telegramId}`;
-  if (p.username) return `un:${p.username.replace(/^@/, '').toLowerCase()}`;
-  return `nm:${p.name.trim().toLowerCase()}`;
+function normalizeUsername(username: string) {
+  return username.replace(/^@/, '').trim().toLowerCase();
+}
+
+function normalizePlayerName(name: string) {
+  return name.trim().toLowerCase();
+}
+
+function playerAliases(p: TournamentArchivePlayerRecord): string[] {
+  const aliases: string[] = [];
+
+  if (p.username) aliases.push(`un:${normalizeUsername(p.username)}`);
+  if (p.telegramId != null) aliases.push(`tg:${p.telegramId}`);
+
+  // Some older archive rows were saved before telegramId was available. For players
+  // without username, the name is the only stable link between old and new rows.
+  if (!p.username) aliases.push(`nm:${normalizePlayerName(p.name)}`);
+
+  return aliases.length > 0 ? aliases : [`nm:${normalizePlayerName(p.name)}`];
 }
 
 export function aggregatePlayerHistory(
   tournaments: TournamentRecord[],
   archiveDetailsById: Record<number, TournamentArchiveDetails | null> = {}
 ): PlayerAggregate[] {
-  const map = new Map<string, PlayerAggregate>();
+  const aggregates: PlayerAggregate[] = [];
+  const aliasMap = new Map<string, PlayerAggregate>();
 
   const sorted = [...tournaments].sort(
     (a, b) => new Date(a.finished_at).getTime() - new Date(b.finished_at).getTime()
@@ -53,7 +69,7 @@ export function aggregatePlayerHistory(
     for (const p of details.players as TournamentArchivePlayerRecord[]) {
       if (p.arrivalStatus === 'absent') continue;
 
-      const key = playerKey(p);
+      const aliases = playerAliases(p);
       const cashPaid = p.cashPaid ?? (p.paymentMethod === 'cash' ? p.paymentDue : 0);
       const cardPaid = p.cardPaid ?? (p.paymentMethod === 'card' ? p.paymentDue : 0);
 
@@ -72,16 +88,17 @@ export function aggregatePlayerHistory(
         arrivalStatus: p.arrivalStatus,
       };
 
-      const existing = map.get(key);
+      const existing = aliases.map(alias => aliasMap.get(alias)).find(Boolean);
       if (existing) {
         existing.tournaments.push(entry);
         // Always update identity from the latest tournament
         existing.currentName = p.name;
         existing.currentUsername = p.username;
         if (p.telegramId != null) existing.telegramId = p.telegramId;
+        for (const alias of aliases) aliasMap.set(alias, existing);
       } else {
-        map.set(key, {
-          key,
+        const created: PlayerAggregate = {
+          key: aliases[0],
           telegramId: p.telegramId ?? null,
           currentName: p.name,
           currentUsername: p.username,
@@ -93,12 +110,14 @@ export function aggregatePlayerHistory(
           totalRebuys: 0,
           totalAddons: 0,
           totalBounty: 0,
-        });
+        };
+        aggregates.push(created);
+        for (const alias of aliases) aliasMap.set(alias, created);
       }
     }
   }
 
-  return Array.from(map.values())
+  return aggregates
     .map(agg => {
       const placed = agg.tournaments.map(e => e.place).filter((p): p is number => p !== null);
       return {
