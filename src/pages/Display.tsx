@@ -264,11 +264,19 @@ export function Display() {
 
     schedule();
     document.addEventListener('visibilitychange', onVisibilityChange);
+    document.addEventListener('fullscreenchange', onVisibilityChange);
+    window.addEventListener('focus', onVisibilityChange);
+    window.addEventListener('online', onVisibilityChange);
+    window.addEventListener('pageshow', onVisibilityChange);
 
     return () => {
       disposed = true;
       if (timer) clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      document.removeEventListener('fullscreenchange', onVisibilityChange);
+      window.removeEventListener('focus', onVisibilityChange);
+      window.removeEventListener('online', onVisibilityChange);
+      window.removeEventListener('pageshow', onVisibilityChange);
     };
   }, []);
 
