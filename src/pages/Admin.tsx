@@ -1451,7 +1451,10 @@ export function Admin() {
 
     const missingIds = tournaments
       .map(t => t.id)
-      .filter(id => !Object.prototype.hasOwnProperty.call(archiveDetailsByIdRef.current, id));
+      .filter(id => (
+        !Object.prototype.hasOwnProperty.call(archiveDetailsByIdRef.current, id) ||
+        archiveDetailsByIdRef.current[id] === null
+      ));
 
     if (missingIds.length === 0) return;
 
