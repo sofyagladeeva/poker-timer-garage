@@ -1452,10 +1452,7 @@ export function Admin() {
 
     const missingIds = tournaments
       .map(t => t.id)
-      .filter(id => (
-        !Object.prototype.hasOwnProperty.call(archiveDetailsByIdRef.current, id) ||
-        archiveDetailsByIdRef.current[id] === null
-      ));
+      .filter(id => !Object.prototype.hasOwnProperty.call(archiveDetailsByIdRef.current, id));
 
     if (missingIds.length === 0) return;
 
@@ -1473,10 +1470,16 @@ export function Admin() {
             }
             return next;
           });
-          setTournaments(prev => prev.map(tournament => {
-            const details = results[tournament.id];
-            return details ? { ...tournament, archive_details: details } : tournament;
-          }));
+          setTournaments(prev => {
+            let changed = false;
+            const next = prev.map(tournament => {
+              const details = results[tournament.id];
+              if (!details || tournament.archive_details === details) return tournament;
+              changed = true;
+              return { ...tournament, archive_details: details };
+            });
+            return changed ? next : prev;
+          });
         }
       } finally {
         if (!cancelled) setPlayerHistoryLoading(false);
