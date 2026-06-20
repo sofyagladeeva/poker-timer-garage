@@ -779,6 +779,7 @@ export function Admin() {
     restorePlayer,
     assignPlayerSeat,
     restorePlayersFromBackup,
+    getLatestTournamentArchiveDetails,
     prepareTournamentPlayersContext,
     exportTournamentResults,
   } = useTournamentPlayers({
@@ -1192,11 +1193,12 @@ export function Admin() {
     // Capture save data on the first call only — prevents duplicate archive entries if
     // resetTournament fails and the admin retries (gameState may have partially reset by then).
     if (!pendingTournamentSaveRef.current) {
+      const latestArchiveDetails = await getLatestTournamentArchiveDetails();
       pendingTournamentSaveRef.current = {
         saved: false,
         gs: gameState,
         levels: levelsPlayed,
-        details: archiveDetailsPayload,
+        details: latestArchiveDetails ?? archiveDetailsPayload,
       };
     }
 

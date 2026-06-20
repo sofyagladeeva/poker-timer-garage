@@ -15,6 +15,7 @@ import type {
   LiveTournamentPlayer,
   LiveTournamentPlayerStatus,
   LiveTournamentRegistrationSource,
+  TournamentArchiveDetails,
   TournamentFinancePayload,
   TournamentPlayersSummary,
   TournamentResultsPayload,
@@ -2265,6 +2266,44 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     return true;
   }, [sharedEnabled]);
 
+  const getLatestTournamentArchiveDetails = useCallback(async (): Promise<TournamentArchiveDetails | null> => {
+    const latestSnapshot = await syncLatestSharedPlayersSnapshot();
+    const latestPlayers = latestSnapshot.players.length > 0 ? latestSnapshot.players : playersRef.current;
+    if (latestPlayers.length === 0) return null;
+
+    return {
+      tournamentBotId: gameStateRef.current.tournamentBotId,
+      tournamentTitle: gameStateRef.current.tournamentTitle,
+      resultsSentAt: latestSnapshot.resultsSubmission.sentAt,
+      resultsSignature: latestSnapshot.resultsSubmission.signature,
+      players: latestPlayers.map(player => ({
+        id: player.id,
+        telegramId: player.telegramId,
+        botRegistrationId: player.botRegistrationId,
+        name: player.name,
+        username: player.username,
+        source: player.source,
+        registrationSource: player.registrationSource,
+        status: player.status,
+        arrivalStatus: player.arrivalStatus,
+        rebuyCount: player.rebuyCount,
+        addonCount: player.addonCount,
+        bonusCount: player.bonusCount,
+        bounty: player.bounty,
+        bonusRcPoints: player.bonusRcPoints,
+        cashPaid: player.cashPaid,
+        cardPaid: player.cardPaid,
+        paymentDue: player.paymentDue,
+        place: player.place,
+        bustoutOrder: player.bustoutOrder,
+        createdAt: player.createdAt,
+        updatedAt: player.updatedAt,
+      })),
+      summary: summarizePlayers(latestPlayers),
+      savedAt: nowIso(),
+    };
+  }, [syncLatestSharedPlayersSnapshot]);
+
   const exportTournamentResults = useCallback(async (levelsPlayed: number) => {
     if (playersRef.current.length === 0 || gameState.tournamentBotId == null) {
       return {
@@ -2353,6 +2392,7 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     restorePlayer,
     assignPlayerSeat,
     restorePlayersFromBackup,
+    getLatestTournamentArchiveDetails,
     prepareTournamentPlayersContext,
     exportTournamentResults,
   };
