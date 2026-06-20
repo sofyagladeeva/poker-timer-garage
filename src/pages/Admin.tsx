@@ -1473,6 +1473,10 @@ export function Admin() {
             }
             return next;
           });
+          setTournaments(prev => prev.map(tournament => {
+            const details = results[tournament.id];
+            return details ? { ...tournament, archive_details: details } : tournament;
+          }));
         }
       } finally {
         if (!cancelled) setPlayerHistoryLoading(false);
