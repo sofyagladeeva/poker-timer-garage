@@ -689,7 +689,7 @@ export function Admin() {
 
   const {
     gameState, blindLevels, combinations, syncReady, authoritativeReady, syncError, getAuthoritativeNow, retrySync,
-    updateGameState, startTimer, pauseTimer, nextLevel, prevLevel, resetTournament,
+    updateGameState, forceSyncDisplays, startTimer, pauseTimer, nextLevel, prevLevel, resetTournament,
     updateBlindLevels, updateCombinations, saveTournament, fetchTournaments, fetchTournamentArchiveDetails, deleteTournament,
   } = useGameState();
   const gameStateSnapshotRef = useRef(gameState);
@@ -697,6 +697,7 @@ export function Admin() {
   const [displayClients, setDisplayClients] = useState<DisplayClient[]>([]);
   const [displayClientsError, setDisplayClientsError] = useState<string | null>(null);
   const [displayClientsCollapsed, setDisplayClientsCollapsed] = useState(false);
+  const [displayForceSyncBusy, setDisplayForceSyncBusy] = useState(false);
   const [presenceNow, setPresenceNow] = useState(() => Date.now());
 
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([]);
@@ -1965,6 +1966,18 @@ export function Admin() {
   const onlineDisplayClients = displayClients.filter(client => isDisplayClientOnline(client, presenceNow));
   const offlineDisplayClients = displayClients.filter(client => !isDisplayClientOnline(client, presenceNow));
 
+  const handleForceSyncDisplays = async () => {
+    if (displayForceSyncBusy) return;
+
+    setDisplayForceSyncBusy(true);
+    try {
+      await forceSyncDisplays();
+      setPresenceNow(Date.now());
+    } finally {
+      setDisplayForceSyncBusy(false);
+    }
+  };
+
   const updateStackState = (
     patch: Partial<Pick<GameState, 'players' | 'rebuys' | 'addonCount' | 'bonusCount' | 'startStack' | 'addonStack' | 'bonusStack'>>
   ) => {
@@ -2445,6 +2458,14 @@ export function Admin() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => void handleForceSyncDisplays()}
+                    disabled={displayForceSyncBusy}
+                    className="rounded-full border border-[#C0392B]/70 bg-[#1A0A0A] px-3 py-1 text-xs font-bold text-red-200 active:scale-95 transition-transform disabled:opacity-50"
+                  >
+                    {displayForceSyncBusy ? 'Синхр...' : 'Синхронизировать'}
+                  </button>
                   <button
                     type="button"
                     onClick={() => setDisplayClientsCollapsed(prev => !prev)}

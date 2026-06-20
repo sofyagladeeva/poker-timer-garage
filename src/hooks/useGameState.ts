@@ -636,6 +636,10 @@ export function useGameState(readOnly = false) {
         if (peerAuthoritativeNow !== null) {
           syncAuthoritativeClock(peerAuthoritativeNow, 'broadcast');
         }
+        if (incoming._force === true) {
+          applyAuthoritativeGameState({ ...gameStateRef.current, ...incoming }, 'broadcast-force');
+          return;
+        }
         // Tournament generation check: if resetAt differs, a stale admin may be
         // broadcasting old tournament data. Handle based on which is newer.
         const incomingResetAt = typeof incoming.resetAt === 'number' ? incoming.resetAt : null;
@@ -950,6 +954,51 @@ export function useGameState(readOnly = false) {
     updateGameState({ status: 'paused', timeLeft: liveTimeLeft }, true);
   }, [getAuthoritativeNow, updateGameState]);
 
+  const forceSyncDisplays = useCallback(() => {
+    const now = getAuthoritativeNow();
+    const current = gameStateRef.current;
+    const timerRunning = current.status === 'running' || current.status === 'break';
+    const liveTimeLeft = timerRunning
+      ? Math.max(0, baseTimeLeft.current - Math.floor((now - baseTimestamp.current) / 1000))
+      : current.timeLeft;
+    const synced = normalizeGameState({
+      ...current,
+      timeLeft: liveTimeLeft,
+      lastTickAt: timerRunning ? now : current.lastTickAt,
+    }, current);
+    const persistedPatch: Partial<GameState> = {
+      timeLeft: synced.timeLeft,
+      lastTickAt: synced.lastTickAt,
+    };
+
+    setGameState(synced);
+    gameStateRef.current = synced;
+    saveLocal(STATE_KEY, synced);
+    markClientActivity();
+
+    if (synced.lastTickAt) {
+      baseTimeLeft.current = synced.timeLeft;
+      baseTimestamp.current = synced.lastTickAt;
+    }
+
+    if (!isSupabaseConfigured) return Promise.resolve(true);
+
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.send({
+        type: 'broadcast',
+        event: 'game_state',
+        payload: {
+          ...synced,
+          _cid: clientId.current,
+          _force: true,
+          _serverNow: now,
+        },
+      });
+    }
+
+    return persistGameState(synced, persistedPatch, true);
+  }, [getAuthoritativeNow, isSupabaseConfigured, markClientActivity, persistGameState]);
+
   const advanceToLevelIndex = useCallback((targetIndex: number) => {
     const patch = buildAdvanceLevelPatch(blindLevelsRef.current, targetIndex, getAuthoritativeNow());
     return updateGameState(patch, true);
@@ -1234,6 +1283,7 @@ export function useGameState(readOnly = false) {
     getAuthoritativeNow,
     retrySync,
     updateGameState,
+    forceSyncDisplays,
     startTimer,
     pauseTimer,
     nextLevel,
