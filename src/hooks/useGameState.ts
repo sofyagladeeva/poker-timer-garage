@@ -1054,6 +1054,10 @@ export function useGameState(readOnly = false) {
     lastAutoAdvanceAnchor.current = autoAdvanceAnchor;
     autoAdvancePending.current = true;
     const targetIndex = gameState.currentLevelIndex + 1;
+    if (targetIndex >= blindLevelsRef.current.length) {
+      autoAdvancePending.current = false;
+      return;
+    }
 
     const advanceImmediately = () => {
       void advanceToLevelIndex(targetIndex).then(applied => {
