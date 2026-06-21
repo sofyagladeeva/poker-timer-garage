@@ -458,6 +458,51 @@ export function recalculatePlayers(players: LiveTournamentPlayer[], tournamentBu
     nextOutOrder.set(player.id, index + 1);
   });
 
+  const autoPlaceByPlayerId = new Map<string, number>();
+  sortedOut.forEach(player => {
+    const bustoutOrder = nextOutOrder.get(player.id) ?? 1;
+    autoPlaceByPlayerId.set(player.id, Math.max(1, entrants - bustoutOrder + 1));
+  });
+
+  const candidatePlaceByPlayerId = new Map<string, number>();
+  for (const player of sortedOut) {
+    const autoPlace = autoPlaceByPlayerId.get(player.id) ?? 1;
+    const candidatePlace = player.placeOverride && player.place !== null
+      ? clampWhole(player.place)
+      : autoPlace;
+    candidatePlaceByPlayerId.set(player.id, candidatePlace);
+  }
+
+  const duplicateCandidatePlaces = new Set<number>();
+  const seenCandidatePlaces = new Set<number>();
+  for (const place of candidatePlaceByPlayerId.values()) {
+    if (seenCandidatePlaces.has(place)) {
+      duplicateCandidatePlaces.add(place);
+    } else {
+      seenCandidatePlaces.add(place);
+    }
+  }
+
+  let hasFinalPlaceConflict = false;
+  const finalPlaceByPlayerId = new Map<string, number>();
+  for (const player of sortedOut) {
+    const candidatePlace = candidatePlaceByPlayerId.get(player.id) ?? 1;
+    const autoPlace = autoPlaceByPlayerId.get(player.id) ?? 1;
+    finalPlaceByPlayerId.set(
+      player.id,
+      duplicateCandidatePlaces.has(candidatePlace) ? autoPlace : candidatePlace
+    );
+  }
+
+  const finalSeenPlaces = new Set<number>();
+  for (const place of finalPlaceByPlayerId.values()) {
+    if (finalSeenPlaces.has(place)) {
+      hasFinalPlaceConflict = true;
+      break;
+    }
+    finalSeenPlaces.add(place);
+  }
+
   return normalized
     .map(player => {
       const baseStatus = deriveBaseStatus(player.registrationSource);
@@ -482,12 +527,15 @@ export function recalculatePlayers(players: LiveTournamentPlayer[], tournamentBu
       }
 
       const bustoutOrder = nextOutOrder.get(player.id) ?? 1;
-      const autoPlace = Math.max(1, entrants - bustoutOrder + 1);
+      const autoPlace = autoPlaceByPlayerId.get(player.id) ?? Math.max(1, entrants - bustoutOrder + 1);
+      const candidatePlace = candidatePlaceByPlayerId.get(player.id) ?? autoPlace;
+      const duplicateCandidate = duplicateCandidatePlaces.has(candidatePlace);
       return {
         ...player,
         status: 'out' as const,
         bustoutOrder,
-        place: player.placeOverride && player.place !== null ? clampWhole(player.place) : autoPlace,
+        place: hasFinalPlaceConflict || duplicateCandidate ? autoPlace : candidatePlace,
+        placeOverride: hasFinalPlaceConflict || duplicateCandidate ? false : player.placeOverride,
       };
     })
     .sort(playerSort);
