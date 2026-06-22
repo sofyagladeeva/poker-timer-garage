@@ -590,6 +590,40 @@ test('mergeImportedRoster does not duplicate same bot player when registration i
   assert.equal(merged.players[0]?.botRegistrationId, 'registration-row-2');
 });
 
+test('mergeImportedRoster only auto-adds early bird bonus when enabled', () => {
+  const imported = [
+    {
+      botRegistrationId: 'early-reg-1',
+      telegramId: 301,
+      username: 'early_user',
+      name: 'Early Player',
+      registrationSource: 'registered' as const,
+      registeredAt: '2026-06-22T12:00:00.000Z',
+      sortOrder: 0,
+    },
+  ];
+
+  const classic = mergeImportedRoster(
+    [],
+    imported,
+    100,
+    77,
+    '2026-06-22T19:00:00.000Z',
+    true
+  );
+  const nonClassic = mergeImportedRoster(
+    [],
+    imported,
+    100,
+    77,
+    '2026-06-22T19:00:00.000Z',
+    false
+  );
+
+  assert.equal(classic.players[0]?.bonusCount, 1);
+  assert.equal(nonClassic.players[0]?.bonusCount, 0);
+});
+
 test('deriveTournamentResultsUiState and button labels reflect first send, resend and locked states', () => {
   const firstSend = deriveTournamentResultsUiState({
     hasBotResultsTarget: true,

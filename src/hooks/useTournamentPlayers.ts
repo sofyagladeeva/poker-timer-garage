@@ -40,6 +40,7 @@ type UseTournamentPlayersOptions = {
   gameState: GameState;
   updateGameState: UpdateGameState;
   tournamentDate?: string | null;
+  earlyBirdBonusEnabled?: boolean;
 };
 
 type PlayerSyncState = {
@@ -664,7 +665,8 @@ export function mergeImportedRoster(
   importedPlayers: ImportedTournamentPlayer[],
   sessionId: number,
   tournamentBotId: number | null,
-  tournamentDate?: string | null
+  tournamentDate?: string | null,
+  earlyBirdBonusEnabled = true
 ) {
   let nextSortOrder = getNextPlayerSortOrder(previousPlayers);
   const mutable = previousPlayers.map(player => ({ ...player }));
@@ -709,7 +711,7 @@ export function mergeImportedRoster(
         continue;
       }
 
-      const nextBonusCount = existing.bonusCount === 0 && nextRegisteredAt && isEarlyBird(nextRegisteredAt, tournamentDate)
+      const nextBonusCount = earlyBirdBonusEnabled && existing.bonusCount === 0 && nextRegisteredAt && isEarlyBird(nextRegisteredAt, tournamentDate)
         ? 1
         : existing.bonusCount;
 
@@ -751,7 +753,7 @@ export function mergeImportedRoster(
       arrivalStatus: isPromoUsername(imported.username) ? 'promo' : 'absent',
       rebuyCount: 0,
       addonCount: 0,
-      bonusCount: imported.registeredAt && isEarlyBird(imported.registeredAt, tournamentDate) ? 1 : 0,
+      bonusCount: earlyBirdBonusEnabled && imported.registeredAt && isEarlyBird(imported.registeredAt, tournamentDate) ? 1 : 0,
       bounty: 0,
       cashPaid: 0,
       cardPaid: 0,
@@ -1197,7 +1199,7 @@ function formatSharedPlayersError(action: string, error: unknown) {
   return `Не удалось ${action} общий список игроков.`;
 }
 
-export function useTournamentPlayers({ gameState, updateGameState, tournamentDate }: UseTournamentPlayersOptions) {
+export function useTournamentPlayers({ gameState, updateGameState, tournamentDate, earlyBirdBonusEnabled = true }: UseTournamentPlayersOptions) {
   const sharedEnabled = hasSharedPlayersStorage();
   const sessionId = normalizeSessionId(gameState.resetAt);
   const tournamentBotId = gameState.tournamentBotId;
@@ -1230,6 +1232,7 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
   const sessionIdRef = useRef(sessionId);
   const tournamentBotIdRef = useRef(tournamentBotId);
   const tournamentDateRef = useRef(tournamentDate);
+  const earlyBirdBonusEnabledRef = useRef(earlyBirdBonusEnabled);
   const tournamentTitleRef = useRef(tournamentTitle);
   const storageKeyRef = useRef(storageKey);
   const emergencyStorageKeyRef = useRef(emergencyStorageKey);
@@ -1647,6 +1650,10 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
   }, [tournamentDate]);
 
   useEffect(() => {
+    earlyBirdBonusEnabledRef.current = earlyBirdBonusEnabled;
+  }, [earlyBirdBonusEnabled]);
+
+  useEffect(() => {
     tournamentTitleRef.current = tournamentTitle;
   }, [tournamentTitle]);
 
@@ -1968,7 +1975,14 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
       return false;
     }
 
-    const merged = mergeImportedRoster(baseSnapshot.players, imported, sessionIdRef.current, tournamentBotIdRef.current, tournamentDateRef.current);
+    const merged = mergeImportedRoster(
+      baseSnapshot.players,
+      imported,
+      sessionIdRef.current,
+      tournamentBotIdRef.current,
+      tournamentDateRef.current,
+      earlyBirdBonusEnabledRef.current
+    );
     if (merged.changedRows.length > 0 || merged.players.length !== baseSnapshot.players.length) {
       const latestSnapshot = await syncLatestSharedPlayersSnapshot();
 
@@ -1988,7 +2002,14 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
       // then mergeChangedPlayersOntoSnapshot combines both sets → 2N players.
       // Re-merging uses name/username matching to find already-committed players
       // and update rather than duplicate them.
-      const latestMerge = mergeImportedRoster(latestSnapshot.players, imported, sessionIdRef.current, tournamentBotIdRef.current, tournamentDateRef.current);
+      const latestMerge = mergeImportedRoster(
+        latestSnapshot.players,
+        imported,
+        sessionIdRef.current,
+        tournamentBotIdRef.current,
+        tournamentDateRef.current,
+        earlyBirdBonusEnabledRef.current
+      );
       if (latestMerge.changedRows.length > 0 || latestMerge.players.length !== latestSnapshot.players.length) {
         await commitPlayersSnapshot(
           latestMerge.players,

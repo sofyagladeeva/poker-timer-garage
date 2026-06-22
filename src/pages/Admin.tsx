@@ -761,6 +761,7 @@ export function Admin() {
   }, [authed, displayPresenceEnabled]);
 
   const selectedBotGame = botGames.find(g => g.id === gameState.tournamentBotId) ?? null;
+  const selectedTournamentIsClassic = selectedBotGame?.format === 'Классический турнир';
 
   const {
     players: tournamentPlayers,
@@ -787,6 +788,7 @@ export function Admin() {
     gameState,
     updateGameState,
     tournamentDate: selectedBotGame?.date ?? null,
+    earlyBirdBonusEnabled: selectedTournamentIsClassic,
   });
   const floorSessionId = Math.max(1, Math.round(gameState.resetAt || 0));
   const { notifications: floorNotifications, pendingCount: floorPendingCount, confirmNotification } = useFloorNotifications(floorSessionId);
@@ -1879,15 +1881,14 @@ export function Admin() {
     if (!blindLevels.length) return;
     const currentLevel = blindLevels[gameState.currentLevelIndex];
     if (!currentLevel) return;
-    const isClassic = selectedBotGame?.format === 'Классический турнир';
     const breaks = blindLevels.filter(l => l.isBreak);
     const lastBreak = breaks[breaks.length - 1];
-    const shouldBeOpen = isClassic && currentLevel.isBreak && !!lastBreak && lastBreak.id === currentLevel.id;
+    const shouldBeOpen = selectedTournamentIsClassic && currentLevel.isBreak && !!lastBreak && lastBreak.id === currentLevel.id;
     if (gameState.addonOpen !== shouldBeOpen) {
       void updateGameState({ addonOpen: shouldBeOpen });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameState.currentLevelIndex, blindLevels, selectedBotGame?.format]);
+  }, [gameState.currentLevelIndex, blindLevels, selectedTournamentIsClassic]);
 
   if (!authed) {
     return (
@@ -3009,6 +3010,7 @@ export function Admin() {
             botSyncState={botSyncState}
             tournamentBotId={gameState.tournamentBotId}
             tournamentDate={selectedBotGame?.date ?? null}
+            earlyBirdBonusEnabled={selectedTournamentIsClassic}
             isTournamentEnded={false}
             preferMobileCards={tabletAdminLayout}
             reviewPlayers={[]}
@@ -4029,6 +4031,7 @@ export function Admin() {
                   botSyncState={botSyncState}
                   tournamentBotId={gameState.tournamentBotId}
                   tournamentDate={selectedBotGame?.date ?? null}
+                  earlyBirdBonusEnabled={selectedTournamentIsClassic}
                   isTournamentEnded={false}
                   preferMobileCards={tabletAdminLayout}
                   reviewPlayers={[]}

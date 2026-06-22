@@ -35,6 +35,7 @@ type Props = {
   };
   tournamentBotId: number | null;
   tournamentDate?: string | null;
+  earlyBirdBonusEnabled?: boolean;
   isTournamentEnded: boolean;
   preferMobileCards?: boolean;
   reviewPlayers: LiveTournamentPlayer[];
@@ -57,6 +58,7 @@ export function TournamentPlayersTab({
   botSyncState,
   tournamentBotId,
   tournamentDate,
+  earlyBirdBonusEnabled = true,
   isTournamentEnded,
   preferMobileCards = false,
   reviewPlayers,
@@ -570,6 +572,7 @@ export function TournamentPlayersTab({
                     key={player.id}
                     player={player}
                     tournamentDate={tournamentDate}
+                    earlyBirdBonusEnabled={earlyBirdBonusEnabled}
                     rosterPlayers={rosterPlayers}
                     onPlaceConflict={setPlaceConflictNotice}
                     onUpdatePlayerField={onUpdatePlayerField}
@@ -589,6 +592,7 @@ export function TournamentPlayersTab({
                       key={player.id}
                       player={player}
                       tournamentDate={tournamentDate}
+                      earlyBirdBonusEnabled={earlyBirdBonusEnabled}
                       rosterPlayers={rosterPlayers}
                       onPlaceConflict={setPlaceConflictNotice}
                       onUpdatePlayerField={onUpdatePlayerField}
@@ -621,6 +625,7 @@ export function TournamentPlayersTab({
                           key={player.id}
                           player={player}
                           tournamentDate={tournamentDate}
+                          earlyBirdBonusEnabled={earlyBirdBonusEnabled}
                           rosterPlayers={rosterPlayers}
                           onPlaceConflict={setPlaceConflictNotice}
                           onUpdatePlayerField={onUpdatePlayerField}
@@ -907,6 +912,7 @@ function getProjectedOutPlace(players: LiveTournamentPlayer[], player: LiveTourn
 function MobilePlayerCard({
   player,
   tournamentDate,
+  earlyBirdBonusEnabled,
   rosterPlayers,
   onPlaceConflict,
   onUpdatePlayerField,
@@ -918,6 +924,7 @@ function MobilePlayerCard({
 }: {
   player: LiveTournamentPlayer;
   tournamentDate?: string | null;
+  earlyBirdBonusEnabled: boolean;
   rosterPlayers: LiveTournamentPlayer[];
   onPlaceConflict: (message: string | null) => void;
   onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<boolean>;
@@ -932,7 +939,7 @@ function MobilePlayerCard({
   const canEditCounters = player.arrivalStatus !== 'absent';
   const isOut = player.status === 'out';
   const isWaitlist = player.registrationSource === 'waitlist';
-  const isEarlyBirdPlayer = player.registeredAt != null && isEarlyBird(player.registeredAt, tournamentDate);
+  const isEarlyBirdPlayer = earlyBirdBonusEnabled && player.registeredAt != null && isEarlyBird(player.registeredAt, tournamentDate);
   const nameBadgeLabel = isOut ? 'Выбыл' : player.arrivalStatus === 'absent' ? 'Не в игре' : 'В игре';
   const nameBadgeTone = isOut
     ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
@@ -1239,6 +1246,7 @@ function MobilePlayerCard({
 function PlayerRow({
   player,
   tournamentDate,
+  earlyBirdBonusEnabled,
   rosterPlayers,
   onPlaceConflict,
   onUpdatePlayerField,
@@ -1250,6 +1258,7 @@ function PlayerRow({
 }: {
   player: LiveTournamentPlayer;
   tournamentDate?: string | null;
+  earlyBirdBonusEnabled: boolean;
   rosterPlayers: LiveTournamentPlayer[];
   onPlaceConflict: (message: string | null) => void;
   onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<boolean>;
@@ -1277,7 +1286,7 @@ function PlayerRow({
   };
 
   const isWaitlist = player.registrationSource === 'waitlist';
-  const isEarlyBirdPlayer = player.registeredAt != null && isEarlyBird(player.registeredAt, tournamentDate);
+  const isEarlyBirdPlayer = earlyBirdBonusEnabled && player.registeredAt != null && isEarlyBird(player.registeredAt, tournamentDate);
   const nameBadgeLabel = isOut ? 'Выбыл' : player.arrivalStatus === 'absent' ? 'Не в игре' : 'В игре';
   const nameBadgeTone = isOut
     ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
