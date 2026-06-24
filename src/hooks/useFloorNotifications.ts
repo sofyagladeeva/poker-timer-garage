@@ -267,6 +267,8 @@ export function useFloorNotifications(sessionId: number) {
     if (fallbackNotification) {
       const ok = await saveFallbackNotifications(sid, fallback.filter(n => n.id !== id));
       if (!ok) return false;
+      setNotifications(prev => prev.filter(n => n.id !== id));
+      return true;
     }
 
     const { error } = await supabase
@@ -274,11 +276,11 @@ export function useFloorNotifications(sessionId: number) {
       .delete()
       .eq('id', id);
 
-    if (!error || fallbackNotification) {
+    if (!error) {
       setNotifications(prev => prev.filter(n => n.id !== id));
     }
 
-    return !error || Boolean(fallbackNotification);
+    return !error;
   }, []);
 
   const pendingNotifications = notifications.filter(n => n.status === 'pending');

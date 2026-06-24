@@ -360,6 +360,19 @@ function derivePaymentMethod(cashPaid: number, cardPaid: number): LiveTournament
   return 'unpaid';
 }
 
+function getPaidAmounts(player: LiveTournamentPlayer & { paymentMethod?: string }) {
+  let cashPaid = clampWhole(player.cashPaid);
+  let cardPaid = clampWhole(player.cardPaid);
+
+  if (cashPaid === 0 && cardPaid === 0) {
+    const legacyPaid = clampWhole(player.paymentDue);
+    if (player.paymentMethod === 'cash') cashPaid = legacyPaid;
+    if (player.paymentMethod === 'card') cardPaid = legacyPaid;
+  }
+
+  return { cashPaid, cardPaid };
+}
+
 function normalizePlayer(
   raw: Partial<LiveTournamentPlayer> & { paymentMethod?: string },
   sessionId: number,
@@ -552,13 +565,13 @@ function isTransientBotRosterPlayer(player: LiveTournamentPlayer) {
     player.source === 'bot' &&
     player.arrivalStatus === 'absent' &&
     player.status !== 'out' &&
-    player.rebuyCount === 0 &&
-    player.addonCount === 0 &&
-    player.bonusCount === 0 &&
-    player.bounty === 0 &&
-    player.bonusRcPoints === 0 &&
-    player.cashPaid === 0 &&
-    player.cardPaid === 0 &&
+    clampWhole(player.rebuyCount) === 0 &&
+    clampWhole(player.addonCount) === 0 &&
+    clampWhole(player.bonusCount) === 0 &&
+    clampWhole(player.bounty) === 0 &&
+    clampWhole(player.bonusRcPoints) === 0 &&
+    clampWhole(player.cashPaid) === 0 &&
+    clampWhole(player.cardPaid) === 0 &&
     player.place === null &&
     !player.placeOverride &&
     player.bustoutOrder === null
@@ -914,8 +927,8 @@ export function buildTournamentFinancePayload(params: {
   const { sessionId, tournamentBotId, tournamentTitle, finishedAt, levelsPlayed, players } = params;
   const eligiblePlayers = players.filter(player => player.arrivalStatus !== 'absent');
   const summary = summarizePlayers(eligiblePlayers);
-  const cashTotal = eligiblePlayers.reduce((s, p) => s + p.cashPaid, 0);
-  const cardTotal = eligiblePlayers.reduce((s, p) => s + p.cardPaid, 0);
+  const cashTotal = eligiblePlayers.reduce((s, p) => s + getPaidAmounts(p).cashPaid, 0);
+  const cardTotal = eligiblePlayers.reduce((s, p) => s + getPaidAmounts(p).cardPaid, 0);
   const totalPaid = cashTotal + cardTotal;
   const fullTotal = eligiblePlayers.reduce((s, p) => {
     if (p.arrivalStatus === 'promo' || p.arrivalStatus === 'freePromo') return s + p.paymentDue * 2;
@@ -952,27 +965,30 @@ export function buildTournamentFinancePayload(params: {
       totalPaid,
       discountTotal,
     },
-    players: eligiblePlayers.map(player => ({
-      id: player.id,
-      botRegistrationId: player.botRegistrationId,
-      telegramId: player.telegramId,
-      name: player.name,
-      username: player.username,
-      source: player.source,
-      registrationSource: player.registrationSource,
-      arrivalStatus: player.arrivalStatus,
-      paymentMethod: derivePaymentMethod(player.cashPaid, player.cardPaid),
-      cashPaid: player.cashPaid,
-      cardPaid: player.cardPaid,
-      paymentDue: player.paymentDue,
-      rebuyCount: player.rebuyCount,
-      addonCount: player.addonCount,
-      bonusCount: player.bonusCount,
-      bounty: player.bounty,
-      status: player.status,
-      place: player.place,
-      bustoutOrder: player.bustoutOrder,
-    })),
+    players: eligiblePlayers.map(player => {
+      const { cashPaid, cardPaid } = getPaidAmounts(player);
+      return {
+        id: player.id,
+        botRegistrationId: player.botRegistrationId,
+        telegramId: player.telegramId,
+        name: player.name,
+        username: player.username,
+        source: player.source,
+        registrationSource: player.registrationSource,
+        arrivalStatus: player.arrivalStatus,
+        paymentMethod: derivePaymentMethod(cashPaid, cardPaid),
+        cashPaid,
+        cardPaid,
+        paymentDue: player.paymentDue,
+        rebuyCount: player.rebuyCount,
+        addonCount: player.addonCount,
+        bonusCount: player.bonusCount,
+        bounty: player.bounty,
+        status: player.status,
+        place: player.place,
+        bustoutOrder: player.bustoutOrder,
+      };
+    }),
   };
 }
 

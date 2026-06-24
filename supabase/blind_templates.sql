@@ -33,4 +33,15 @@ for delete
 using (true);
 
 -- Включить realtime для таблицы (нужно для синхронизации между устройствами)
-alter publication supabase_realtime add table public.blind_templates;
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'blind_templates'
+  ) then
+    alter publication supabase_realtime add table public.blind_templates;
+  end if;
+end $$;
