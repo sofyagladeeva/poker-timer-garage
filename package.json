@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "node --experimental-strip-types --test test/*.test.ts",
+    "test:ci": "node --experimental-strip-types --test --test-concurrency=1 test/*.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {
