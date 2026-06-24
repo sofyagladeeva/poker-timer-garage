@@ -24,6 +24,7 @@ import {
   buildFloorBustoutConfirmationEntries,
   deriveTournamentResultsUiState,
   getDuplicatePlaces,
+  getNextBustoutProjectedPlace,
   getTournamentResultsButtonLabel,
   shouldBlockNewTournamentForPendingBotResults,
 } from '../src/tournamentResultsFlow.ts';
@@ -676,6 +677,46 @@ test('buildFloorBustoutConfirmationEntries inserts older pending dealer bustout 
       requireExistingOut: true,
     },
   ]);
+});
+
+test('getNextBustoutProjectedPlace uses current bustout count instead of stale max order', () => {
+  const players = [
+    ...Array.from({ length: 4 }, (_, index) => createPlayer({
+      id: `early-${index + 1}`,
+      status: 'out',
+      bustoutOrder: index + 1,
+    })),
+    createPlayer({
+      id: 'returned-player',
+      status: 'active',
+      bustoutOrder: null,
+      place: null,
+    }),
+    ...Array.from({ length: 5 }, (_, index) => createPlayer({
+      id: `after-return-gap-${index + 1}`,
+      status: 'out',
+      bustoutOrder: index + 6,
+    })),
+    ...Array.from({ length: 10 }, (_, index) => createPlayer({
+      id: `active-${index + 1}`,
+      status: 'active',
+      bustoutOrder: null,
+      place: null,
+    })),
+  ];
+
+  assert.equal(players.length, 20);
+  assert.equal(getNextBustoutProjectedPlace(players), 11);
+});
+
+test('getNextBustoutProjectedPlace ignores absent players', () => {
+  const players = [
+    createPlayer({ id: 'out-1', status: 'out', arrivalStatus: 'paid', bustoutOrder: 1 }),
+    createPlayer({ id: 'active-1', status: 'active', arrivalStatus: 'paid' }),
+    createPlayer({ id: 'absent-1', status: 'registered', arrivalStatus: 'absent' }),
+  ];
+
+  assert.equal(getNextBustoutProjectedPlace(players), 1);
 });
 
 test('getDuplicatePlaces returns unique repeated places in ascending order', () => {

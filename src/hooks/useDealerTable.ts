@@ -8,6 +8,7 @@ import {
   recalculatePlayers,
 } from './useTournamentPlayers.ts';
 import { useFloorNotifications } from './useFloorNotifications.ts';
+import { getNextBustoutProjectedPlace } from '../tournamentResultsFlow.ts';
 
 const SEATS_PER_TABLE = 9;
 
@@ -110,9 +111,7 @@ export function useDealerTable(tableNumber: number) {
     const bustPlayer = latest.find(p => p.id === playerId) ?? playersRef.current.find(p => p.id === playerId) ?? null;
     if (!bustPlayer || bustPlayer.status === 'out' || bustPlayer.arrivalStatus === 'absent') return;
 
-    const maxOutOrder = latest.reduce((max, p) => Math.max(max, p.bustoutOrder ?? 0), 0);
-    const entrants = latest.filter(p => p.arrivalStatus !== 'absent').length;
-    const projectedPlace = Math.max(1, entrants - maxOutOrder);
+    const projectedPlace = getNextBustoutProjectedPlace(latest);
 
     const ok = await createNotification({
       type: 'bustout',

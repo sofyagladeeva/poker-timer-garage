@@ -88,6 +88,16 @@ export function shouldBlockNewTournamentForPendingBotResults({
   return requiresBotResults && !resultsAlreadyCurrent;
 }
 
+export function getNextBustoutProjectedPlace(players: LiveTournamentPlayer[]) {
+  const entrants = players.filter(player => player.arrivalStatus !== 'absent').length;
+  const currentBustouts = players.filter(player => (
+    player.arrivalStatus !== 'absent' &&
+    player.status === 'out'
+  )).length;
+
+  return Math.max(1, entrants - currentBustouts);
+}
+
 export function buildFloorBustoutConfirmationEntries({
   notifications,
   players,
