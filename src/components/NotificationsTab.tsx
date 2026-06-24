@@ -4,9 +4,10 @@ import type { FloorNotification } from '../types.ts';
 type Props = {
   notifications: FloorNotification[];
   onConfirm: (id: string, bounty: number) => Promise<boolean>;
+  onReject: (id: string) => Promise<boolean>;
 };
 
-export function NotificationsTab({ notifications, onConfirm }: Props) {
+export function NotificationsTab({ notifications, onConfirm, onReject }: Props) {
   const pending = notifications.filter(notification => notification.status === 'pending');
   const archive = notifications
     .filter(notification => notification.status !== 'pending')
@@ -32,7 +33,7 @@ export function NotificationsTab({ notifications, onConfirm }: Props) {
             Нет активных уведомлений
           </div>
         ) : pending.map(n => (
-          <NotificationCard key={n.id} notification={n} onConfirm={onConfirm} />
+          <NotificationCard key={n.id} notification={n} onConfirm={onConfirm} onReject={onReject} />
         ))}
       </section>
 
@@ -46,7 +47,7 @@ export function NotificationsTab({ notifications, onConfirm }: Props) {
             Подтверждённых уведомлений пока нет
           </div>
         ) : archive.map(n => (
-          <NotificationCard key={n.id} notification={n} onConfirm={onConfirm} />
+          <NotificationCard key={n.id} notification={n} onConfirm={onConfirm} onReject={onReject} />
         ))}
       </section>
     </div>
@@ -56,9 +57,11 @@ export function NotificationsTab({ notifications, onConfirm }: Props) {
 function NotificationCard({
   notification,
   onConfirm,
+  onReject,
 }: {
   notification: FloorNotification;
   onConfirm: (id: string, bounty: number) => Promise<boolean>;
+  onReject: (id: string) => Promise<boolean>;
 }) {
   const [bountyDraft, setBountyDraft] = useState(String(notification.bounty || 0));
   const [busy, setBusy] = useState(false);
@@ -67,6 +70,15 @@ function NotificationCard({
     setBusy(true);
     try {
       await onConfirm(notification.id, Math.max(0, parseInt(bountyDraft, 10) || 0));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReject = async () => {
+    setBusy(true);
+    try {
+      await onReject(notification.id);
     } finally {
       setBusy(false);
     }
@@ -101,14 +113,24 @@ function NotificationCard({
           </div>
         </div>
         {isPending ? (
-          <button
-            type="button"
-            onClick={() => void handleConfirm()}
-            disabled={busy}
-            className="admin-btn-secondary px-4 py-2 text-sm whitespace-nowrap shrink-0"
-          >
-            {busy ? '...' : 'Принято'}
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleReject()}
+              disabled={busy}
+              className="admin-btn-secondary px-4 py-2 text-sm whitespace-nowrap"
+            >
+              Отменить
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleConfirm()}
+              disabled={busy}
+              className="admin-btn-secondary px-4 py-2 text-sm whitespace-nowrap"
+            >
+              {busy ? '...' : 'Принято'}
+            </button>
+          </div>
         ) : (
           <div className="text-[#666] text-xs uppercase tracking-widest whitespace-nowrap">Архив</div>
         )}
@@ -134,7 +156,7 @@ function NotificationCard({
           </div>
 
           {isPending && (
-            <div className="mt-3 flex items-center gap-3">
+            <div className="mt-3 flex flex-wrap items-end gap-3">
               <label className="flex-1 max-w-[140px]">
                 <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1">Bounty</div>
                 <input
@@ -148,9 +170,17 @@ function NotificationCard({
               </label>
               <button
                 type="button"
+                onClick={() => void handleReject()}
+                disabled={busy}
+                className="admin-btn-secondary px-4 py-2 text-sm whitespace-nowrap"
+              >
+                Отменить
+              </button>
+              <button
+                type="button"
                 onClick={() => void handleConfirm()}
                 disabled={busy}
-                className="admin-btn-primary px-4 py-2 text-sm mt-5 whitespace-nowrap"
+                className="admin-btn-primary px-4 py-2 text-sm whitespace-nowrap"
               >
                 {busy ? '...' : 'Подтвердить'}
               </button>

@@ -260,8 +260,37 @@ export function useFloorNotifications(sessionId: number) {
     return !error;
   }, []);
 
+  const rejectNotification = useCallback(async (id: string) => {
+    const sid = sessionIdRef.current;
+    const fallback = await loadFallbackNotifications(sid);
+    const fallbackNotification = fallback.find(n => n.id === id);
+    if (fallbackNotification) {
+      const ok = await saveFallbackNotifications(sid, fallback.filter(n => n.id !== id));
+      if (!ok) return false;
+    }
+
+    const { error } = await supabase
+      .from('floor_notifications')
+      .delete()
+      .eq('id', id);
+
+    if (!error || fallbackNotification) {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }
+
+    return !error || Boolean(fallbackNotification);
+  }, []);
+
   const pendingNotifications = notifications.filter(n => n.status === 'pending');
   const pendingCount = pendingNotifications.length;
 
-  return { notifications, pendingNotifications, pendingCount, tableNotExists, createNotification, confirmNotification };
+  return {
+    notifications,
+    pendingNotifications,
+    pendingCount,
+    tableNotExists,
+    createNotification,
+    confirmNotification,
+    rejectNotification,
+  };
 }

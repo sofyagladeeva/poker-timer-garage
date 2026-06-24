@@ -791,7 +791,12 @@ export function Admin() {
     earlyBirdBonusEnabled: selectedTournamentIsClassic,
   });
   const floorSessionId = Math.max(1, Math.round(gameState.resetAt || 0));
-  const { notifications: floorNotifications, pendingCount: floorPendingCount, confirmNotification } = useFloorNotifications(floorSessionId);
+  const {
+    notifications: floorNotifications,
+    pendingCount: floorPendingCount,
+    confirmNotification,
+    rejectNotification,
+  } = useFloorNotifications(floorSessionId);
   const pendingFloorNotifications = useMemo(
     () => floorNotifications.filter(notification => notification.status === 'pending'),
     [floorNotifications]
@@ -826,6 +831,12 @@ export function Admin() {
     setFloorPopupNotificationId(current => current === id ? null : current);
     setDismissedFloorPopupIds(prev => prev.filter(notificationId => notificationId !== id));
     return confirmNotification(id, bounty);
+  };
+
+  const handleRejectNotification = async (id: string) => {
+    setFloorPopupNotificationId(current => current === id ? null : current);
+    setDismissedFloorPopupIds(prev => prev.filter(notificationId => notificationId !== id));
+    return rejectNotification(id);
   };
 
   useEffect(() => {
@@ -2216,6 +2227,7 @@ export function Admin() {
           key={activeFloorPopupNotification.id}
           notification={activeFloorPopupNotification}
           onConfirm={handleConfirmNotification}
+          onReject={handleRejectNotification}
           onOpenNotifications={() => {
             setActiveTab('notifications');
             setDismissedFloorPopupIds(prev => (
@@ -3046,6 +3058,7 @@ export function Admin() {
           <NotificationsTab
             notifications={floorNotifications}
             onConfirm={handleConfirmNotification}
+            onReject={handleRejectNotification}
           />
         )}
 
@@ -4197,11 +4210,13 @@ function StatusBadge({ status }: { status: string }) {
 function FloorNotificationPopup({
   notification,
   onConfirm,
+  onReject,
   onOpenNotifications,
   onDismiss,
 }: {
   notification: FloorNotification;
   onConfirm: (id: string, bounty: number) => Promise<boolean>;
+  onReject: (id: string) => Promise<boolean>;
   onOpenNotifications: () => void;
   onDismiss: () => void;
 }) {
@@ -4217,6 +4232,15 @@ function FloorNotificationPopup({
     try {
       const bounty = isBustout ? Math.max(0, parseInt(bountyDraft, 10) || 0) : 0;
       await onConfirm(notification.id, bounty);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReject = async () => {
+    setBusy(true);
+    try {
+      await onReject(notification.id);
     } finally {
       setBusy(false);
     }
@@ -4272,6 +4296,9 @@ function FloorNotificationPopup({
           </button>
           <button type="button" onClick={onOpenNotifications} disabled={busy} className="admin-btn-secondary flex-1 py-3 text-sm">
             Открыть уведомления
+          </button>
+          <button type="button" onClick={() => void handleReject()} disabled={busy} className="admin-btn-secondary flex-1 py-3 text-sm">
+            Отменить
           </button>
           <button
             type="button"
