@@ -29,6 +29,7 @@ import type {
 } from '../types';
 import { SUIT_SYMBOLS } from '../types';
 import {
+  buildFloorBustoutConfirmationEntries,
   deriveTournamentResultsUiState,
   getDuplicatePlaces,
   getTournamentResultsButtonLabel,
@@ -808,23 +809,12 @@ export function Admin() {
   const handleConfirmNotification = async (id: string, bounty: number) => {
     const notif = floorNotifications.find(n => n.id === id);
     if (notif?.type === 'bustout' && notif.playerId) {
-      const playerById = new Map(tournamentPlayers.map(player => [player.id, player]));
-      const chronologicalBustouts = floorNotifications
-        .filter(n => n.type === 'bustout' && n.playerId)
-        .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
-      const entriesToMark = chronologicalBustouts
-        .filter(notification => {
-          if (notification.id === id) return true;
-          if (notification.status !== 'confirmed' || !notification.playerId) return false;
-
-          return playerById.get(notification.playerId)?.status === 'out';
-        })
-        .map((notification, index) => ({
-          playerId: notification.playerId!,
-          bounty: notification.id === id ? bounty : notification.bounty,
-          requestOrder: index + 1,
-          requireExistingOut: notification.id !== id,
-        }));
+      const entriesToMark = buildFloorBustoutConfirmationEntries({
+        notifications: floorNotifications,
+        players: tournamentPlayers,
+        confirmingNotificationId: id,
+        bounty,
+      });
 
       await markPlayersOutInOrder(entriesToMark);
     }

@@ -21,12 +21,13 @@ import {
   trustLoadedPlayersSnapshot,
 } from '../src/hooks/useTournamentPlayers.ts';
 import {
+  buildFloorBustoutConfirmationEntries,
   deriveTournamentResultsUiState,
   getDuplicatePlaces,
   getTournamentResultsButtonLabel,
   shouldBlockNewTournamentForPendingBotResults,
 } from '../src/tournamentResultsFlow.ts';
-import type { GameState, LiveTournamentPlayer, TournamentResultsPayload } from '../src/types.ts';
+import type { FloorNotification, GameState, LiveTournamentPlayer, TournamentResultsPayload } from '../src/types.ts';
 
 function createPlayer(overrides: Partial<LiveTournamentPlayer> = {}): LiveTournamentPlayer {
   return {
@@ -80,6 +81,22 @@ function createGameState(overrides: Partial<GameState> = {}): GameState {
     tournamentBotId: overrides.tournamentBotId ?? 77,
     nextGameBotId: overrides.nextGameBotId ?? null,
     resetAt: overrides.resetAt ?? 100,
+  };
+}
+
+function createFloorNotification(overrides: Partial<FloorNotification> = {}): FloorNotification {
+  return {
+    id: overrides.id ?? 'notification-1',
+    sessionId: overrides.sessionId ?? 100,
+    type: overrides.type ?? 'bustout',
+    tableNumber: overrides.tableNumber ?? 1,
+    playerId: overrides.playerId ?? 'player-1',
+    playerName: overrides.playerName ?? 'Alpha',
+    projectedPlace: overrides.projectedPlace ?? null,
+    bounty: overrides.bounty ?? 0,
+    status: overrides.status ?? 'pending',
+    createdAt: overrides.createdAt ?? '2026-05-19T12:00:00.000Z',
+    confirmedAt: overrides.confirmedAt ?? null,
   };
 }
 
@@ -536,6 +553,129 @@ test('recalculatePlayers resolves duplicate projected places without promoting m
 
   assert.equal(recalculated.find(player => player.id === 'manual-out')?.place, 9);
   assert.equal(recalculated.find(player => player.id === 'notification-out')?.place, 8);
+});
+
+test('buildFloorBustoutConfirmationEntries appends dealer bustout after manual outs', () => {
+  const players = [
+    ...Array.from({ length: 4 }, (_, index) => createPlayer({
+      id: `manual-out-${index + 1}`,
+      name: `Manual Out ${index + 1}`,
+      status: 'out',
+      bustoutOrder: index + 1,
+      updatedAt: `2026-06-23T18:0${index}:00.000Z`,
+    })),
+    createPlayer({
+      id: 'dealer-out',
+      name: 'Dealer Out',
+      status: 'active',
+      bustoutOrder: null,
+      updatedAt: '2026-06-23T18:49:00.000Z',
+    }),
+    ...Array.from({ length: 15 }, (_, index) => createPlayer({
+      id: `active-${index + 1}`,
+      name: `Active ${index + 1}`,
+      status: 'active',
+      bustoutOrder: null,
+    })),
+  ];
+
+  const entries = buildFloorBustoutConfirmationEntries({
+    notifications: [
+      createFloorNotification({
+        id: 'dealer-notification',
+        playerId: 'dealer-out',
+        status: 'pending',
+        createdAt: '2026-06-23T18:49:00.000Z',
+        bounty: 2,
+      }),
+    ],
+    players,
+    confirmingNotificationId: 'dealer-notification',
+    bounty: 2,
+  });
+
+  assert.deepEqual(entries, [{
+    playerId: 'dealer-out',
+    bounty: 2,
+    requestOrder: 5,
+  }]);
+
+  const entrants = players.filter(player => player.arrivalStatus !== 'absent').length;
+  const afterConfirm = recalculatePlayers(players.map(player => {
+    const entry = entries.find(item => item.playerId === player.id);
+    if (!entry) return player;
+
+    return {
+      ...player,
+      status: 'out' as const,
+      bounty: entry.bounty,
+      place: Math.max(1, entrants - entry.requestOrder + 1),
+      placeOverride: true,
+      bustoutOrder: entry.requestOrder,
+    };
+  }));
+
+  assert.equal(afterConfirm.find(player => player.id === 'dealer-out')?.place, 16);
+  assert.equal(afterConfirm.find(player => player.id === 'manual-out-4')?.place, 17);
+});
+
+test('buildFloorBustoutConfirmationEntries inserts older pending dealer bustout before later confirmed bustouts', () => {
+  const players = [
+    createPlayer({
+      id: 'manual-out',
+      status: 'out',
+      bustoutOrder: 1,
+      updatedAt: '2026-06-23T18:00:00.000Z',
+    }),
+    createPlayer({
+      id: 'older-pending',
+      status: 'active',
+      bustoutOrder: null,
+      updatedAt: '2026-06-23T18:05:00.000Z',
+    }),
+    createPlayer({
+      id: 'later-confirmed',
+      status: 'out',
+      bustoutOrder: 2,
+      bounty: 1,
+      updatedAt: '2026-06-23T18:10:00.000Z',
+    }),
+  ];
+
+  const entries = buildFloorBustoutConfirmationEntries({
+    notifications: [
+      createFloorNotification({
+        id: 'older-notification',
+        playerId: 'older-pending',
+        status: 'pending',
+        createdAt: '2026-06-23T18:05:00.000Z',
+      }),
+      createFloorNotification({
+        id: 'later-notification',
+        playerId: 'later-confirmed',
+        status: 'confirmed',
+        createdAt: '2026-06-23T18:10:00.000Z',
+        bounty: 1,
+      }),
+    ],
+    players,
+    confirmingNotificationId: 'older-notification',
+    bounty: 3,
+  });
+
+  assert.deepEqual(entries, [
+    {
+      playerId: 'older-pending',
+      bounty: 3,
+      requestOrder: 2,
+    },
+    {
+      playerId: 'later-confirmed',
+      bounty: 1,
+      requestOrder: 3,
+      requireExistingOut: true,
+    },
+  ]);
 });
 
 test('getDuplicatePlaces returns unique repeated places in ascending order', () => {
