@@ -484,24 +484,27 @@ export function recalculatePlayers(players: LiveTournamentPlayer[], tournamentBu
     }
   }
 
-  let hasFinalPlaceConflict = false;
   const finalPlaceByPlayerId = new Map<string, number>();
+  const assignedFinalPlaces = new Set<number>();
   for (const player of sortedOut) {
     const candidatePlace = candidatePlaceByPlayerId.get(player.id) ?? 1;
     const autoPlace = autoPlaceByPlayerId.get(player.id) ?? 1;
-    finalPlaceByPlayerId.set(
-      player.id,
-      duplicateCandidatePlaces.has(candidatePlace) ? autoPlace : candidatePlace
-    );
+    const preferredPlace = duplicateCandidatePlaces.has(candidatePlace) ? autoPlace : candidatePlace;
+    const finalPlace = assignedFinalPlaces.has(preferredPlace) && !assignedFinalPlaces.has(autoPlace)
+      ? autoPlace
+      : preferredPlace;
+    finalPlaceByPlayerId.set(player.id, finalPlace);
+    assignedFinalPlaces.add(finalPlace);
   }
 
-  const finalSeenPlaces = new Set<number>();
+  const conflictedFinalPlaces = new Set<number>();
+  const seenFinalPlaces = new Set<number>();
   for (const place of finalPlaceByPlayerId.values()) {
-    if (finalSeenPlaces.has(place)) {
-      hasFinalPlaceConflict = true;
-      break;
+    if (seenFinalPlaces.has(place)) {
+      conflictedFinalPlaces.add(place);
+    } else {
+      seenFinalPlaces.add(place);
     }
-    finalSeenPlaces.add(place);
   }
 
   return normalized
@@ -531,11 +534,13 @@ export function recalculatePlayers(players: LiveTournamentPlayer[], tournamentBu
       const autoPlace = autoPlaceByPlayerId.get(player.id) ?? Math.max(1, entrants - bustoutOrder + 1);
       const candidatePlace = candidatePlaceByPlayerId.get(player.id) ?? autoPlace;
       const duplicateCandidate = duplicateCandidatePlaces.has(candidatePlace);
+      const finalPlace = finalPlaceByPlayerId.get(player.id) ?? autoPlace;
+      const hasFinalPlaceConflict = conflictedFinalPlaces.has(finalPlace);
       return {
         ...player,
         status: 'out' as const,
         bustoutOrder,
-        place: hasFinalPlaceConflict || duplicateCandidate ? autoPlace : candidatePlace,
+        place: hasFinalPlaceConflict ? autoPlace : finalPlace,
         placeOverride: hasFinalPlaceConflict || duplicateCandidate ? false : player.placeOverride,
       };
     })
@@ -2191,16 +2196,19 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     options?: { bounty?: number }
   ) => {
     await applyPlayerMutation(current => {
-      const maxOutOrder = current.reduce((max, player) => Math.max(max, player.bustoutOrder ?? 0), 0);
+      const entrants = current.filter(player => player.arrivalStatus !== 'absent').length;
+      const nextBustoutOrder = current.filter(player => player.status === 'out').length + 1;
       return current.map(player => {
         if (player.id !== playerId) return player;
         if (player.arrivalStatus === 'absent') return player;
+        const bustoutOrder = player.bustoutOrder ?? nextBustoutOrder;
 
         return normalizePlayer({
           ...player,
           status: 'out',
           bounty: options?.bounty != null ? Math.max(0, Math.round(options.bounty)) : player.bounty,
-          bustoutOrder: player.bustoutOrder ?? maxOutOrder + 1,
+          place: player.place ?? Math.max(1, entrants - bustoutOrder + 1),
+          bustoutOrder,
           updatedAt: nowIso(),
         }, sessionId, tournamentBotId);
       });

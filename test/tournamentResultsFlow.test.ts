@@ -13,6 +13,7 @@ import {
   mergeChangedPlayersOntoSnapshot,
   parseEmergencyPlayersPayload,
   parseStoredPlayersPayload,
+  recalculatePlayers,
   rosterGroupSort,
   resolveHydratedPlayersSnapshot,
   sortPlayersForResults,
@@ -419,6 +420,122 @@ test('sortPlayersForResults puts placed players first and preserves stable fallb
     sortPlayersForResults(players).map(player => player.id),
     ['a', 'b', 'd', 'c']
   );
+});
+
+test('recalculatePlayers shifts later bustouts back when an earlier busted player returns', () => {
+  const afterReturn = [
+    ...Array.from({ length: 4 }, (_, index) => createPlayer({
+      id: `early-${index + 1}`,
+      name: `Early ${index + 1}`,
+      status: 'out',
+      place: null,
+      bustoutOrder: index + 1,
+      updatedAt: `2026-06-23T19:0${index}:00.000Z`,
+    })),
+    createPlayer({
+      id: 'returned-player',
+      name: 'Returned Player',
+      status: 'active',
+      place: null,
+      bustoutOrder: null,
+      updatedAt: '2026-06-23T20:15:00.000Z',
+    }),
+    createPlayer({
+      id: 'takes-old-place',
+      name: 'Takes Old Place',
+      status: 'out',
+      place: null,
+      bustoutOrder: 6,
+      updatedAt: '2026-06-23T20:20:00.000Z',
+    }),
+    createPlayer({
+      id: 'next-out',
+      name: 'Next Out',
+      status: 'out',
+      place: null,
+      bustoutOrder: 7,
+      updatedAt: '2026-06-23T20:25:00.000Z',
+    }),
+    ...Array.from({ length: 13 }, (_, index) => createPlayer({
+      id: `active-${index + 1}`,
+      name: `Active ${index + 1}`,
+      status: 'active',
+      place: null,
+      bustoutOrder: null,
+      updatedAt: '2026-06-23T20:00:00.000Z',
+    })),
+  ];
+
+  const recalculatedAfterReturn = recalculatePlayers(afterReturn);
+
+  assert.equal(recalculatedAfterReturn.find(player => player.id === 'returned-player')?.place, null);
+  assert.equal(recalculatedAfterReturn.find(player => player.id === 'takes-old-place')?.place, 16);
+  assert.equal(recalculatedAfterReturn.find(player => player.id === 'next-out')?.place, 15);
+
+  const afterSecondBust = recalculatePlayers(afterReturn.map(player => (
+    player.id === 'returned-player'
+      ? { ...player, status: 'out' as const, bustoutOrder: 8, updatedAt: '2026-06-23T20:30:00.000Z' }
+      : player
+  )));
+
+  assert.equal(afterSecondBust.find(player => player.id === 'returned-player')?.place, 14);
+  assert.equal(afterSecondBust.find(player => player.id === 'takes-old-place')?.place, 16);
+
+  const payload = buildTournamentResultsPayload({
+    sessionId: 100,
+    tournamentBotId: 77,
+    tournamentTitle: 'Return Scenario',
+    finishedAt: '2026-06-23T21:00:00.000Z',
+    levelsPlayed: 12,
+    totalStack: 400000,
+    players: afterSecondBust,
+  });
+
+  assert.equal(payload.players.find(player => player.id === 'takes-old-place')?.place, 16);
+  assert.equal(payload.players.find(player => player.id === 'returned-player')?.place, 14);
+});
+
+test('recalculatePlayers resolves duplicate projected places without promoting manual bustouts', () => {
+  const players = [
+    ...Array.from({ length: 26 }, (_, index) => createPlayer({
+      id: `filler-${index + 1}`,
+      name: `Filler ${index + 1}`,
+      status: 'out',
+      place: null,
+      bustoutOrder: index + 1,
+      updatedAt: `2026-06-23T19:${String(index + 1).padStart(2, '0')}:00.000Z`,
+    })),
+    createPlayer({
+      id: 'manual-out',
+      name: 'Manual Out',
+      status: 'out',
+      place: 9,
+      bustoutOrder: 27,
+      updatedAt: '2026-06-23T20:47:27.627Z',
+    }),
+    createPlayer({
+      id: 'notification-out',
+      name: 'Notification Out',
+      status: 'out',
+      place: 9,
+      bustoutOrder: 27,
+      placeOverride: true,
+      updatedAt: '2026-06-23T20:49:50.904Z',
+    }),
+    ...[29, 30, 31, 32, 33, 34, 35].map(order => createPlayer({
+      id: `late-${order}`,
+      name: `Late ${order}`,
+      status: 'out',
+      place: null,
+      bustoutOrder: order,
+      updatedAt: `2026-06-23T21:${String(order).padStart(2, '0')}:00.000Z`,
+    })),
+  ];
+
+  const recalculated = recalculatePlayers(players);
+
+  assert.equal(recalculated.find(player => player.id === 'manual-out')?.place, 9);
+  assert.equal(recalculated.find(player => player.id === 'notification-out')?.place, 8);
 });
 
 test('getDuplicatePlaces returns unique repeated places in ascending order', () => {
