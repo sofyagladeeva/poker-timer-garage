@@ -9,6 +9,14 @@ import {
 } from './useTournamentPlayers.ts';
 import { useFloorNotifications } from './useFloorNotifications.ts';
 import { getNextBustoutProjectedPlace } from '../tournamentResultsFlow.ts';
+import {
+  buildTopChipLeaders,
+  fetchChipLeaderSubmissions,
+  getActiveChipLeaderTables,
+  getRequiredStackCountForTable,
+  haveAllActiveTablesSubmitted,
+  upsertChipLeaderSubmission,
+} from '../chipLeaderSubmissions.ts';
 
 const SEATS_PER_TABLE = 9;
 
@@ -62,12 +70,28 @@ async function saveSharedPlayers(
   await supabase.from('blind_templates').upsert({ id, name: `live_tournament_players:${nowIso()}`, levels: payload });
 }
 
-type GameContext = { sessionId: number; tournamentBotId: number | null; addonOpen: boolean };
+type GameContext = {
+  sessionId: number;
+  tournamentBotId: number | null;
+  addonOpen: boolean;
+  currentLevelIndex: number;
+};
 
 export function useDealerTable(tableNumber: number) {
   const [players, setPlayers] = useState<LiveTournamentPlayer[]>([]);
-  const [gameContext, setGameContext] = useState<GameContext>({ sessionId: 1, tournamentBotId: null, addonOpen: false });
+  const [gameContext, setGameContext] = useState<GameContext>({
+    sessionId: 1,
+    tournamentBotId: null,
+    addonOpen: false,
+    currentLevelIndex: 0,
+  });
   const [loading, setLoading] = useState(true);
+  const [chipLeaderState, setChipLeaderState] = useState({
+    loading: false,
+    error: null as string | null,
+    submittedAt: null as string | null,
+    allTablesSubmitted: false,
+  });
   const gameContextRef = useRef(gameContext);
   const playersRef = useRef(players);
 
@@ -151,13 +175,132 @@ export function useDealerTable(tableNumber: number) {
     await supabase.from('game_state').update({ addonCount: totalAddons }).eq('id', 1);
   }, [applyMutation]);
 
+  const submitChipLeaderStacks = useCallback(async (draftStacks: Record<string, number>) => {
+    const { sessionId, tournamentBotId, currentLevelIndex } = gameContextRef.current;
+    setChipLeaderState(prev => ({ ...prev, loading: true, error: null }));
+
+    try {
+      const latest = await loadSharedPlayers(sessionId, tournamentBotId);
+      const sourcePlayers = latest.length > 0 ? latest : playersRef.current;
+      const tablePlayers = sourcePlayers.filter(player => (
+        player.tableNumber === tableNumber &&
+        player.arrivalStatus !== 'absent' &&
+        player.status !== 'out'
+      ));
+      const requiredCount = getRequiredStackCountForTable(tablePlayers);
+      const entries = tablePlayers
+        .map(player => ({
+          player,
+          stack: clampWhole(draftStacks[player.id] ?? 0),
+        }))
+        .filter(({ stack }) => stack > 0)
+        .map(({ player, stack }) => ({
+          playerId: player.id,
+          name: player.name,
+          stack,
+          tableNumber,
+          seatNumber: player.seatNumber,
+        }));
+
+      if (requiredCount === 0) {
+        setChipLeaderState(prev => ({
+          ...prev,
+          loading: false,
+          error: 'За этим столом нет активных игроков.',
+        }));
+        return false;
+      }
+
+      if (entries.length < requiredCount) {
+        setChipLeaderState(prev => ({
+          ...prev,
+          loading: false,
+          error: `Заполните минимум ${requiredCount} ${requiredCount === 1 ? 'стек' : 'стека'}.`,
+        }));
+        return false;
+      }
+
+      const saved = await upsertChipLeaderSubmission({
+        sessionId,
+        levelIndex: currentLevelIndex,
+        tableNumber,
+        entries,
+      });
+      if (!saved.ok) {
+        console.error('[dealer] chip leader submission failed', saved.error);
+        setChipLeaderState(prev => ({
+          ...prev,
+          loading: false,
+          error: 'Не удалось сохранить чип-лидеров. Проверьте таблицу chip_leader_submissions.',
+        }));
+        return false;
+      }
+
+      const result = await fetchChipLeaderSubmissions(sessionId, currentLevelIndex);
+      if (result.error) {
+        console.error('[dealer] chip leader submissions fetch failed', result.error);
+        setChipLeaderState({
+          loading: false,
+          error: 'Стек сохранён, но не удалось проверить остальные столы.',
+          submittedAt: saved.submittedAt,
+          allTablesSubmitted: false,
+        });
+        return true;
+      }
+
+      const activeTables = getActiveChipLeaderTables(sourcePlayers);
+      const allTablesSubmitted = haveAllActiveTablesSubmitted(activeTables, result.submissions);
+      if (allTablesSubmitted) {
+        const entriesTop = buildTopChipLeaders(result.submissions);
+        if (entriesTop.length > 0) {
+          const { error } = await supabase
+            .from('game_state')
+            .update({
+              chipLeaders: {
+                levelIndex: currentLevelIndex,
+                entries: entriesTop,
+              },
+            })
+            .eq('id', 1);
+
+          if (error) {
+            console.error('[dealer] chip leader publish failed', error);
+            setChipLeaderState({
+              loading: false,
+              error: 'Стек сохранён, но итоговый топ-3 не удалось отправить на табло.',
+              submittedAt: saved.submittedAt,
+              allTablesSubmitted,
+            });
+            return true;
+          }
+        }
+      }
+
+      setChipLeaderState({
+        loading: false,
+        error: null,
+        submittedAt: saved.submittedAt,
+        allTablesSubmitted,
+      });
+      return true;
+    } catch (error) {
+      console.error('[dealer] chip leader submit crashed', error);
+      setChipLeaderState(prev => ({
+        ...prev,
+        loading: false,
+        error: 'Не удалось отправить чип-лидеров.',
+      }));
+      return false;
+    }
+  }, [tableNumber]);
+
   useEffect(() => {
     let cancelled = false;
 
     const loadGameContext = async () => {
       const { data } = await supabase
         .from('game_state')
-        .select('resetAt, tournamentBotId, addonOpen')
+        .select('resetAt, tournamentBotId, addonOpen, currentLevelIndex')
         .eq('id', 1)
         .maybeSingle();
 
@@ -167,7 +310,10 @@ export function useDealerTable(tableNumber: number) {
       const sessionId = Math.max(1, Math.round((raw.resetAt as number) || 0));
       const tournamentBotId = typeof raw.tournamentBotId === 'number' ? raw.tournamentBotId : null;
       const addonOpen = raw.addonOpen === true;
-      const ctx = { sessionId, tournamentBotId, addonOpen };
+      const currentLevelIndex = typeof raw.currentLevelIndex === 'number'
+        ? Math.max(0, Math.round(raw.currentLevelIndex))
+        : 0;
+      const ctx = { sessionId, tournamentBotId, addonOpen, currentLevelIndex };
       setGameContext(ctx);
       gameContextRef.current = ctx;
 
@@ -234,5 +380,17 @@ export function useDealerTable(tableNumber: number) {
 
   const addonOpen = gameContext.addonOpen;
 
-  return { seats, loading, addonOpen, doRebuy, doBustOut, callFloor, doUpdateRealName, doAddon };
+  return {
+    seats,
+    tablePlayers,
+    loading,
+    addonOpen,
+    chipLeaderState,
+    submitChipLeaderStacks,
+    doRebuy,
+    doBustOut,
+    callFloor,
+    doUpdateRealName,
+    doAddon,
+  };
 }

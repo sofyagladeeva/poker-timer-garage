@@ -19,15 +19,45 @@ const SEAT_GRID: Record<number, { col: number; row: number }> = {
 export function Dealer() {
   const { tableNumber: tableParam } = useParams<{ tableNumber: string }>();
   const tableNumber = Math.max(1, parseInt(tableParam ?? '1', 10) || 1);
-  const { seats, loading, addonOpen, doRebuy, doBustOut, callFloor, doUpdateRealName, doAddon } = useDealerTable(tableNumber);
+  const {
+    seats,
+    tablePlayers,
+    loading,
+    addonOpen,
+    chipLeaderState,
+    submitChipLeaderStacks,
+    doRebuy,
+    doBustOut,
+    callFloor,
+    doUpdateRealName,
+    doAddon,
+  } = useDealerTable(tableNumber);
 
   const [rebuyDialog, setRebuyDialog] = useState<LiveTournamentPlayer | null>(null);
   const [bustDialog, setBustDialog] = useState<LiveTournamentPlayer | null>(null);
   const [addonDialog, setAddonDialog] = useState<LiveTournamentPlayer | null>(null);
+  const [chipLeaderDialogOpen, setChipLeaderDialogOpen] = useState(false);
+  const [chipLeaderDraft, setChipLeaderDraft] = useState<Record<string, string>>({});
   const [floorBusy, setFloorBusy] = useState(false);
   const [floorCalled, setFloorCalled] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [bustBountyDraft, setBustBountyDraft] = useState('0');
+  const requiredChipLeaderStacks = Math.min(3, tablePlayers.length);
+  const filledChipLeaderStacks = tablePlayers.filter(player => (
+    Math.max(0, parseInt(chipLeaderDraft[player.id] ?? '0', 10) || 0) > 0
+  )).length;
+  const canSubmitChipLeaders = requiredChipLeaderStacks > 0 && filledChipLeaderStacks >= requiredChipLeaderStacks;
+
+  const openChipLeaderDialog = () => {
+    setChipLeaderDraft(current => {
+      const next: Record<string, string> = {};
+      tablePlayers.forEach(player => {
+        next[player.id] = current[player.id] ?? '';
+      });
+      return next;
+    });
+    setChipLeaderDialogOpen(true);
+  };
 
   const handleRebuyConfirm = async () => {
     if (!rebuyDialog) return;
@@ -74,6 +104,18 @@ export function Dealer() {
     }
   };
 
+  const handleChipLeaderSubmit = async () => {
+    const stacks = tablePlayers.reduce<Record<string, number>>((acc, player) => {
+      acc[player.id] = Math.max(0, parseInt(chipLeaderDraft[player.id] ?? '0', 10) || 0);
+      return acc;
+    }, {});
+
+    const ok = await submitChipLeaderStacks(stacks);
+    if (ok) {
+      setChipLeaderDialogOpen(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
@@ -109,6 +151,21 @@ export function Dealer() {
           >
             {floorCalled ? '✓ Флор\nвызван' : 'Позвать\nфлора'}
           </button>
+          <button
+            type="button"
+            onClick={openChipLeaderDialog}
+            disabled={tablePlayers.length === 0}
+            className="px-3 py-2.5 landscape:py-1.5 rounded-2xl border border-yellow-700/60 bg-[#1A1500] text-yellow-300 font-bold text-xs text-center leading-snug active:scale-95 transition-transform disabled:opacity-40"
+          >
+            Чип-
+            <br />
+            лидеры
+          </button>
+          {chipLeaderState.submittedAt && (
+            <div className="text-[10px] text-emerald-400 font-bold text-center leading-tight">
+              стек сохранён
+            </div>
+          )}
         </div>
 
         {/* Метка дилера — нижний центр */}
@@ -219,6 +276,78 @@ export function Dealer() {
               <button type="button" onClick={() => void handleBustConfirm()} disabled={actionBusy}
                 className="flex-1 admin-btn-danger py-3 text-sm">
                 {actionBusy ? 'Сохранение...' : 'Выбыл'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {chipLeaderDialogOpen && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/80 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-3xl border border-[#2D2D2D] bg-[#111] shadow-2xl max-h-[92dvh] overflow-hidden flex flex-col">
+            <div className="border-b border-[#2D2D2D] px-5 py-4">
+              <div className="text-white font-black text-lg">Чип-лидеры</div>
+              <div className="text-[#777] text-sm mt-0.5">Стол {tableNumber}</div>
+            </div>
+            <div className="px-5 py-4 overflow-y-auto flex flex-col gap-3">
+              {tablePlayers.length === 0 ? (
+                <div className="rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-3 text-[#666] text-sm">
+                  За этим столом нет активных игроков.
+                </div>
+              ) : (
+                tablePlayers
+                  .slice()
+                  .sort((a, b) => (a.seatNumber ?? 99) - (b.seatNumber ?? 99))
+                  .map(player => (
+                    <label key={player.id} className="grid grid-cols-[1fr_120px] gap-3 items-center">
+                      <div className="min-w-0">
+                        <div className="text-white font-black text-sm truncate">
+                          {player.realName || player.name}
+                        </div>
+                        <div className="text-[#666] text-xs truncate">
+                          Бокс {player.seatNumber ?? '—'} · {player.realName ? player.name : 'никнейм'}
+                        </div>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        inputMode="numeric"
+                        value={chipLeaderDraft[player.id] ?? ''}
+                        onChange={event => {
+                          const value = event.target.value;
+                          setChipLeaderDraft(current => ({ ...current, [player.id]: value }));
+                        }}
+                        className="admin-input !py-2 !text-sm w-full"
+                        placeholder="Стек"
+                      />
+                    </label>
+                  ))
+              )}
+              <div className="text-[#666] text-xs leading-relaxed">
+                Нужно заполнить {requiredChipLeaderStacks} из {tablePlayers.length}. Если за столом осталось меньше трёх игроков, отправьте всех.
+              </div>
+              {chipLeaderState.error && (
+                <div className="rounded-xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-red-300 text-xs">
+                  {chipLeaderState.error}
+                </div>
+              )}
+            </div>
+            <div className="border-t border-[#2D2D2D] px-5 py-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setChipLeaderDialogOpen(false)}
+                disabled={chipLeaderState.loading}
+                className="flex-1 admin-btn-secondary py-3 text-sm"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleChipLeaderSubmit()}
+                disabled={!canSubmitChipLeaders || chipLeaderState.loading}
+                className="flex-1 admin-btn-primary py-3 text-sm disabled:opacity-30"
+              >
+                {chipLeaderState.loading ? 'Сохранение...' : 'Отправить'}
               </button>
             </div>
           </div>

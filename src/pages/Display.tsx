@@ -282,7 +282,14 @@ export function Display() {
 
   const isBreak   = gameState.status === 'break' || currentLevel?.isBreak;
   const isWarning = gameState.timeLeft <= 60 && gameState.status === 'running';
-  const activeChipLeaders = !isBreak && gameState.status === 'running' && gameState.chipLeaders?.levelIndex === gameState.currentLevelIndex
+  const chipLeadersVisible =
+    gameState.chipLeaders?.levelIndex === gameState.currentLevelIndex ||
+    (
+      gameState.status === 'running' &&
+      gameState.chipLeaders?.levelIndex === gameState.currentLevelIndex - 1 &&
+      blindLevels[gameState.currentLevelIndex - 1]?.isBreak
+    );
+  const activeChipLeaders = chipLeadersVisible && gameState.chipLeaders
     ? gameState.chipLeaders.entries
     : [];
   const visibleRightPanelMode = activeChipLeaders.length > 0 ? rightPanelMode : 'points';

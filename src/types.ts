@@ -41,11 +41,29 @@ export interface ChipLeaderEntry {
   playerId: string;
   name: string;
   stack: number;
+  tableNumber?: number | null;
+  seatNumber?: number | null;
 }
 
 export interface ChipLeadersState {
   levelIndex: number;
   entries: ChipLeaderEntry[];
+}
+
+export interface ChipLeaderSubmissionEntry {
+  playerId: string;
+  name: string;
+  stack: number;
+  tableNumber: number;
+  seatNumber: number | null;
+}
+
+export interface ChipLeaderSubmission {
+  sessionId: number;
+  levelIndex: number;
+  tableNumber: number;
+  entries: ChipLeaderSubmissionEntry[];
+  submittedAt: string;
 }
 
 export interface GameState {
