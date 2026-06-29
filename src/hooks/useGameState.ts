@@ -5,9 +5,10 @@ import {
   shouldApplyRemoteGameStateUpdate,
   shouldForceForegroundSyncBeforeWrite,
   stripUnsupportedBonusColumns,
+  stripUnsupportedChipLeaderCollectionColumns,
   stripUnsupportedChipLeaderColumns,
 } from '../gameStateSync';
-import { hasMissingAddonOpen, hasMissingBonusColumns, hasMissingChipLeaders, hasMissingNextGameBotId, hasMissingResetAt, hasMissingTableCount, normalizeGameState } from '../gameStateMath';
+import { hasMissingAddonOpen, hasMissingBonusColumns, hasMissingChipLeaderCollectionActive, hasMissingChipLeaders, hasMissingNextGameBotId, hasMissingResetAt, hasMissingTableCount, normalizeGameState } from '../gameStateMath';
 import { buildAdvanceLevelPatch, buildAutoAdvanceAnchor } from '../levelAdvance';
 import type {
   GameState,
@@ -526,6 +527,11 @@ export function useGameState(readOnly = false) {
           return false;
         }
         payload = stripUnsupportedChipLeaderColumns(payload);
+        continue;
+      }
+
+      if (hasMissingChipLeaderCollectionActive(error)) {
+        payload = stripUnsupportedChipLeaderCollectionColumns(payload);
         continue;
       }
 

@@ -8,3 +8,6 @@
 -- }
 alter table public.game_state
   add column if not exists "chipLeaders" jsonb default null;
+
+alter table public.game_state
+  add column if not exists "chipLeaderCollectionActive" boolean not null default false;

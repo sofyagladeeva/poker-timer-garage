@@ -97,6 +97,10 @@ export function buildTopChipLeaders(submissions: ChipLeaderSubmission[]): ChipLe
     }));
 }
 
+export function getChipLeaderHideAfterLevelIndex(status: string, currentLevelIndex: number) {
+  return status === 'break' ? currentLevelIndex + 1 : currentLevelIndex;
+}
+
 export async function fetchChipLeaderSubmissions(sessionId: number, levelIndex: number) {
   const { data, error } = await supabase
     .from(TABLE)
@@ -132,4 +136,14 @@ export async function upsertChipLeaderSubmission(input: {
   });
 
   return { ok: !error, error, submittedAt };
+}
+
+export async function deleteChipLeaderSubmissions(sessionId: number, levelIndex: number) {
+  const { error } = await supabase
+    .from(TABLE)
+    .delete()
+    .eq('session_id', sessionId)
+    .eq('level_index', levelIndex);
+
+  return { ok: !error, error };
 }

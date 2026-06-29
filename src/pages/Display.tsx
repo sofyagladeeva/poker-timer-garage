@@ -282,13 +282,11 @@ export function Display() {
 
   const isBreak   = gameState.status === 'break' || currentLevel?.isBreak;
   const isWarning = gameState.timeLeft <= 60 && gameState.status === 'running';
-  const chipLeadersVisible =
-    gameState.chipLeaders?.levelIndex === gameState.currentLevelIndex ||
-    (
-      gameState.status === 'running' &&
-      gameState.chipLeaders?.levelIndex === gameState.currentLevelIndex - 1 &&
-      blindLevels[gameState.currentLevelIndex - 1]?.isBreak
-    );
+  const chipLeadersVisible = Boolean(
+    gameState.chipLeaders &&
+    gameState.currentLevelIndex >= gameState.chipLeaders.levelIndex &&
+    gameState.currentLevelIndex <= (gameState.chipLeaders.hideAfterLevelIndex ?? gameState.chipLeaders.levelIndex)
+  );
   const activeChipLeaders = chipLeadersVisible && gameState.chipLeaders
     ? gameState.chipLeaders.entries
     : [];

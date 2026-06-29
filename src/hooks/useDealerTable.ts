@@ -13,6 +13,7 @@ import {
   buildTopChipLeaders,
   fetchChipLeaderSubmissions,
   getActiveChipLeaderTables,
+  getChipLeaderHideAfterLevelIndex,
   getRequiredStackCountForTable,
   haveAllActiveTablesSubmitted,
   upsertChipLeaderSubmission,
@@ -84,6 +85,8 @@ type GameContext = {
   tournamentBotId: number | null;
   addonOpen: boolean;
   currentLevelIndex: number;
+  status: string;
+  chipLeaderCollectionActive: boolean;
 };
 
 export function useDealerTable(tableNumber: number) {
@@ -93,6 +96,8 @@ export function useDealerTable(tableNumber: number) {
     tournamentBotId: null,
     addonOpen: false,
     currentLevelIndex: 0,
+    status: 'idle',
+    chipLeaderCollectionActive: false,
   });
   const [loading, setLoading] = useState(true);
   const [chipLeaderState, setChipLeaderState] = useState({
@@ -214,7 +219,7 @@ export function useDealerTable(tableNumber: number) {
   }, [applyMutation]);
 
   const submitChipLeaderStacks = useCallback(async (draftStacks: Record<string, number>) => {
-    const { sessionId, tournamentBotId, currentLevelIndex } = gameContextRef.current;
+    const { sessionId, tournamentBotId, currentLevelIndex, status } = gameContextRef.current;
     setChipLeaderState(prev => ({ ...prev, loading: true, error: null }));
 
     try {
@@ -303,8 +308,10 @@ export function useDealerTable(tableNumber: number) {
             .update({
               chipLeaders: {
                 levelIndex: currentLevelIndex,
+                hideAfterLevelIndex: getChipLeaderHideAfterLevelIndex(status, currentLevelIndex),
                 entries: entriesTop,
               },
+              chipLeaderCollectionActive: false,
             })
             .eq('id', 1);
 
@@ -353,7 +360,7 @@ export function useDealerTable(tableNumber: number) {
     const loadGameContext = async () => {
       const { data } = await supabase
         .from('game_state')
-        .select('resetAt, tournamentBotId, addonOpen, currentLevelIndex')
+        .select('resetAt, tournamentBotId, addonOpen, currentLevelIndex, status, chipLeaderCollectionActive')
         .eq('id', 1)
         .maybeSingle();
 
@@ -366,7 +373,9 @@ export function useDealerTable(tableNumber: number) {
       const currentLevelIndex = typeof raw.currentLevelIndex === 'number'
         ? Math.max(0, Math.round(raw.currentLevelIndex))
         : 0;
-      const ctx = { sessionId, tournamentBotId, addonOpen, currentLevelIndex };
+      const status = typeof raw.status === 'string' ? raw.status : 'idle';
+      const chipLeaderCollectionActive = raw.chipLeaderCollectionActive === true;
+      const ctx = { sessionId, tournamentBotId, addonOpen, currentLevelIndex, status, chipLeaderCollectionActive };
       setGameContext(ctx);
       gameContextRef.current = ctx;
 
@@ -434,12 +443,14 @@ export function useDealerTable(tableNumber: number) {
   });
 
   const addonOpen = gameContext.addonOpen;
+  const canCollectChipLeaders = gameContext.status === 'break' || gameContext.chipLeaderCollectionActive;
 
   return {
     seats,
     tablePlayers,
     loading,
     addonOpen,
+    canCollectChipLeaders,
     chipLeaderState,
     submitChipLeaderStacks,
     doRebuy,

@@ -66,6 +66,13 @@ export function stripUnsupportedChipLeaderColumns<T extends Record<string, unkno
   return legacyPayload;
 }
 
+export function stripUnsupportedChipLeaderCollectionColumns<T extends Record<string, unknown>>(payload: T) {
+  const { chipLeaderCollectionActive, chip_leader_collection_active, ...legacyPayload } = payload;
+  void chipLeaderCollectionActive;
+  void chip_leader_collection_active;
+  return legacyPayload;
+}
+
 export function shouldForceForegroundSyncBeforeWrite(
   state: Pick<GameState, 'status'>,
   inactiveForMs: number

@@ -24,6 +24,7 @@ export function Dealer() {
     tablePlayers,
     loading,
     addonOpen,
+    canCollectChipLeaders,
     chipLeaderState,
     submitChipLeaderStacks,
     doRebuy,
@@ -153,18 +154,22 @@ export function Dealer() {
           >
             {floorCalled ? '✓ Флор\nвызван' : 'Позвать\nфлора'}
           </button>
-          <button
-            type="button"
-            onClick={openChipLeaderDialog}
-            disabled={tablePlayers.length === 0}
-            className="w-[150px] px-3 py-2.5 landscape:w-[132px] landscape:py-1.5 rounded-full border border-yellow-700/70 bg-[#1A1500] text-yellow-300 font-bold text-xs text-center leading-tight active:scale-95 transition-transform disabled:opacity-40"
-          >
-            Чип-лидеры
-          </button>
-          {chipLeaderState.submittedAt && (
-            <div className="text-[10px] text-emerald-400 font-bold text-center leading-tight">
-              стек сохранён
-            </div>
+          {canCollectChipLeaders && (
+            <>
+              <button
+                type="button"
+                onClick={openChipLeaderDialog}
+                disabled={tablePlayers.length === 0}
+                className="w-[150px] px-3 py-2.5 landscape:w-[132px] landscape:py-1.5 rounded-full border border-yellow-700/70 bg-[#1A1500] text-yellow-300 font-bold text-xs text-center leading-tight active:scale-95 transition-transform disabled:opacity-40"
+              >
+                Чип-лидеры
+              </button>
+              {chipLeaderState.submittedAt && (
+                <div className="text-[10px] text-emerald-400 font-bold text-center leading-tight">
+                  стек сохранён
+                </div>
+              )}
+            </>
           )}
         </div>
 

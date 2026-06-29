@@ -11,6 +11,10 @@ import {
   getNextKnockoutInfo,
   setKnockoutMarker,
 } from '../blindLevelMarkers';
+import {
+  deleteChipLeaderSubmissions,
+  getChipLeaderHideAfterLevelIndex,
+} from '../chipLeaderSubmissions';
 import { calcTotalStack } from '../gameStateMath';
 import type {
   BlindLevel,
@@ -844,9 +848,7 @@ export function Admin() {
     .filter(isActiveChipLeaderCandidate)
     .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   const lateRegistrationLevel = getLateRegistrationLevel(blindLevels);
-  const chipLeaderTargetLevelIndex = lateRegistrationLevel
-    ? blindLevels.findIndex(level => level.id === lateRegistrationLevel.id)
-    : -1;
+  const chipLeaderTargetLevelIndex = gameState.currentLevelIndex;
   const chipLeaderDraft = chipLeaderDraftOverride?.levelIndex === chipLeaderTargetLevelIndex
     ? chipLeaderDraftOverride.rows
     : gameState.chipLeaders?.levelIndex === chipLeaderTargetLevelIndex
@@ -2039,8 +2041,13 @@ export function Admin() {
 
     const saved = await updateGameState({
       chipLeaders: entries.length > 0
-        ? { levelIndex: chipLeaderTargetLevelIndex, entries }
+        ? {
+            levelIndex: chipLeaderTargetLevelIndex,
+            hideAfterLevelIndex: getChipLeaderHideAfterLevelIndex(gameState.status, chipLeaderTargetLevelIndex),
+            entries,
+          }
         : null,
+      chipLeaderCollectionActive: false,
     }, true);
 
     if (!saved) {
@@ -2052,9 +2059,33 @@ export function Admin() {
 
     setChipLeaderSaveNote(
       chipLeaderTargetLevel
-        ? `Сохранено для уровня ${chipLeaderTargetLevel.level}.`
+        ? `Сохранено для текущего уровня${chipLeaderTargetLevel.isBreak ? ' (перерыв)' : ` ${chipLeaderTargetLevel.level}`}.`
         : 'Чип-лидеры сохранены.'
     );
+  };
+
+  const startChipLeaderCollection = async () => {
+    setChipLeaderSaveError(null);
+    setChipLeaderSaveNote(null);
+
+    if (floorSessionId > 0 && chipLeaderTargetLevelIndex >= 0) {
+      const cleared = await deleteChipLeaderSubmissions(floorSessionId, chipLeaderTargetLevelIndex);
+      if (!cleared.ok) {
+        console.error('Failed to clear chip leader submissions before collection', cleared.error);
+        setChipLeaderSaveError('Не удалось очистить прошлые отправки столов для текущего уровня.');
+        return;
+      }
+    }
+
+    await updateGameState({
+      chipLeaderCollectionActive: true,
+      chipLeaders: null,
+    }, true);
+    setChipLeaderDraftOverride({
+      levelIndex: chipLeaderTargetLevelIndex,
+      rows: createBlankChipLeaderDraft(),
+    });
+    setChipLeaderSaveNote('Сбор запущен. Кнопка появилась у дилеров.');
   };
 
   const clearChipLeaders = () => {
@@ -2064,7 +2095,7 @@ export function Admin() {
       levelIndex: chipLeaderTargetLevelIndex,
       rows: createBlankChipLeaderDraft(),
     });
-    updateGameState({ chipLeaders: null }, true);
+    updateGameState({ chipLeaders: null, chipLeaderCollectionActive: false }, true);
   };
 
   const selectTab = (tabId: AdminTab) => {
@@ -2876,9 +2907,11 @@ export function Admin() {
                 <div>
                   <div className="text-[#888] text-xs uppercase tracking-widest">Чип-лидеры на табло</div>
                   <div className="text-[#555] text-xs mt-1">
-                    {chipLeaderTargetLevel
-                      ? `Автопоказ на уровне ${chipLeaderTargetLevel.level} после перерыва перед закрытием поздней регистрации`
-                      : 'Сначала отметьте уровень закрытия поздней регистрации в структуре блайндов'}
+                    {chipLeaderTargetLevel?.isBreak
+                      ? 'Текущий перерыв: дилеры могут отправить стеки автоматически'
+                      : gameState.chipLeaderCollectionActive
+                      ? 'Ручной сбор активен: кнопка доступна у дилеров'
+                      : 'В перерывах кнопка появляется у дилеров автоматически. Вне перерыва запустите сбор вручную.'}
                     {chipLeadersSavedForTarget > 0 ? ` · сохранено ${chipLeadersSavedForTarget}/3` : ''}
                   </div>
                 </div>
@@ -2898,6 +2931,14 @@ export function Admin() {
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => void startChipLeaderCollection()}
+                    disabled={gameState.chipLeaderCollectionActive}
+                    className="admin-btn-secondary py-3 text-sm disabled:opacity-40"
+                  >
+                    {gameState.chipLeaderCollectionActive ? 'Сбор чип-лидеров запущен' : 'Запустить сбор чип-лидеров'}
+                  </button>
+
                   {chipLeaderDraft.map((row, index) => {
                     const selectedPlayerIds = new Set(
                       chipLeaderDraft
@@ -2942,7 +2983,7 @@ export function Admin() {
                     disabled={!canSaveChipLeaders || !chipLeaderTargetLevel}
                     className="admin-btn-primary py-3 text-sm disabled:opacity-30"
                   >
-                    Показать на уровне закрытия поздней регистрации
+                    Показать чип-лидеров на табло
                   </button>
                   {chipLeaderSaveError && (
                     <div className="rounded-xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-red-300 text-xs">
@@ -2955,7 +2996,7 @@ export function Admin() {
                     </div>
                   )}
                   <div className="text-[#555] text-xs">
-                    Табло будет чередовать очки турнира и чип-лидеров каждые 20 секунд на первом уровне после этого перерыва, затем само вернётся к обычному режиму.
+                    Табло будет чередовать очки турнира и чип-лидеров каждые 20 секунд, затем само вернётся к обычному режиму после одного уровня.
                   </div>
                 </div>
               )}

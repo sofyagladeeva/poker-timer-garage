@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildTopChipLeaders,
   getActiveChipLeaderTables,
+  getChipLeaderHideAfterLevelIndex,
   getRequiredStackCountForTable,
   haveAllActiveTablesSubmitted,
 } from '../src/chipLeaderSubmissions.ts';
@@ -116,4 +117,9 @@ test('top chip leaders are the three biggest stacks across all submissions', () 
     ['d', 180_000],
     ['c', 140_000],
   ]);
+});
+
+test('chip leader display window lasts through the next level when collected during break', () => {
+  assert.equal(getChipLeaderHideAfterLevelIndex('break', 6), 7);
+  assert.equal(getChipLeaderHideAfterLevelIndex('running', 6), 6);
 });

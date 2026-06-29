@@ -48,6 +48,8 @@ function normalizeChipLeaderEntry(raw: unknown, index: number): ChipLeaderEntry 
     playerId: toStringValue(source.playerId, toStringValue(source.player_id, '')),
     name,
     stack,
+    tableNumber: toNullableNumber(source.tableNumber ?? source.table_number, null),
+    seatNumber: toNullableNumber(source.seatNumber ?? source.seat_number, null),
   };
 }
 
@@ -57,6 +59,10 @@ function normalizeChipLeaders(raw: unknown, fallback: ChipLeadersState | null): 
 
   const source = raw as Record<string, unknown>;
   const levelIndex = toWholeNumber(source.levelIndex ?? source.level_index, fallback?.levelIndex ?? 0);
+  const hideAfterLevelIndex = toWholeNumber(
+    source.hideAfterLevelIndex ?? source.hide_after_level_index,
+    fallback?.hideAfterLevelIndex ?? levelIndex
+  );
   const entries = Array.isArray(source.entries)
     ? source.entries
         .map((entry, index) => normalizeChipLeaderEntry(entry, index))
@@ -65,7 +71,7 @@ function normalizeChipLeaders(raw: unknown, fallback: ChipLeadersState | null): 
     : fallback?.entries ?? [];
 
   if (entries.length === 0) return null;
-  return { levelIndex, entries };
+  return { levelIndex, hideAfterLevelIndex, entries };
 }
 
 export function calcTotalStack(state: Pick<GameState, 'players' | 'rebuys' | 'startStack' | 'addonCount' | 'addonStack' | 'bonusCount' | 'bonusStack'>) {
@@ -105,6 +111,10 @@ export function normalizeGameState(raw: unknown, fallback: GameState): GameState
     nextGameBotId: toNullableNumber(source.nextGameBotId, fallback.nextGameBotId),
     tournamentBuyIn: toNullableNumber(source.tournamentBuyIn, fallback.tournamentBuyIn),
     chipLeaders: normalizeChipLeaders(source.chipLeaders ?? source.chip_leaders, fallback.chipLeaders),
+    chipLeaderCollectionActive: toBoolean(
+      source.chipLeaderCollectionActive ?? source.chip_leader_collection_active,
+      fallback.chipLeaderCollectionActive ?? false
+    ),
     resetAt: toWholeNumber(source.resetAt, fallback.resetAt ?? 0),
     tableCount: Math.max(1, toWholeNumber(source.tableCount ?? source.table_count, fallback.tableCount ?? 4)),
     addonOpen: toBoolean(source.addonOpen ?? source.addon_open, fallback.addonOpen ?? false),
@@ -165,10 +175,19 @@ export function hasMissingChipLeaders(error: unknown) {
   return message.includes('chipLeaders') || message.includes('chip_leaders');
 }
 
+export function hasMissingChipLeaderCollectionActive(error: unknown) {
+  const message = typeof error === 'object' && error && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : '';
+
+  return message.includes('chipLeaderCollectionActive') || message.includes('chip_leader_collection_active');
+}
+
 export function toLegacyGameState(state: GameState) {
-  const { bonusCount, bonusStack, chipLeaders, ...legacy } = state;
+  const { bonusCount, bonusStack, chipLeaders, chipLeaderCollectionActive, ...legacy } = state;
   void bonusCount;
   void bonusStack;
   void chipLeaders;
+  void chipLeaderCollectionActive;
   return legacy;
 }

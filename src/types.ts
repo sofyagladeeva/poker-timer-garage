@@ -47,6 +47,7 @@ export interface ChipLeaderEntry {
 
 export interface ChipLeadersState {
   levelIndex: number;
+  hideAfterLevelIndex?: number;
   entries: ChipLeaderEntry[];
 }
 
@@ -90,7 +91,8 @@ export interface GameState {
   tournamentBotId: number | null; // id игры в боте
   nextGameBotId: number | null; // id следующей игры (выбирается вручную в админке)
   tournamentBuyIn: number | null; // стоимость входа из бота (null = использовать дефолт 1000)
-  chipLeaders: ChipLeadersState | null; // показываются на табло один уровень после перерыва
+  chipLeaders: ChipLeadersState | null; // показываются на табло ограниченное число уровней
+  chipLeaderCollectionActive: boolean; // ручной сбор стеков дилерами вне перерыва
   resetAt: number; // unix ms timestamp of last resetTournament() — used to detect stale admin devices
   tableCount: number; // количество открытых столов для дилерских планшетов
   addonOpen: boolean; // активирован ли приём аддонов
