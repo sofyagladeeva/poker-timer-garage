@@ -28,6 +28,15 @@ function clampWhole(v: number) {
   return Math.max(0, Math.round(v));
 }
 
+function formatSupabaseError(error: unknown) {
+  if (!error || typeof error !== 'object') return '';
+  const source = error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+  return [source.message, source.details, source.hint, source.code]
+    .map(value => typeof value === 'string' ? value.trim() : '')
+    .filter(Boolean)
+    .join(' ');
+}
+
 function sharedPlayersKey(sessionId: number, tournamentBotId: number | null) {
   return `__live_players__:${sessionId}:${tournamentBotId ?? 'manual'}`;
 }
@@ -228,10 +237,13 @@ export function useDealerTable(tableNumber: number) {
       });
       if (!saved.ok) {
         console.error('[dealer] chip leader submission failed', saved.error);
+        const details = formatSupabaseError(saved.error);
         setChipLeaderState(prev => ({
           ...prev,
           loading: false,
-          error: 'Не удалось сохранить чип-лидеров. Проверьте таблицу chip_leader_submissions.',
+          error: details
+            ? `Не удалось сохранить чип-лидеров: ${details}`
+            : 'Не удалось сохранить чип-лидеров. Проверьте таблицу chip_leader_submissions.',
         }));
         return false;
       }

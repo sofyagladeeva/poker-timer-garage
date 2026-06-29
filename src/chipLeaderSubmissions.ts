@@ -122,7 +122,10 @@ export async function upsertChipLeaderSubmission(input: {
     session_id: input.sessionId,
     level_index: input.levelIndex,
     table_number: input.tableNumber,
-    entries: input.entries,
+    entries: input.entries.map(entry => ({
+      ...entry,
+      seatNumber: entry.seatNumber ?? null,
+    })),
     submitted_at: submittedAt,
   }, {
     onConflict: 'session_id,level_index,table_number',

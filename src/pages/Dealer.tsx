@@ -155,11 +155,9 @@ export function Dealer() {
             type="button"
             onClick={openChipLeaderDialog}
             disabled={tablePlayers.length === 0}
-            className="px-3 py-2.5 landscape:py-1.5 rounded-2xl border border-yellow-700/60 bg-[#1A1500] text-yellow-300 font-bold text-xs text-center leading-snug active:scale-95 transition-transform disabled:opacity-40"
+            className="w-[150px] px-3 py-2.5 landscape:w-[132px] landscape:py-1.5 rounded-full border border-yellow-700/70 bg-[#1A1500] text-yellow-300 font-bold text-xs text-center leading-tight active:scale-95 transition-transform disabled:opacity-40"
           >
-            Чип-
-            <br />
-            лидеры
+            Чип-лидеры
           </button>
           {chipLeaderState.submittedAt && (
             <div className="text-[10px] text-emerald-400 font-bold text-center leading-tight">
