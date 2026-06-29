@@ -52,7 +52,9 @@ export function Dealer() {
     setChipLeaderDraft(current => {
       const next: Record<string, string> = {};
       tablePlayers.forEach(player => {
-        next[player.id] = current[player.id] ?? '';
+        next[player.id] = current[player.id] ?? (
+          chipLeaderState.savedStacks[player.id] ? String(chipLeaderState.savedStacks[player.id]) : ''
+        );
       });
       return next;
     });

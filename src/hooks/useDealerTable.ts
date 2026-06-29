@@ -100,6 +100,7 @@ export function useDealerTable(tableNumber: number) {
     error: null as string | null,
     submittedAt: null as string | null,
     allTablesSubmitted: false,
+    savedStacks: {} as Record<string, number>,
   });
   const gameContextRef = useRef(gameContext);
   const playersRef = useRef(players);
@@ -108,6 +109,34 @@ export function useDealerTable(tableNumber: number) {
   useEffect(() => { playersRef.current = players; }, [players]);
 
   const { createNotification } = useFloorNotifications(gameContext.sessionId);
+
+  const refreshChipLeaderSubmission = useCallback(async (
+    context = gameContextRef.current,
+    sourcePlayers = playersRef.current
+  ) => {
+    const result = await fetchChipLeaderSubmissions(context.sessionId, context.currentLevelIndex);
+    if (result.error) {
+      console.warn('[dealer] chip leader submission refresh failed', result.error);
+      return;
+    }
+
+    const ownSubmission = result.submissions.find(submission => submission.tableNumber === tableNumber) ?? null;
+    const activeTables = getActiveChipLeaderTables(sourcePlayers);
+    const allTablesSubmitted = haveAllActiveTablesSubmitted(activeTables, result.submissions);
+    const savedStacks = ownSubmission
+      ? ownSubmission.entries.reduce<Record<string, number>>((acc, entry) => {
+        acc[entry.playerId] = entry.stack;
+        return acc;
+      }, {})
+      : {};
+
+    setChipLeaderState(prev => ({
+      ...prev,
+      submittedAt: ownSubmission?.submittedAt ?? null,
+      allTablesSubmitted,
+      savedStacks,
+    }));
+  }, [tableNumber]);
 
   const applyMutation = useCallback(async (
     mutate: (current: LiveTournamentPlayer[]) => LiveTournamentPlayer[]
@@ -256,6 +285,10 @@ export function useDealerTable(tableNumber: number) {
           error: 'Стек сохранён, но не удалось проверить остальные столы.',
           submittedAt: saved.submittedAt,
           allTablesSubmitted: false,
+          savedStacks: entries.reduce<Record<string, number>>((acc, entry) => {
+            acc[entry.playerId] = entry.stack;
+            return acc;
+          }, {}),
         });
         return true;
       }
@@ -282,6 +315,10 @@ export function useDealerTable(tableNumber: number) {
               error: 'Стек сохранён, но итоговый топ-3 не удалось отправить на табло.',
               submittedAt: saved.submittedAt,
               allTablesSubmitted,
+              savedStacks: entries.reduce<Record<string, number>>((acc, entry) => {
+                acc[entry.playerId] = entry.stack;
+                return acc;
+              }, {}),
             });
             return true;
           }
@@ -293,6 +330,10 @@ export function useDealerTable(tableNumber: number) {
         error: null,
         submittedAt: saved.submittedAt,
         allTablesSubmitted,
+        savedStacks: entries.reduce<Record<string, number>>((acc, entry) => {
+          acc[entry.playerId] = entry.stack;
+          return acc;
+        }, {}),
       });
       return true;
     } catch (error) {
@@ -334,6 +375,7 @@ export function useDealerTable(tableNumber: number) {
         setPlayers(fetched);
         playersRef.current = fetched;
         setLoading(false);
+        void refreshChipLeaderSubmission(ctx, fetched);
       }
     };
 
@@ -353,7 +395,7 @@ export function useDealerTable(tableNumber: number) {
       window.clearInterval(pollInterval);
       void supabase.removeChannel(gsChan);
     };
-  }, []);
+  }, [refreshChipLeaderSubmission]);
 
   useEffect(() => {
     const { sessionId, tournamentBotId } = gameContext;
@@ -363,6 +405,7 @@ export function useDealerTable(tableNumber: number) {
       const fetched = await loadSharedPlayers(sessionId, tournamentBotId);
       setPlayers(fetched);
       playersRef.current = fetched;
+      void refreshChipLeaderSubmission(gameContext, fetched);
     };
 
     const chan = supabase
@@ -380,7 +423,7 @@ export function useDealerTable(tableNumber: number) {
       window.clearInterval(pollInterval);
       void supabase.removeChannel(chan);
     };
-  }, [gameContext]);
+  }, [gameContext, refreshChipLeaderSubmission]);
 
   const tablePlayers = players.filter(p => p.tableNumber === tableNumber && p.arrivalStatus !== 'absent' && p.status !== 'out');
 
