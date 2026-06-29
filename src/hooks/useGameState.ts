@@ -973,7 +973,21 @@ export function useGameState(readOnly = false) {
     updateGameState({ status: 'paused', timeLeft: liveTimeLeft }, true);
   }, [getAuthoritativeNow, updateGameState]);
 
-  const forceSyncDisplays = useCallback(() => {
+  const forceSyncDisplays = useCallback(async () => {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabase.from('game_state').select('*').single();
+      if (error || !data) {
+        const message = error
+          ? getErrorMessage(error, 'Не удалось перечитать текущее состояние турнира перед синхронизацией экранов.')
+          : 'Supabase не вернул текущее состояние турнира перед синхронизацией экранов.';
+        console.error('Display force sync preflight failed', error);
+        setSyncError(message);
+        return false;
+      }
+
+      applyAuthoritativeGameState(data as Record<string, unknown>, 'force-display-sync-preflight');
+    }
+
     const now = getAuthoritativeNow();
     const current = gameStateRef.current;
     const timerRunning = current.status === 'running' || current.status === 'break';
@@ -1016,7 +1030,7 @@ export function useGameState(readOnly = false) {
     }
 
     return persistGameState(synced, persistedPatch, true);
-  }, [getAuthoritativeNow, isSupabaseConfigured, markClientActivity, persistGameState]);
+  }, [applyAuthoritativeGameState, getAuthoritativeNow, isSupabaseConfigured, markClientActivity, persistGameState]);
 
   const advanceToLevelIndex = useCallback((targetIndex: number) => {
     const patch = buildAdvanceLevelPatch(blindLevelsRef.current, targetIndex, getAuthoritativeNow());
