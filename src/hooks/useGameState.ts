@@ -1136,6 +1136,17 @@ export function useGameState(readOnly = false) {
     applyAuthoritativeGameState,
   ]);
 
+  useEffect(() => {
+    if (readOnly) return;
+    if (!serverLoaded.current) return;
+    if (!gameState.chipLeaders) return;
+
+    const hideAfterLevelIndex = gameState.chipLeaders.hideAfterLevelIndex ?? gameState.chipLeaders.levelIndex;
+    if (gameState.currentLevelIndex <= hideAfterLevelIndex) return;
+
+    void updateGameState({ chipLeaders: null }, true);
+  }, [readOnly, gameState.currentLevelIndex, gameState.chipLeaders, updateGameState]);
+
   const prevLevel = useCallback(() => {
     const gs = gameStateRef.current;
     const bl = blindLevelsRef.current;

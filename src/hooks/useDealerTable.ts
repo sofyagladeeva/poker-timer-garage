@@ -119,6 +119,17 @@ export function useDealerTable(tableNumber: number) {
     context = gameContextRef.current,
     sourcePlayers = playersRef.current
   ) => {
+    const canCollect = context.status === 'break' || context.chipLeaderCollectionActive;
+    if (!canCollect) {
+      setChipLeaderState(prev => ({
+        ...prev,
+        submittedAt: null,
+        allTablesSubmitted: false,
+        savedStacks: {},
+      }));
+      return;
+    }
+
     const result = await fetchChipLeaderSubmissions(context.sessionId, context.currentLevelIndex);
     if (result.error) {
       console.warn('[dealer] chip leader submission refresh failed', result.error);
@@ -444,6 +455,9 @@ export function useDealerTable(tableNumber: number) {
 
   const addonOpen = gameContext.addonOpen;
   const canCollectChipLeaders = gameContext.status === 'break' || gameContext.chipLeaderCollectionActive;
+  const chipLeaderCollectionKey = canCollectChipLeaders
+    ? `${gameContext.sessionId}:${gameContext.currentLevelIndex}:${gameContext.chipLeaderCollectionActive ? 'manual' : 'break'}`
+    : '';
 
   return {
     seats,
@@ -451,6 +465,7 @@ export function useDealerTable(tableNumber: number) {
     loading,
     addonOpen,
     canCollectChipLeaders,
+    chipLeaderCollectionKey,
     chipLeaderState,
     submitChipLeaderStacks,
     doRebuy,

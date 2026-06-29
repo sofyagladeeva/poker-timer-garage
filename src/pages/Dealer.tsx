@@ -25,6 +25,7 @@ export function Dealer() {
     loading,
     addonOpen,
     canCollectChipLeaders,
+    chipLeaderCollectionKey,
     chipLeaderState,
     submitChipLeaderStacks,
     doRebuy,
@@ -38,7 +39,13 @@ export function Dealer() {
   const [bustDialog, setBustDialog] = useState<LiveTournamentPlayer | null>(null);
   const [addonDialog, setAddonDialog] = useState<LiveTournamentPlayer | null>(null);
   const [chipLeaderDialogOpen, setChipLeaderDialogOpen] = useState(false);
-  const [chipLeaderDraft, setChipLeaderDraft] = useState<Record<string, string>>({});
+  const [chipLeaderDraftState, setChipLeaderDraftState] = useState<{ key: string; values: Record<string, string> }>({
+    key: '',
+    values: {},
+  });
+  const chipLeaderDraft = chipLeaderDraftState.key === chipLeaderCollectionKey
+    ? chipLeaderDraftState.values
+    : {};
   const [floorBusy, setFloorBusy] = useState(false);
   const [floorCalled, setFloorCalled] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
@@ -50,14 +57,15 @@ export function Dealer() {
   const canSubmitChipLeaders = requiredChipLeaderStacks > 0 && filledChipLeaderStacks >= requiredChipLeaderStacks;
 
   const openChipLeaderDialog = () => {
-    setChipLeaderDraft(current => {
+    setChipLeaderDraftState(current => {
+      const currentValues = current.key === chipLeaderCollectionKey ? current.values : {};
       const next: Record<string, string> = {};
       tablePlayers.forEach(player => {
-        next[player.id] = current[player.id] ?? (
+        next[player.id] = currentValues[player.id] ?? (
           chipLeaderState.savedStacks[player.id] ? String(chipLeaderState.savedStacks[player.id]) : ''
         );
       });
-      return next;
+      return { key: chipLeaderCollectionKey, values: next };
     });
     setChipLeaderDialogOpen(true);
   };
@@ -287,7 +295,7 @@ export function Dealer() {
         </div>
       )}
 
-      {chipLeaderDialogOpen && (
+      {chipLeaderDialogOpen && canCollectChipLeaders && (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/80 p-4 sm:items-center">
           <div className="w-full max-w-md rounded-3xl border border-[#2D2D2D] bg-[#111] shadow-2xl max-h-[92dvh] overflow-hidden flex flex-col">
             <div className="border-b border-[#2D2D2D] px-5 py-4">
@@ -320,7 +328,13 @@ export function Dealer() {
                         value={chipLeaderDraft[player.id] ?? ''}
                         onChange={event => {
                           const value = event.target.value;
-                          setChipLeaderDraft(current => ({ ...current, [player.id]: value }));
+                          setChipLeaderDraftState(current => ({
+                            key: chipLeaderCollectionKey,
+                            values: {
+                              ...(current.key === chipLeaderCollectionKey ? current.values : {}),
+                              [player.id]: value,
+                            },
+                          }));
                         }}
                         className="admin-input !py-2 !text-sm w-full"
                         placeholder="Стек"
