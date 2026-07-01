@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../supabase.ts';
-import type { LiveTournamentPlayer } from '../types.ts';
+import { isKnockoutLevel } from '../blindLevelMarkers.ts';
+import type { BlindLevel, LiveTournamentPlayer } from '../types.ts';
 import {
   buildStoredPlayersPayload,
   mergeChangedPlayersOntoSnapshot,
@@ -99,6 +100,7 @@ export function useDealerTable(tableNumber: number) {
     status: 'idle',
     chipLeaderCollectionActive: false,
   });
+  const [knockoutLevelIndex, setKnockoutLevelIndex] = useState(-1);
   const [loading, setLoading] = useState(true);
   const [chipLeaderState, setChipLeaderState] = useState({
     loading: false,
@@ -369,13 +371,22 @@ export function useDealerTable(tableNumber: number) {
     let cancelled = false;
 
     const loadGameContext = async () => {
-      const { data } = await supabase
-        .from('game_state')
-        .select('resetAt, tournamentBotId, addonOpen, currentLevelIndex, status, chipLeaderCollectionActive')
-        .eq('id', 1)
-        .maybeSingle();
+      const [{ data }, { data: levelsData }] = await Promise.all([
+        supabase
+          .from('game_state')
+          .select('resetAt, tournamentBotId, addonOpen, currentLevelIndex, status, chipLeaderCollectionActive')
+          .eq('id', 1)
+          .maybeSingle(),
+        supabase
+          .from('blind_levels')
+          .select('id, isBreak, breakLabel')
+          .order('id'),
+      ]);
 
       if (cancelled || !data) return;
+
+      const kIdx = (levelsData as BlindLevel[] ?? []).findIndex(level => isKnockoutLevel(level));
+      setKnockoutLevelIndex(kIdx);
 
       const raw = data as Record<string, unknown>;
       const sessionId = Math.max(1, Math.round((raw.resetAt as number) || 0));
@@ -454,6 +465,7 @@ export function useDealerTable(tableNumber: number) {
   });
 
   const addonOpen = gameContext.addonOpen;
+  const rebuyOpen = knockoutLevelIndex < 0 || gameContext.currentLevelIndex < knockoutLevelIndex;
   const canCollectChipLeaders = gameContext.status === 'break' || gameContext.chipLeaderCollectionActive;
   const chipLeaderCollectionKey = canCollectChipLeaders
     ? `${gameContext.sessionId}:${gameContext.currentLevelIndex}:${gameContext.chipLeaderCollectionActive ? 'manual' : 'break'}`
@@ -464,6 +476,7 @@ export function useDealerTable(tableNumber: number) {
     tablePlayers,
     loading,
     addonOpen,
+    rebuyOpen,
     canCollectChipLeaders,
     chipLeaderCollectionKey,
     chipLeaderState,

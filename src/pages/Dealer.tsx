@@ -24,6 +24,7 @@ export function Dealer() {
     tablePlayers,
     loading,
     addonOpen,
+    rebuyOpen,
     canCollectChipLeaders,
     chipLeaderCollectionKey,
     chipLeaderState,
@@ -199,6 +200,7 @@ export function Dealer() {
                 seatNumber={seatNumber}
                 player={player}
                 addonOpen={addonOpen}
+                rebuyOpen={rebuyOpen}
                 onRebuy={() => setRebuyDialog(player)}
                 onBustOut={() => setBustDialog(player)}
                 onAddon={() => setAddonDialog(player)}
@@ -380,6 +382,7 @@ function SeatCard({
   seatNumber,
   player,
   addonOpen,
+  rebuyOpen,
   onRebuy,
   onBustOut,
   onAddon,
@@ -388,6 +391,7 @@ function SeatCard({
   seatNumber: number;
   player: LiveTournamentPlayer | null;
   addonOpen: boolean;
+  rebuyOpen: boolean;
   onRebuy: () => void;
   onBustOut: () => void;
   onAddon: () => void;
@@ -453,11 +457,13 @@ function SeatCard({
 
           {/* В portrait — кнопки вертикально, в landscape — горизонтально */}
           <div className="flex flex-col landscape:flex-row gap-1.5 landscape:gap-1 mt-2 landscape:mt-1 pointer-fine:gap-1 pointer-fine:mt-1">
-            <button type="button" onClick={onRebuy}
-              className="flex-1 rounded-xl bg-[#0D2B0D] border border-green-900/50 text-green-400 font-bold py-3 landscape:py-1.5 pointer-fine:py-2 flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
-              <span className="text-lg landscape:text-sm pointer-fine:text-sm leading-none font-black">+</span>
-              <span className="text-sm landscape:text-xs pointer-fine:text-[10px] font-bold">Rebuy</span>
-            </button>
+            {rebuyOpen && (
+              <button type="button" onClick={onRebuy}
+                className="flex-1 rounded-xl bg-[#0D2B0D] border border-green-900/50 text-green-400 font-bold py-3 landscape:py-1.5 pointer-fine:py-2 flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
+                <span className="text-lg landscape:text-sm pointer-fine:text-sm leading-none font-black">+</span>
+                <span className="text-sm landscape:text-xs pointer-fine:text-[10px] font-bold">Rebuy</span>
+              </button>
+            )}
             {addonOpen && (
               <button
                 type="button"
