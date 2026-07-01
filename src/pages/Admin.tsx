@@ -31,7 +31,7 @@ import type {
   LiveTournamentPlayer,
   FloorNotification,
 } from '../types';
-import { SUIT_SYMBOLS } from '../types';
+import { SUIT_SYMBOLS, getRankPoints } from '../types';
 import {
   buildFloorBustoutConfirmationEntries,
   deriveTournamentResultsUiState,
@@ -41,6 +41,7 @@ import {
 } from '../tournamentResultsFlow';
 import { aggregatePlayerHistory, filterByPeriod } from '../playerHistory';
 import type { PeriodFilter, PlayerAggregate } from '../playerHistory';
+import * as XLSX from 'xlsx';
 import { PokerCard } from '../components/PokerCard';
 import { TournamentPlayersTab } from '../components/TournamentPlayersTab';
 import { TablesTab } from '../components/TablesTab';
@@ -1556,6 +1557,123 @@ export function Admin() {
     const id = `__player_contact__:${playerKey}`;
     await supabase.from('blind_templates').upsert({ id, name: `player_contact:${playerKey}`, levels: contact });
     setPlayerContacts(prev => ({ ...prev, [playerKey]: contact }));
+  };
+
+  const handleExportXlsx = () => {
+    const allAggs = aggregatePlayerHistory(tournaments, archiveDetailsById);
+    const tournamentById = new Map(tournaments.map(t => [t.id, t]));
+
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Игроки
+    const playersRows = allAggs.map(agg => {
+      const contact = playerContacts[agg.key];
+      const allEntries = agg.tournaments;
+      const placedEntries = allEntries.filter(e => e.place != null && e.place >= 1);
+
+      let totalPoints = 0;
+      for (const e of allEntries) {
+        if (e.place == null || e.place < 1) continue;
+        const t = tournamentById.get(e.tournamentId);
+        if (!t) continue;
+        const pts = getRankPoints(t.players);
+        totalPoints += pts[e.place - 1] ?? 0;
+      }
+
+      const lastGame = allEntries.length > 0
+        ? new Date(Math.max(...allEntries.map(e => new Date(e.finishedAt).getTime()))).toLocaleDateString('ru-RU')
+        : '';
+      const bestPlace = placedEntries.length > 0
+        ? Math.min(...placedEntries.map(e => e.place as number))
+        : '';
+
+      return {
+        'Имя': agg.currentName,
+        'Настоящее имя': contact?.realName ?? '',
+        'Ник': agg.currentUsername ? `@${agg.currentUsername.replace(/^@/, '')}` : '',
+        'Телефон': contact?.phone ?? '',
+        'Instagram': contact?.instagram ?? '',
+        'Telegram ID': agg.telegramId ?? '',
+        'Очки рейтинга': Math.round(totalPoints * 10) / 10,
+        'Игр сыграно': allEntries.length,
+        'Лучшее место': bestPlace,
+        'Дата последней игры': lastGame,
+      };
+    });
+
+    const ws1 = XLSX.utils.json_to_sheet(playersRows);
+    XLSX.utils.book_append_sheet(wb, ws1, 'Игроки');
+
+    // Sheet 2: Статистика
+    const statsRows = allAggs.map(agg => {
+      const allEntries = agg.tournaments;
+      const placed = allEntries.filter(e => e.place != null && e.place >= 1);
+      const wins = allEntries.filter(e => e.place === 1).length;
+      const top3 = allEntries.filter(e => e.place != null && e.place <= 3).length;
+      const avgPlace = placed.length > 0
+        ? Math.round(placed.reduce((s, e) => s + (e.place as number), 0) / placed.length * 10) / 10
+        : '';
+      const totalCash = allEntries.reduce((s, e) => s + e.cashPaid, 0);
+      const totalCard = allEntries.reduce((s, e) => s + e.cardPaid, 0);
+      const totalRebuys = allEntries.reduce((s, e) => s + e.rebuyCount, 0);
+      const totalAddons = allEntries.reduce((s, e) => s + e.addonCount, 0);
+      const totalBounty = allEntries.reduce((s, e) => s + e.bounty, 0);
+
+      return {
+        'Игрок': agg.currentName,
+        'Ник': agg.currentUsername ? `@${agg.currentUsername.replace(/^@/, '')}` : '',
+        'Всего игр': allEntries.length,
+        'Побед': wins,
+        'Топ-3': top3,
+        'Среднее место': avgPlace,
+        'Лучшее место': placed.length > 0 ? Math.min(...placed.map(e => e.place as number)) : '',
+        'Bounty': totalBounty,
+        'Rebuy': totalRebuys,
+        'Addon': totalAddons,
+        'Сумма входов (₽)': totalCash + totalCard,
+      };
+    });
+
+    const ws2 = XLSX.utils.json_to_sheet(statsRows);
+    XLSX.utils.book_append_sheet(wb, ws2, 'Статистика');
+
+    // Sheet 3: История игр
+    type HistoryRow = {
+      'Игрок': string;
+      'Ник': string;
+      'Турнир': string;
+      'Дата': string;
+      'Место': number | string;
+      'Rebuy': number;
+      'Addon': number;
+      'Bounty': number;
+      'Оплачено (₽)': number;
+    };
+    const historyRows: HistoryRow[] = [];
+    for (const agg of allAggs) {
+      const sorted = [...agg.tournaments].sort(
+        (a, b) => new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime()
+      );
+      for (const e of sorted) {
+        historyRows.push({
+          'Игрок': agg.currentName,
+          'Ник': agg.currentUsername ? `@${agg.currentUsername.replace(/^@/, '')}` : '',
+          'Турнир': e.title,
+          'Дата': new Date(e.finishedAt).toLocaleDateString('ru-RU'),
+          'Место': e.place ?? '—',
+          'Rebuy': e.rebuyCount,
+          'Addon': e.addonCount,
+          'Bounty': e.bounty,
+          'Оплачено (₽)': e.cashPaid + e.cardPaid,
+        });
+      }
+    }
+
+    const ws3 = XLSX.utils.json_to_sheet(historyRows);
+    XLSX.utils.book_append_sheet(wb, ws3, 'История игр');
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `garage_players_export_${dateStr}.xlsx`);
   };
 
   const toggleArchiveDetails = async (tournamentId: number) => {
@@ -3782,8 +3900,19 @@ export function Admin() {
                             </button>
                           ))}
                         </div>
-                        <div className="text-[#555] text-[11px]">
-                          Загружены списки игроков: {loadedArchiveDetailsCount} / {tournaments.length}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-[#555] text-[11px]">
+                            Загружены списки игроков: {loadedArchiveDetailsCount} / {tournaments.length}
+                          </div>
+                          {allAggs.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleExportXlsx}
+                              className="admin-btn-secondary px-3 py-1.5 text-xs shrink-0"
+                            >
+                              ↓ Выгрузить базу (.xlsx)
+                            </button>
+                          )}
                         </div>
                       </div>
 
