@@ -1562,17 +1562,32 @@ export function Admin() {
   const handleExportXlsx = () => {
     const allAggs = aggregatePlayerHistory(tournaments, archiveDetailsById);
     const tournamentById = new Map(tournaments.map(t => [t.id, t]));
+    const query = playerHistorySearch.trim().toLowerCase();
+
+    const filtered = allAggs
+      .filter(a =>
+        !query ||
+        a.currentName.toLowerCase().includes(query) ||
+        (a.currentUsername ?? '').toLowerCase().includes(query)
+      )
+      .map(agg => {
+        const entries = filterByPeriod(
+          [...agg.tournaments].sort((a, b) => new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime()),
+          playerHistoryPeriod
+        );
+        return { agg, entries };
+      })
+      .filter(x => x.entries.length > 0);
 
     const wb = XLSX.utils.book_new();
 
     // Sheet 1: Игроки
-    const playersRows = allAggs.map(agg => {
+    const playersRows = filtered.map(({ agg, entries }) => {
       const contact = playerContacts[agg.key];
-      const allEntries = agg.tournaments;
-      const placedEntries = allEntries.filter(e => e.place != null && e.place >= 1);
+      const placed = entries.filter(e => e.place != null && e.place >= 1);
 
       let totalPoints = 0;
-      for (const e of allEntries) {
+      for (const e of entries) {
         if (e.place == null || e.place < 1) continue;
         const t = tournamentById.get(e.tournamentId);
         if (!t) continue;
@@ -1580,11 +1595,8 @@ export function Admin() {
         totalPoints += pts[e.place - 1] ?? 0;
       }
 
-      const lastGame = allEntries.length > 0
-        ? new Date(Math.max(...allEntries.map(e => new Date(e.finishedAt).getTime()))).toLocaleDateString('ru-RU')
-        : '';
-      const bestPlace = placedEntries.length > 0
-        ? Math.min(...placedEntries.map(e => e.place as number))
+      const lastGame = entries.length > 0
+        ? new Date(Math.max(...entries.map(e => new Date(e.finishedAt).getTime()))).toLocaleDateString('ru-RU')
         : '';
 
       return {
@@ -1595,8 +1607,8 @@ export function Admin() {
         'Instagram': contact?.instagram ?? '',
         'Telegram ID': agg.telegramId ?? '',
         'Очки рейтинга': Math.round(totalPoints * 10) / 10,
-        'Игр сыграно': allEntries.length,
-        'Лучшее место': bestPlace,
+        'Игр сыграно': entries.length,
+        'Лучшее место': placed.length > 0 ? Math.min(...placed.map(e => e.place as number)) : '',
         'Дата последней игры': lastGame,
       };
     });
@@ -1605,32 +1617,26 @@ export function Admin() {
     XLSX.utils.book_append_sheet(wb, ws1, 'Игроки');
 
     // Sheet 2: Статистика
-    const statsRows = allAggs.map(agg => {
-      const allEntries = agg.tournaments;
-      const placed = allEntries.filter(e => e.place != null && e.place >= 1);
-      const wins = allEntries.filter(e => e.place === 1).length;
-      const top3 = allEntries.filter(e => e.place != null && e.place <= 3).length;
+    const statsRows = filtered.map(({ agg, entries }) => {
+      const placed = entries.filter(e => e.place != null && e.place >= 1);
+      const wins = entries.filter(e => e.place === 1).length;
+      const top3 = entries.filter(e => e.place != null && e.place <= 3).length;
       const avgPlace = placed.length > 0
         ? Math.round(placed.reduce((s, e) => s + (e.place as number), 0) / placed.length * 10) / 10
         : '';
-      const totalCash = allEntries.reduce((s, e) => s + e.cashPaid, 0);
-      const totalCard = allEntries.reduce((s, e) => s + e.cardPaid, 0);
-      const totalRebuys = allEntries.reduce((s, e) => s + e.rebuyCount, 0);
-      const totalAddons = allEntries.reduce((s, e) => s + e.addonCount, 0);
-      const totalBounty = allEntries.reduce((s, e) => s + e.bounty, 0);
 
       return {
         'Игрок': agg.currentName,
         'Ник': agg.currentUsername ? `@${agg.currentUsername.replace(/^@/, '')}` : '',
-        'Всего игр': allEntries.length,
+        'Всего игр': entries.length,
         'Побед': wins,
         'Топ-3': top3,
         'Среднее место': avgPlace,
         'Лучшее место': placed.length > 0 ? Math.min(...placed.map(e => e.place as number)) : '',
-        'Bounty': totalBounty,
-        'Rebuy': totalRebuys,
-        'Addon': totalAddons,
-        'Сумма входов (₽)': totalCash + totalCard,
+        'Bounty': entries.reduce((s, e) => s + e.bounty, 0),
+        'Rebuy': entries.reduce((s, e) => s + e.rebuyCount, 0),
+        'Addon': entries.reduce((s, e) => s + e.addonCount, 0),
+        'Сумма входов (₽)': entries.reduce((s, e) => s + e.cashPaid + e.cardPaid, 0),
       };
     });
 
@@ -1639,22 +1645,12 @@ export function Admin() {
 
     // Sheet 3: История игр
     type HistoryRow = {
-      'Игрок': string;
-      'Ник': string;
-      'Турнир': string;
-      'Дата': string;
-      'Место': number | string;
-      'Rebuy': number;
-      'Addon': number;
-      'Bounty': number;
-      'Оплачено (₽)': number;
+      'Игрок': string; 'Ник': string; 'Турнир': string; 'Дата': string;
+      'Место': number | string; 'Rebuy': number; 'Addon': number; 'Bounty': number; 'Оплачено (₽)': number;
     };
     const historyRows: HistoryRow[] = [];
-    for (const agg of allAggs) {
-      const sorted = [...agg.tournaments].sort(
-        (a, b) => new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime()
-      );
-      for (const e of sorted) {
+    for (const { agg, entries } of filtered) {
+      for (const e of entries) {
         historyRows.push({
           'Игрок': agg.currentName,
           'Ник': agg.currentUsername ? `@${agg.currentUsername.replace(/^@/, '')}` : '',
@@ -1673,7 +1669,8 @@ export function Admin() {
     XLSX.utils.book_append_sheet(wb, ws3, 'История игр');
 
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `garage_players_export_${dateStr}.xlsx`);
+    const periodLabel = playerHistoryPeriod === 'all' ? '' : `_${playerHistoryPeriod}d`;
+    XLSX.writeFile(wb, `garage_players_export_${dateStr}${periodLabel}.xlsx`);
   };
 
   const toggleArchiveDetails = async (tournamentId: number) => {
