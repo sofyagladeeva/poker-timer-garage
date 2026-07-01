@@ -4,7 +4,8 @@ import test from 'node:test';
 import { getRankPoints } from '../src/types.ts';
 
 test('getRankPoints returns expected top-9 values for 42 players', () => {
-  assert.deepEqual(getRankPoints(42), [284.4, 176.1, 123.7, 94.8, 60.5, 48.8, 42.4, 37.9, 34.3]);
+  // coefficient = 1.4, pool = 7000
+  assert.deepEqual(getRankPoints(42), [2205, 1365, 959, 735, 469, 378, 329, 294, 266]);
 });
 
 test('getRankPoints returns an empty list below the minimum ranked player count', () => {
