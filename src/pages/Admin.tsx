@@ -40,7 +40,7 @@ import {
   shouldBlockNewTournamentForPendingBotResults,
 } from '../tournamentResultsFlow';
 import { aggregatePlayerHistory, filterByPeriod } from '../playerHistory';
-import type { PeriodFilter } from '../playerHistory';
+import type { PeriodFilter, PlayerAggregate } from '../playerHistory';
 import { PokerCard } from '../components/PokerCard';
 import { TournamentPlayersTab } from '../components/TournamentPlayersTab';
 import { TablesTab } from '../components/TablesTab';
@@ -713,6 +713,12 @@ export function Admin() {
   const [playerHistoryLoading, setPlayerHistoryLoading] = useState(false);
   const [playerHistorySort, setPlayerHistorySort] = useState<'games' | 'spend_desc' | 'spend_asc' | 'rebuys' | 'discount' | 'avg_desc'>('games');
   const [expandedPlayerKey, setExpandedPlayerKey] = useState<string | null>(null);
+  const [playerContacts, setPlayerContacts] = useState<Record<string, { realName: string | null; phone: string | null; instagram: string | null }>>({});
+  const [contactsLoaded, setContactsLoaded] = useState(false);
+  const [archiveContactPlayer, setArchiveContactPlayer] = useState<PlayerAggregate | null>(null);
+  const [contactEditMode, setContactEditMode] = useState(false);
+  const [contactDraft, setContactDraft] = useState<{ realName: string; phone: string; instagram: string }>({ realName: '', phone: '', instagram: '' });
+  const [contactSaving, setContactSaving] = useState(false);
   const [archiveOpenId, setArchiveOpenId] = useState<number | null>(null);
   const [archiveDetailsLoadingId, setArchiveDetailsLoadingId] = useState<number | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
@@ -1494,6 +1500,38 @@ export function Admin() {
     void loadAll();
     return () => { cancelled = true; };
   }, [activeTab, archiveAuthed, archiveSubTab, tournaments, fetchTournamentArchiveDetailsBatch]);
+
+  useEffect(() => {
+    if (activeTab !== 'archive' || !archiveAuthed || archiveSubTab !== 'players' || contactsLoaded) return;
+    let cancelled = false;
+    const load = async () => {
+      const { data } = await supabase
+        .from('blind_templates')
+        .select('id, levels')
+        .like('id', '__player_contact__%');
+      if (cancelled || !data) return;
+      const map: Record<string, { realName: string | null; phone: string | null; instagram: string | null }> = {};
+      for (const row of data) {
+        const key = (row.id as string).slice('__player_contact__:'.length);
+        const l = (row.levels ?? {}) as Record<string, unknown>;
+        map[key] = {
+          realName: typeof l.realName === 'string' ? l.realName : null,
+          phone: typeof l.phone === 'string' ? l.phone : null,
+          instagram: typeof l.instagram === 'string' ? l.instagram : null,
+        };
+      }
+      setPlayerContacts(map);
+      setContactsLoaded(true);
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [activeTab, archiveAuthed, archiveSubTab, contactsLoaded]);
+
+  const savePlayerContact = async (playerKey: string, contact: { realName: string | null; phone: string | null; instagram: string | null }) => {
+    const id = `__player_contact__:${playerKey}`;
+    await supabase.from('blind_templates').upsert({ id, name: `player_contact:${playerKey}`, levels: contact });
+    setPlayerContacts(prev => ({ ...prev, [playerKey]: contact }));
+  };
 
   const toggleArchiveDetails = async (tournamentId: number) => {
     if (archiveOpenId === tournamentId) {
@@ -3741,34 +3779,53 @@ export function Admin() {
 
                         return (
                           <div key={agg.key} className="bg-[#111] border border-[#2D2D2D] rounded-2xl overflow-hidden">
-                            <button
-                              type="button"
-                              onClick={() => setExpandedPlayerKey(isExpanded ? null : agg.key)}
-                              className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-[#161616] transition-colors"
-                            >
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <span className="shrink-0 text-[#444] text-[11px] font-mono w-5 text-right select-none">{idx + 1}</span>
-                                <div className="min-w-0">
-                                  <div className="text-white font-black text-sm truncate">{agg.currentName}</div>
-                                  {agg.currentUsername && (
-                                    <div className="text-[#555] text-xs mt-0.5">@{agg.currentUsername.replace(/^@/, '')}</div>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="shrink-0 flex items-center gap-3">
-                                <div className="text-right">
-                                  <div className="text-white font-black text-sm">{entries.length}</div>
-                                  <div className="text-[#555] text-[10px] uppercase">игр</div>
-                                </div>
-                                {periodBest !== null && (
-                                  <div className="text-right">
-                                    <div className="text-white font-black text-sm">#{periodBest}</div>
-                                    <div className="text-[#555] text-[10px] uppercase">лучшее</div>
+                            <div className="flex items-center hover:bg-[#161616] transition-colors">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedPlayerKey(isExpanded ? null : agg.key)}
+                                className="flex-1 px-4 py-3 flex items-center justify-between gap-3 text-left min-w-0"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <span className="shrink-0 text-[#444] text-[11px] font-mono w-5 text-right select-none">{idx + 1}</span>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="text-white font-black text-sm truncate">{agg.currentName}</div>
+                                    </div>
+                                    {agg.currentUsername && (
+                                      <div className="text-[#555] text-xs mt-0.5">@{agg.currentUsername.replace(/^@/, '')}</div>
+                                    )}
                                   </div>
-                                )}
-                                <div className="text-[#555] text-xs font-bold">{isExpanded ? '▲' : '▼'}</div>
-                              </div>
-                            </button>
+                                </div>
+                                <div className="shrink-0 flex items-center gap-3">
+                                  <div className="text-right">
+                                    <div className="text-white font-black text-sm">{entries.length}</div>
+                                    <div className="text-[#555] text-[10px] uppercase">игр</div>
+                                  </div>
+                                  {periodBest !== null && (
+                                    <div className="text-right">
+                                      <div className="text-white font-black text-sm">#{periodBest}</div>
+                                      <div className="text-[#555] text-[10px] uppercase">лучшее</div>
+                                    </div>
+                                  )}
+                                  <div className="text-[#555] text-xs font-bold">{isExpanded ? '▲' : '▼'}</div>
+                                </div>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const contact = playerContacts[agg.key];
+                                  setArchiveContactPlayer(agg);
+                                  setContactEditMode(false);
+                                  setContactDraft({
+                                    realName: contact?.realName ?? '',
+                                    phone: contact?.phone ?? '',
+                                    instagram: contact?.instagram ?? '',
+                                  });
+                                }}
+                                className="shrink-0 mr-3 inline-flex items-center justify-center w-6 h-6 rounded-full border border-[#3D3D3D] text-[#888] text-[11px] hover:border-[#888] hover:text-white transition-colors"
+                                title="Контакты"
+                              >ⓘ</button>
+                            </div>
 
                             {isExpanded && (
                               <div className="border-t border-[#2D2D2D] px-4 py-3 flex flex-col gap-3">
@@ -3870,6 +3927,180 @@ export function Admin() {
                     </div>
                   );
                 })()}
+
+              {archiveContactPlayer && (
+                <div
+                  className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-3 sm:items-center sm:p-6"
+                  onClick={() => { setArchiveContactPlayer(null); setContactEditMode(false); }}
+                >
+                  <div
+                    className="w-full max-w-sm rounded-3xl border border-[#2D2D2D] bg-[#111] shadow-2xl"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <div className="border-b border-[#2D2D2D] px-5 py-4 flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-white font-black text-base break-words">{archiveContactPlayer.currentName}</div>
+                        {(playerContacts[archiveContactPlayer.key]?.realName || contactEditMode) && !contactEditMode && (
+                          <div className="mt-0.5 text-sm text-[#999]">{playerContacts[archiveContactPlayer.key]?.realName}</div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (contactEditMode) {
+                              setContactEditMode(false);
+                            } else {
+                              const contact = playerContacts[archiveContactPlayer.key];
+                              setContactDraft({
+                                realName: contact?.realName ?? '',
+                                phone: contact?.phone ?? '',
+                                instagram: contact?.instagram ?? '',
+                              });
+                              setContactEditMode(true);
+                            }
+                          }}
+                          className="text-[#888] hover:text-white text-xs border border-[#3D3D3D] hover:border-[#888] rounded-full px-3 py-1 transition-colors"
+                        >
+                          {contactEditMode ? 'Отмена' : 'Изменить'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setArchiveContactPlayer(null); setContactEditMode(false); }}
+                          className="text-[#666] hover:text-white text-lg leading-none"
+                        >✕</button>
+                      </div>
+                    </div>
+
+                    {contactEditMode ? (
+                      <div className="px-5 py-4 flex flex-col gap-3">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1">Настоящее имя</div>
+                          <input
+                            className="admin-input"
+                            placeholder="Иван Иванов"
+                            value={contactDraft.realName}
+                            onChange={e => setContactDraft(d => ({ ...d, realName: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1">Телефон</div>
+                          <input
+                            className="admin-input"
+                            placeholder="+7 900 000 00 00"
+                            value={contactDraft.phone}
+                            onChange={e => setContactDraft(d => ({ ...d, phone: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1">Instagram</div>
+                          <input
+                            className="admin-input"
+                            placeholder="@username"
+                            value={contactDraft.instagram}
+                            onChange={e => setContactDraft(d => ({ ...d, instagram: e.target.value }))}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={contactSaving}
+                          onClick={async () => {
+                            setContactSaving(true);
+                            try {
+                              await savePlayerContact(archiveContactPlayer.key, {
+                                realName: contactDraft.realName.trim() || null,
+                                phone: contactDraft.phone.trim() || null,
+                                instagram: contactDraft.instagram.trim() || null,
+                              });
+                              setContactEditMode(false);
+                            } finally {
+                              setContactSaving(false);
+                            }
+                          }}
+                          className="admin-btn-primary w-full py-2.5"
+                        >
+                          {contactSaving ? 'Сохранение...' : 'Сохранить'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="px-5 py-4 flex flex-col gap-3">
+                        {(() => {
+                          const contact = playerContacts[archiveContactPlayer.key];
+                          return (
+                            <>
+                              {contact?.realName && (
+                                <div className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3">
+                                  <span className="text-lg">👤</span>
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Имя</div>
+                                    <div className="text-white font-bold text-sm mt-0.5">{contact.realName}</div>
+                                  </div>
+                                </div>
+                              )}
+                              {contact?.phone ? (
+                                <a
+                                  href={`tel:${contact.phone}`}
+                                  className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 hover:border-[#444] transition-colors"
+                                >
+                                  <span className="text-lg">📞</span>
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Телефон</div>
+                                    <div className="text-white font-bold text-sm mt-0.5">{contact.phone}</div>
+                                  </div>
+                                </a>
+                              ) : (
+                                <div className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 opacity-40">
+                                  <span className="text-lg">📞</span>
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Телефон</div>
+                                    <div className="text-[#666] text-sm mt-0.5">Не указан</div>
+                                  </div>
+                                </div>
+                              )}
+                              {contact?.instagram && (
+                                <a
+                                  href={`https://instagram.com/${contact.instagram.replace(/^@/, '')}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 hover:border-[#444] transition-colors"
+                                >
+                                  <span className="text-lg">📸</span>
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Instagram</div>
+                                    <div className="text-white font-bold text-sm mt-0.5">{contact.instagram}</div>
+                                  </div>
+                                </a>
+                              )}
+                              {archiveContactPlayer.currentUsername ? (
+                                <a
+                                  href={`https://t.me/${archiveContactPlayer.currentUsername}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 hover:border-[#444] transition-colors"
+                                >
+                                  <span className="text-lg">✈️</span>
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Telegram</div>
+                                    <div className="text-white font-bold text-sm mt-0.5">@{archiveContactPlayer.currentUsername}</div>
+                                  </div>
+                                </a>
+                              ) : archiveContactPlayer.telegramId ? (
+                                <div className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3">
+                                  <span className="text-lg">✈️</span>
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Telegram ID</div>
+                                    <div className="text-white font-bold text-sm mt-0.5">{archiveContactPlayer.telegramId}</div>
+                                  </div>
+                                </div>
+                              ) : null}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               </>
             )}
           </div>
