@@ -8,6 +8,7 @@ import {
   submitBotTournamentResults,
   type ImportedTournamentPlayer,
 } from '../tournamentBotApi.ts';
+import { getRankPoints } from '../types.ts';
 import type {
   GameState,
   LiveTournamentArrivalStatus,
@@ -867,6 +868,9 @@ export function buildTournamentResultsPayload(params: {
   const eligiblePlayers = players.filter(player => player.arrivalStatus !== 'absent');
   const summary = summarizePlayers(eligiblePlayers);
 
+  const ratingPlayerCount = summary.entrants;
+  const rankPoints = getRankPoints(ratingPlayerCount);
+
   return {
     sessionId,
     tournamentBotId,
@@ -890,7 +894,7 @@ export function buildTournamentResultsPayload(params: {
       bonusCount: summary.bonuses,
       totalStack,
       lateRegistrationPlayers: null,
-      ratingPlayerCount: summary.entrants,
+      ratingPlayerCount,
     },
     players: eligiblePlayers.map(player => ({
       id: player.id,
@@ -912,6 +916,9 @@ export function buildTournamentResultsPayload(params: {
       status: player.status,
       place: player.place,
       bustoutOrder: player.bustoutOrder,
+      points: (player.place != null && player.place >= 1 && player.place <= rankPoints.length)
+        ? (rankPoints[player.place - 1] ?? 0)
+        : 0,
     })),
   };
 }

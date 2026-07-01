@@ -209,6 +209,37 @@ test('buildTournamentResultsPayload excludes absent players from exported result
   assert.equal(payload.players[0]?.id, 'out-1');
 });
 
+test('buildTournamentResultsPayload assigns points from getRankPoints for placed players', () => {
+  const players = Array.from({ length: 20 }, (_, i) =>
+    createPlayer({
+      id: `p${i + 1}`,
+      name: `Player ${i + 1}`,
+      arrivalStatus: 'paid',
+      status: 'out',
+      place: i + 1,
+      bustoutOrder: 20 - i,
+    })
+  );
+
+  const payload = buildTournamentResultsPayload({
+    sessionId: 1,
+    tournamentBotId: 1,
+    tournamentTitle: 'Test',
+    finishedAt: '2026-07-01T12:00:00.000Z',
+    levelsPlayed: 5,
+    totalStack: 20000,
+    players,
+  });
+
+  // 20 players: coefficient 1.2, pool 6000
+  assert.equal(payload.summary.ratingPlayerCount, 20);
+  assert.equal(payload.players[0]?.points, 1890);   // 6000 * 0.315
+  assert.equal(payload.players[1]?.points, 1170);   // 6000 * 0.195
+  assert.equal(payload.players[8]?.points, 228);    // 6000 * 0.038
+  assert.equal(payload.players[9]?.points, 0);      // place 10 — no points
+  assert.equal(payload.players[19]?.points, 0);     // last place — no points
+});
+
 test('buildTournamentFinancePayload includes only participating players and keeps payment details', () => {
   const payload = buildTournamentFinancePayload({
     sessionId: 100,

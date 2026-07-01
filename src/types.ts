@@ -308,6 +308,7 @@ export interface TournamentResultsPlayerRecord {
   status: LiveTournamentPlayerStatus;
   place: number | null;
   bustoutOrder: number | null;
+  points: number;
 }
 
 export interface TournamentResultsPayload {
