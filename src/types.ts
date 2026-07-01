@@ -346,7 +346,8 @@ const MIN_RANKED_PLAYERS = 9;
 export function getRankPoints(playerCount: number): number[] {
   if (playerCount < MIN_RANKED_PLAYERS) return [];
 
-  const totalPoints = playerCount * (playerCount + 1) / 2;
+  const coefficient = 1 + Math.floor(playerCount / 10) * 0.1;
+  const totalPoints = 5000 * coefficient;
   return RANK_POINT_SHARES.map(share => Number((totalPoints * share).toFixed(1)));
 }
 
