@@ -1505,13 +1505,37 @@ export function Admin() {
     if (activeTab !== 'archive' || !archiveAuthed || archiveSubTab !== 'players' || contactsLoaded) return;
     let cancelled = false;
     const load = async () => {
-      const { data } = await supabase
-        .from('blind_templates')
-        .select('id, levels')
-        .like('id', '__player_contact__%');
-      if (cancelled || !data) return;
+      const [{ data: snapshotData }, { data: contactData }] = await Promise.all([
+        supabase.from('blind_templates').select('id, levels').like('id', '__live_players__%'),
+        supabase.from('blind_templates').select('id, levels').like('id', '__player_contact__%'),
+      ]);
+      if (cancelled) return;
+
       const map: Record<string, { realName: string | null; phone: string | null; instagram: string | null }> = {};
-      for (const row of data) {
+
+      const playerKey = (p: Record<string, unknown>): string => {
+        const username = typeof p.username === 'string' ? p.username.replace(/^@/, '').trim().toLowerCase() : '';
+        const telegramId = typeof p.telegramId === 'number' ? p.telegramId : null;
+        const name = typeof p.name === 'string' ? p.name.trim().toLowerCase() : '';
+        if (username) return `un:${username}`;
+        if (telegramId != null) return `tg:${telegramId}`;
+        return `nm:${name}`;
+      };
+
+      for (const row of snapshotData ?? []) {
+        const levels = (row.levels ?? {}) as Record<string, unknown>;
+        const players = Array.isArray(levels.players) ? levels.players as Record<string, unknown>[] : [];
+        for (const p of players) {
+          const realName = typeof p.realName === 'string' && p.realName.trim() ? p.realName.trim() : null;
+          const phone = typeof p.phone === 'string' && p.phone.trim() ? p.phone.trim() : null;
+          const instagram = typeof p.instagram === 'string' && p.instagram.trim() ? p.instagram.trim() : null;
+          if (!realName && !phone && !instagram) continue;
+          const key = playerKey(p);
+          if (!map[key]) map[key] = { realName, phone, instagram };
+        }
+      }
+
+      for (const row of contactData ?? []) {
         const key = (row.id as string).slice('__player_contact__:'.length);
         const l = (row.levels ?? {}) as Record<string, unknown>;
         map[key] = {
@@ -1520,6 +1544,7 @@ export function Admin() {
           instagram: typeof l.instagram === 'string' ? l.instagram : null,
         };
       }
+
       setPlayerContacts(map);
       setContactsLoaded(true);
     };
@@ -3779,53 +3804,54 @@ export function Admin() {
 
                         return (
                           <div key={agg.key} className="bg-[#111] border border-[#2D2D2D] rounded-2xl overflow-hidden">
-                            <div className="flex items-center hover:bg-[#161616] transition-colors">
-                              <button
-                                type="button"
-                                onClick={() => setExpandedPlayerKey(isExpanded ? null : agg.key)}
-                                className="flex-1 px-4 py-3 flex items-center justify-between gap-3 text-left min-w-0"
-                              >
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                  <span className="shrink-0 text-[#444] text-[11px] font-mono w-5 text-right select-none">{idx + 1}</span>
-                                  <div className="min-w-0">
-                                    <div className="flex items-center gap-1.5">
-                                      <div className="text-white font-black text-sm truncate">{agg.currentName}</div>
-                                    </div>
-                                    {agg.currentUsername && (
-                                      <div className="text-[#555] text-xs mt-0.5">@{agg.currentUsername.replace(/^@/, '')}</div>
-                                    )}
+                            <button
+                              type="button"
+                              onClick={() => setExpandedPlayerKey(isExpanded ? null : agg.key)}
+                              className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-[#161616] transition-colors"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span className="shrink-0 text-[#444] text-[11px] font-mono w-5 text-right select-none">{idx + 1}</span>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <div className="text-white font-black text-sm truncate">{agg.currentName}</div>
+                                    <span
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={e => {
+                                        e.stopPropagation();
+                                        const contact = playerContacts[agg.key];
+                                        setArchiveContactPlayer(agg);
+                                        setContactEditMode(false);
+                                        setContactDraft({
+                                          realName: contact?.realName ?? '',
+                                          phone: contact?.phone ?? '',
+                                          instagram: contact?.instagram ?? '',
+                                        });
+                                      }}
+                                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click(); }}
+                                      className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full border border-[#3D3D3D] text-[#888] text-[11px] hover:border-[#888] hover:text-white transition-colors cursor-pointer"
+                                      title="Контакты"
+                                    >ⓘ</span>
                                   </div>
-                                </div>
-                                <div className="shrink-0 flex items-center gap-3">
-                                  <div className="text-right">
-                                    <div className="text-white font-black text-sm">{entries.length}</div>
-                                    <div className="text-[#555] text-[10px] uppercase">игр</div>
-                                  </div>
-                                  {periodBest !== null && (
-                                    <div className="text-right">
-                                      <div className="text-white font-black text-sm">#{periodBest}</div>
-                                      <div className="text-[#555] text-[10px] uppercase">лучшее</div>
-                                    </div>
+                                  {agg.currentUsername && (
+                                    <div className="text-[#555] text-xs mt-0.5">@{agg.currentUsername.replace(/^@/, '')}</div>
                                   )}
-                                  <div className="text-[#555] text-xs font-bold">{isExpanded ? '▲' : '▼'}</div>
                                 </div>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const contact = playerContacts[agg.key];
-                                  setArchiveContactPlayer(agg);
-                                  setContactEditMode(false);
-                                  setContactDraft({
-                                    realName: contact?.realName ?? '',
-                                    phone: contact?.phone ?? '',
-                                    instagram: contact?.instagram ?? '',
-                                  });
-                                }}
-                                className="shrink-0 mr-3 inline-flex items-center justify-center w-6 h-6 rounded-full border border-[#3D3D3D] text-[#888] text-[11px] hover:border-[#888] hover:text-white transition-colors"
-                                title="Контакты"
-                              >ⓘ</button>
-                            </div>
+                              </div>
+                              <div className="shrink-0 flex items-center gap-3">
+                                <div className="text-right">
+                                  <div className="text-white font-black text-sm">{entries.length}</div>
+                                  <div className="text-[#555] text-[10px] uppercase">игр</div>
+                                </div>
+                                {periodBest !== null && (
+                                  <div className="text-right">
+                                    <div className="text-white font-black text-sm">#{periodBest}</div>
+                                    <div className="text-[#555] text-[10px] uppercase">лучшее</div>
+                                  </div>
+                                )}
+                                <div className="text-[#555] text-xs font-bold">{isExpanded ? '▲' : '▼'}</div>
+                              </div>
+                            </button>
 
                             {isExpanded && (
                               <div className="border-t border-[#2D2D2D] px-4 py-3 flex flex-col gap-3">
