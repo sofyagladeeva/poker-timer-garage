@@ -668,15 +668,26 @@ function diffPlayers(previous: LiveTournamentPlayer[], next: LiveTournamentPlaye
   return next.filter(player => !playersEqual(previousById.get(player.id), player));
 }
 
+function diffRemovedPlayerIds(previous: LiveTournamentPlayer[], next: LiveTournamentPlayer[]) {
+  const nextIds = new Set(next.map(player => player.id));
+  return previous
+    .filter(player => !nextIds.has(player.id))
+    .map(player => player.id);
+}
+
 export function mergeChangedPlayersOntoSnapshot(
   currentPlayers: LiveTournamentPlayer[],
-  changedPlayers: LiveTournamentPlayer[]
+  changedPlayers: LiveTournamentPlayer[],
+  removedPlayerIds: string[] = []
 ) {
-  if (changedPlayers.length === 0) {
+  if (changedPlayers.length === 0 && removedPlayerIds.length === 0) {
     return recalculatePlayers(currentPlayers);
   }
 
   const nextById = new Map(currentPlayers.map(player => [player.id, player]));
+  removedPlayerIds.forEach(playerId => {
+    nextById.delete(playerId);
+  });
   changedPlayers.forEach(player => {
     nextById.set(player.id, player);
   });
@@ -1937,6 +1948,7 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
       updatedAt: player.updatedAt || nowIso(),
     })), gameStateRef.current.tournamentBuyIn, gameStateRef.current.rebuyCost, gameStateRef.current.addonCost);
     const changedPlayers = diffPlayers(baseSnapshot.players, mutated);
+    const removedPlayerIds = diffRemovedPlayerIds(baseSnapshot.players, mutated);
 
     if (changedPlayers.length === 0 && mutated.length === baseSnapshot.players.length) {
       return baseSnapshot.players;
@@ -1946,7 +1958,7 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     if (hasTournamentContextChanged(requestedContext, getCurrentSnapshotContext())) {
       return playersRef.current;
     }
-    const rebasedPlayers = mergeChangedPlayersOntoSnapshot(latestSnapshot.players, changedPlayers);
+    const rebasedPlayers = mergeChangedPlayersOntoSnapshot(latestSnapshot.players, changedPlayers, removedPlayerIds);
     await commitPlayersSnapshot(
       rebasedPlayers,
       latestSnapshot.resultsSubmission,
