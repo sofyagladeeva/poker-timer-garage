@@ -1376,6 +1376,13 @@ function PlayerRow({
                 Бонус
               </div>
             )}
+            <button
+              type="button"
+              onClick={() => void onRemovePlayer(player)}
+              className="inline-flex w-fit items-center rounded-full border border-[#5A1712] bg-[#1A0C0A] px-1.5 py-0.5 text-[8px] uppercase tracking-[0.12em] text-[#FFD5D0] transition-colors hover:bg-[#2A0C0A] sm:px-2 sm:text-[9px]"
+            >
+              Удалить
+            </button>
           </div>
           {player.arrivalStatus !== 'absent' && !isOut && player.tableNumber != null && player.seatNumber != null && (
             <div className="text-[8px] sm:text-[9px] text-[#555]">Стол {player.tableNumber}, бокс {player.seatNumber}</div>
@@ -1633,13 +1640,6 @@ function PlayerRow({
             />
             {player.paymentDueOverride && <span className="text-amber-400 text-[8px]">✎</span>}
           </div>
-          <button
-            type="button"
-            onClick={() => void onRemovePlayer(player)}
-            className="inline-flex w-full items-center justify-center rounded-lg border border-[#5A1712] bg-[#1A0C0A] px-1 py-1 text-[9px] sm:px-1.5 sm:text-[11px] font-bold text-[#FFD5D0] hover:bg-[#2A0C0A]"
-          >
-            Удалить
-          </button>
         </div>
       </td>
     </tr>
