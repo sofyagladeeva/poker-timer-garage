@@ -110,6 +110,8 @@ export function normalizeGameState(raw: unknown, fallback: GameState): GameState
     tournamentBotId: toNullableNumber(source.tournamentBotId, fallback.tournamentBotId),
     nextGameBotId: toNullableNumber(source.nextGameBotId, fallback.nextGameBotId),
     tournamentBuyIn: toNullableNumber(source.tournamentBuyIn, fallback.tournamentBuyIn),
+    rebuyCost: toNullableNumber(source.rebuyCost ?? source.rebuy_cost, fallback.rebuyCost),
+    addonCost: toNullableNumber(source.addonCost ?? source.addon_cost, fallback.addonCost),
     chipLeaders: normalizeChipLeaders(source.chipLeaders ?? source.chip_leaders, fallback.chipLeaders),
     chipLeaderCollectionActive: toBoolean(
       source.chipLeaderCollectionActive ?? source.chip_leader_collection_active,

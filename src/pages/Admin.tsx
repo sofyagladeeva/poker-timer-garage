@@ -725,6 +725,8 @@ export function Admin() {
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [finishReviewOpen, setFinishReviewOpen] = useState(false);
+  const [priceConfirmOpen, setPriceConfirmOpen] = useState(false);
+  const [priceDraft, setPriceDraft] = useState({ buyIn: '', rebuy: '', addon: '' });
   const [finishBusy, setFinishBusy] = useState(false);
   const [resultsBusy, setResultsBusy] = useState(false);
   const [newTournamentBusy, setNewTournamentBusy] = useState(false);
@@ -1552,6 +1554,27 @@ export function Admin() {
     void load();
     return () => { cancelled = true; };
   }, [activeTab, archiveAuthed, archiveSubTab, contactsLoaded]);
+
+  const handleOpenPriceConfirm = () => {
+    const defaultPrice = gameState.tournamentBuyIn ?? 1000;
+    setPriceDraft({
+      buyIn: String(defaultPrice),
+      rebuy: String(gameState.rebuyCost ?? defaultPrice),
+      addon: String(gameState.addonCost ?? (gameState.tournamentBuyIn !== null && gameState.tournamentBuyIn > 0 ? gameState.tournamentBuyIn : 1000)),
+    });
+    setPriceConfirmOpen(true);
+  };
+
+  const handleConfirmAndStart = async () => {
+    const buyIn = parseInt(priceDraft.buyIn, 10);
+    const rebuy = parseInt(priceDraft.rebuy, 10);
+    const addon = parseInt(priceDraft.addon, 10);
+    if (isNaN(buyIn) || isNaN(rebuy) || isNaN(addon)) return;
+    if (buyIn < 0 || rebuy < 0 || addon < 0) return;
+    await updateGameState({ tournamentBuyIn: buyIn, rebuyCost: rebuy, addonCost: addon });
+    setPriceConfirmOpen(false);
+    startTimer();
+  };
 
   const savePlayerContact = async (playerKey: string, contact: { realName: string | null; phone: string | null; instagram: string | null }) => {
     const id = `__player_contact__:${playerKey}`;
@@ -2899,14 +2922,14 @@ export function Admin() {
 
                 {/* Play/Pause — большая кнопка */}
                 <button
-                  onClick={isRunning ? pauseTimer : startTimer}
+                  onClick={isRunning ? pauseTimer : (gameState.status === 'idle' ? handleOpenPriceConfirm : startTimer)}
                   className={`w-full py-5 rounded-xl font-black text-2xl tracking-wide transition-colors ${
                     isRunning
                       ? 'bg-[#2D2D2D] hover:bg-[#3D3D3D] text-white'
                       : 'bg-[#C0392B] hover:bg-[#E31E24] text-white'
                   }`}
                 >
-                  {isRunning ? '⏸ Пауза' : '▶ Запустить'}
+                  {isRunning ? '⏸ Пауза' : gameState.status === 'idle' ? '▶ Начать ведение' : '▶ Запустить'}
                 </button>
 
                 {/* Уровни и сброс */}
@@ -4375,6 +4398,66 @@ export function Admin() {
         )}
 
       </div>
+
+      {priceConfirmOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-3 sm:items-center sm:p-6"
+          onClick={() => setPriceConfirmOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl border border-[#2D2D2D] bg-[#111] shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="border-b border-[#2D2D2D] px-5 py-4 flex items-center justify-between gap-3">
+              <div className="text-white font-black text-base uppercase tracking-[0.12em]">Проверьте стоимости</div>
+              <button type="button" onClick={() => setPriceConfirmOpen(false)} className="text-[#666] hover:text-white text-lg leading-none">✕</button>
+            </div>
+            <div className="px-5 py-4 flex flex-col gap-4">
+              <div className="text-[#888] text-sm">
+                Эти значения будут использоваться для финансового расчёта игры.
+              </div>
+              {(
+                [
+                  { label: 'Стоимость входа', key: 'buyIn' },
+                  { label: 'Стоимость rebuy', key: 'rebuy' },
+                  { label: 'Стоимость addon', key: 'addon' },
+                ] as { label: string; key: keyof typeof priceDraft }[]
+              ).map(({ label, key }) => (
+                <div key={key}>
+                  <label className="block text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1.5">{label}, ₽</label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="admin-input"
+                    value={priceDraft[key]}
+                    onChange={e => setPriceDraft(d => ({ ...d, [key]: e.target.value }))}
+                  />
+                </div>
+              ))}
+              <div className="flex gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setPriceConfirmOpen(false)}
+                  className="admin-btn-secondary flex-1 py-3"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    priceDraft.buyIn === '' || priceDraft.rebuy === '' || priceDraft.addon === '' ||
+                    parseInt(priceDraft.buyIn, 10) < 0 || parseInt(priceDraft.rebuy, 10) < 0 || parseInt(priceDraft.addon, 10) < 0
+                  }
+                  onClick={() => void handleConfirmAndStart()}
+                  className="admin-btn-primary flex-1 py-3 disabled:opacity-40"
+                >
+                  Подтвердить и начать
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {finishReviewOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-3 sm:items-center sm:p-6">

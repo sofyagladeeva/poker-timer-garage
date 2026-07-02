@@ -324,31 +324,32 @@ export function calcPaymentDue(
   arrivalStatus: LiveTournamentArrivalStatus,
   rebuyCount: number,
   addonCount: number,
-  tournamentBuyIn: number | null = null
+  tournamentBuyIn: number | null = null,
+  rebuyCost: number | null = null,
+  addonCost: number | null = null
 ) {
   if (arrivalStatus === 'absent') return 0;
 
-  // If buy_in is null — use hardcoded default for all actions.
-  // If buy_in is 0 (free entry) — entry is free, rebuys/addons cost the default.
-  // If buy_in > 0 — entry, rebuys and addons all cost buy_in.
   const entryPrice = tournamentBuyIn !== null ? tournamentBuyIn : TOURNAMENT_UNIT_PRICE;
-  const rebuyAddonPrice = (tournamentBuyIn !== null && tournamentBuyIn > 0) ? tournamentBuyIn : TOURNAMENT_UNIT_PRICE;
-  const actions = clampWhole(rebuyCount) + clampWhole(addonCount);
+  const defaultUnitPrice = (tournamentBuyIn !== null && tournamentBuyIn > 0) ? tournamentBuyIn : TOURNAMENT_UNIT_PRICE;
+  const rebuyPrice = rebuyCost !== null ? rebuyCost : defaultUnitPrice;
+  const addonPrice = addonCost !== null ? addonCost : defaultUnitPrice;
+
+  const rCount = clampWhole(rebuyCount);
+  const aCount = clampWhole(addonCount);
 
   if (arrivalStatus === 'freePromo') {
-    // Free entry, 50% discount on all rebuys/addons
-    return Math.round(actions * rebuyAddonPrice * PROMO_DISCOUNT_FACTOR);
+    return Math.round((rCount * rebuyPrice + aCount * addonPrice) * PROMO_DISCOUNT_FACTOR);
   }
 
   if (arrivalStatus === 'admin') {
-    // Free entry + 3 free rebuys/addons, then standard price per action
     const ADMIN_FREE_ACTIONS = 3;
-    const paidActions = Math.max(0, actions - ADMIN_FREE_ACTIONS);
+    const paidActions = Math.max(0, rCount + aCount - ADMIN_FREE_ACTIONS);
     return paidActions * TOURNAMENT_UNIT_PRICE;
   }
 
   const entryAmount = arrivalStatus === 'free' ? 0 : entryPrice;
-  const total = entryAmount + actions * rebuyAddonPrice;
+  const total = entryAmount + rCount * rebuyPrice + aCount * addonPrice;
   return arrivalStatus === 'promo'
     ? Math.round(total * PROMO_DISCOUNT_FACTOR)
     : total;
@@ -378,7 +379,9 @@ function normalizePlayer(
   raw: Partial<LiveTournamentPlayer> & { paymentMethod?: string },
   sessionId: number,
   tournamentBotId: number | null,
-  tournamentBuyIn: number | null = null
+  tournamentBuyIn: number | null = null,
+  rebuyCost: number | null = null,
+  addonCost: number | null = null
 ): LiveTournamentPlayer {
   const registrationSource = normalizeRegistrationSource(raw.registrationSource);
   const arrivalStatus = normalizeArrivalStatus(raw.arrivalStatus);
@@ -431,7 +434,7 @@ function normalizePlayer(
     })(),
     paymentDue: (raw.paymentDueOverride === true && arrivalStatus !== 'absent')
       ? clampWhole(raw.paymentDue)
-      : calcPaymentDue(arrivalStatus, rebuyCount, addonCount, tournamentBuyIn),
+      : calcPaymentDue(arrivalStatus, rebuyCount, addonCount, tournamentBuyIn, rebuyCost, addonCost),
     paymentDueOverride: raw.paymentDueOverride === true && arrivalStatus !== 'absent',
     place: raw.place == null ? null : clampWhole(raw.place),
     placeOverride: raw.placeOverride === true,
@@ -457,8 +460,8 @@ export function rosterGroupSort(a: LiveTournamentPlayer, b: LiveTournamentPlayer
   return b.sortOrder - a.sortOrder || b.updatedAt.localeCompare(a.updatedAt) || b.createdAt.localeCompare(a.createdAt) || a.name.localeCompare(b.name, 'ru');
 }
 
-export function recalculatePlayers(players: LiveTournamentPlayer[], tournamentBuyIn: number | null = null) {
-  const normalized = players.map(player => normalizePlayer(player, player.sessionId, player.tournamentBotId, tournamentBuyIn));
+export function recalculatePlayers(players: LiveTournamentPlayer[], tournamentBuyIn: number | null = null, rebuyCost: number | null = null, addonCost: number | null = null) {
+  const normalized = players.map(player => normalizePlayer(player, player.sessionId, player.tournamentBotId, tournamentBuyIn, rebuyCost, addonCost));
   const entrants = normalized.filter(player => player.arrivalStatus !== 'absent').length;
   const sortedOut = normalized
     .filter(player => player.status === 'out')
@@ -1332,7 +1335,7 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
       return playersRef.current;
     }
 
-    const normalized = recalculatePlayers(nextPlayers, gameStateRef.current.tournamentBuyIn);
+    const normalized = recalculatePlayers(nextPlayers, gameStateRef.current.tournamentBuyIn, gameStateRef.current.rebuyCost, gameStateRef.current.addonCost);
     const normalizedRevision = normalizeSnapshotRevision(revision);
     playersRef.current = normalized;
     resultsSubmissionRef.current = nextResultsSubmission;
@@ -1930,7 +1933,7 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     const mutated = recalculatePlayers(mutate(baseSnapshot.players).map(player => ({
       ...player,
       updatedAt: player.updatedAt || nowIso(),
-    })), gameStateRef.current.tournamentBuyIn);
+    })), gameStateRef.current.tournamentBuyIn, gameStateRef.current.rebuyCost, gameStateRef.current.addonCost);
     const changedPlayers = diffPlayers(baseSnapshot.players, mutated);
 
     if (changedPlayers.length === 0 && mutated.length === baseSnapshot.players.length) {
