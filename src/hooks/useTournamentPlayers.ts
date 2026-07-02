@@ -3,7 +3,9 @@ import { supabase } from '../supabase.ts';
 import { calcTotalStack } from '../gameStateMath.ts';
 import { isPromoUsername } from '../promoPlayerList.ts';
 import {
+  addBotTournamentPlayer,
   fetchBotTournamentRoster,
+  removeBotTournamentPlayer,
   submitBotTournamentFinance,
   submitBotTournamentResults,
   type ImportedTournamentPlayer,
@@ -2131,24 +2133,58 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     const trimmedName = name.trim();
     if (!trimmedName) return false;
 
+    const currentTournamentBotId = tournamentBotIdRef.current;
+    let importedPlayer: ImportedTournamentPlayer | null = null;
+
+    if (currentTournamentBotId != null) {
+      const botResult = await addBotTournamentPlayer(currentTournamentBotId, {
+        name: trimmedName,
+        registrationSource: 'registered',
+      });
+
+      if (!botResult.ok) {
+        setBotSyncState(prev => ({
+          ...prev,
+          loading: false,
+          error: botResult.error,
+          disabled: botResult.unsupported,
+        }));
+        return false;
+      }
+
+      importedPlayer = botResult.player;
+      setBotSyncState({
+        loading: false,
+        error: null,
+        lastSyncedAt: nowIso(),
+        disabled: false,
+      });
+    }
+
     await applyPlayerMutation(current => {
       const nextSortOrder = getNextPlayerSortOrder(current);
       const createdAt = nowIso();
+      const localId = createId();
       return [
         ...current,
         normalizePlayer({
-          id: createId(),
+          id: localId,
           sessionId,
           tournamentBotId,
-          name: trimmedName,
-          username: null,
-          source: 'manual',
-          registrationSource: 'registered',
-          status: 'active',
-          arrivalStatus: 'paid',
+          botRegistrationId: importedPlayer?.botRegistrationId ?? null,
+          telegramId: importedPlayer?.telegramId ?? null,
+          name: importedPlayer?.name ?? trimmedName,
+          username: importedPlayer?.username ?? null,
+          realName: importedPlayer?.realName ?? null,
+          phone: importedPlayer?.phone ?? null,
+          instagram: importedPlayer?.instagram ?? null,
+          source: currentTournamentBotId != null ? 'bot' : 'manual',
+          registrationSource: importedPlayer?.registrationSource ?? 'registered',
+          status: deriveBaseStatus(importedPlayer?.registrationSource ?? 'registered'),
+          arrivalStatus: currentTournamentBotId != null && isPromoUsername(importedPlayer?.username ?? null) ? 'promo' : 'paid',
           rebuyCount: 0,
           addonCount: 0,
-          bonusCount: 0,
+          bonusCount: earlyBirdBonusEnabledRef.current && importedPlayer?.registeredAt && isEarlyBird(importedPlayer.registeredAt, tournamentDateRef.current) ? 1 : 0,
           bounty: 0,
           cashPaid: 0,
           cardPaid: 0,
@@ -2157,6 +2193,7 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
           placeOverride: false,
           bustoutOrder: null,
           sortOrder: nextSortOrder,
+          registeredAt: importedPlayer?.registeredAt ?? createdAt,
           createdAt,
           updatedAt: createdAt,
         }, sessionId, tournamentBotId),
@@ -2164,7 +2201,48 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     });
 
     return true;
-  }, [applyPlayerMutation, sessionId, tournamentBotId]);
+  }, [applyPlayerMutation, sessionId, setBotSyncState, tournamentBotId]);
+
+  const removePlayer = useCallback(async (playerId: string) => {
+    const currentPlayer = playersRef.current.find(player => player.id === playerId);
+    if (!currentPlayer) return false;
+
+    const currentTournamentBotId = tournamentBotIdRef.current;
+    if (currentTournamentBotId != null) {
+      const botResult = await removeBotTournamentPlayer(currentTournamentBotId, {
+        playerId: currentPlayer.id,
+        botRegistrationId: currentPlayer.botRegistrationId,
+        telegramId: currentPlayer.telegramId,
+        name: currentPlayer.name,
+        username: currentPlayer.username,
+      });
+
+      if (!botResult.ok) {
+        setBotSyncState(prev => ({
+          ...prev,
+          loading: false,
+          error: botResult.error,
+          disabled: botResult.unsupported,
+        }));
+        return false;
+      }
+
+      setBotSyncState({
+        loading: false,
+        error: null,
+        lastSyncedAt: nowIso(),
+        disabled: false,
+      });
+    }
+
+    await applyPlayerMutation(current => current.filter(player => player.id !== playerId));
+
+    if (currentTournamentBotId != null) {
+      void refreshFromBot(true);
+    }
+
+    return true;
+  }, [applyPlayerMutation, refreshFromBot, setBotSyncState]);
 
   const updatePlayerField = useCallback(async (playerId: string, patch: Partial<LiveTournamentPlayer>) => {
     const currentPlayer = playersRef.current.find(player => player.id === playerId);
@@ -2488,6 +2566,7 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     managedCountersEnabled: players.length > 0,
     refreshFromBot,
     addManualPlayer,
+    removePlayer,
     updatePlayerField,
     setPlayerArrival,
     markPlayerOut,

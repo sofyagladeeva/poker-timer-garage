@@ -788,6 +788,7 @@ export function Admin() {
     currentResultsSignature,
     refreshFromBot,
     addManualPlayer,
+    removePlayer,
     updatePlayerField,
     setPlayerArrival,
     markPlayerOut,
@@ -3261,6 +3262,7 @@ export function Admin() {
             onOpenControlTab={() => {}}
             onRefreshFromBot={refreshFromBot}
             onAddManualPlayer={addManualPlayer}
+            onRemovePlayer={removePlayer}
             onUpdatePlayerField={updatePlayerField}
             onSetPlayerArrival={setPlayerArrival}
             onMarkPlayerOut={markPlayerOut}
@@ -4548,6 +4550,7 @@ export function Admin() {
                   onOpenControlTab={() => {}}
                   onRefreshFromBot={refreshFromBot}
                   onAddManualPlayer={addManualPlayer}
+                  onRemovePlayer={removePlayer}
                   onUpdatePlayerField={updatePlayerField}
                   onSetPlayerArrival={setPlayerArrival}
                   onMarkPlayerOut={markPlayerOut}

@@ -8,6 +8,8 @@ const ENV = (import.meta as ImportMeta & {
   env?: {
     VITE_BOT_API_URL?: string;
     VITE_BOT_TOURNAMENT_PLAYERS_URL_TEMPLATE?: string;
+    VITE_BOT_TOURNAMENT_PLAYER_ADD_URL_TEMPLATE?: string;
+    VITE_BOT_TOURNAMENT_PLAYER_REMOVE_URL_TEMPLATE?: string;
     VITE_BOT_TOURNAMENT_RESULTS_URL_TEMPLATE?: string;
     VITE_BOT_TOURNAMENT_FINANCE_URL_TEMPLATE?: string;
     VITE_BOT_ADMIN_TOKEN?: string;
@@ -16,6 +18,8 @@ const ENV = (import.meta as ImportMeta & {
 
 const BOT_API = ENV?.VITE_BOT_API_URL || 'https://web-production-6035.up.railway.app';
 const ROSTER_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_PLAYERS_URL_TEMPLATE || `${BOT_API}/api/games/{id}/players`;
+const ADD_PLAYER_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_PLAYER_ADD_URL_TEMPLATE || `${BOT_API}/api/admin/games/{id}/players`;
+const REMOVE_PLAYER_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_PLAYER_REMOVE_URL_TEMPLATE || `${BOT_API}/api/admin/games/{id}/players/{registrationId}`;
 const RESULTS_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_RESULTS_URL_TEMPLATE || `${BOT_API}/api/games/{id}/results`;
 const FINANCE_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_FINANCE_URL_TEMPLATE || `${BOT_API}/api/games/{id}/finance`;
 const BOT_ADMIN_TOKEN = ENV?.VITE_BOT_ADMIN_TOKEN || '';
@@ -33,11 +37,40 @@ export interface ImportedTournamentPlayer {
   instagram: string | null;
 }
 
-function fillUrlTemplate(template: string, tournamentBotId: number | null) {
+type BotTournamentPlayerMutationPayload = {
+  name: string;
+  username?: string | null;
+  telegramId?: number | null;
+  registrationSource?: LiveTournamentRegistrationSource;
+};
+
+type BotTournamentPlayerRemovePayload = {
+  playerId: string;
+  botRegistrationId: string | null;
+  telegramId: number | null;
+  name: string;
+  username: string | null;
+};
+
+function fillUrlTemplate(
+  template: string,
+  tournamentBotId: number | null,
+  params: Record<string, string | number | null | undefined> = {}
+) {
   if (!template.trim()) return null;
-  if (!template.includes('{id}')) return template;
-  if (tournamentBotId == null) return null;
-  return template.replaceAll('{id}', String(tournamentBotId));
+  let url = template;
+  if (url.includes('{id}')) {
+    if (tournamentBotId == null) return null;
+    url = url.replaceAll('{id}', encodeURIComponent(String(tournamentBotId)));
+  }
+
+  for (const [key, value] of Object.entries(params)) {
+    if (!url.includes(`{${key}}`)) continue;
+    if (value == null || String(value).trim() === '') return null;
+    url = url.replaceAll(`{${key}}`, encodeURIComponent(String(value)));
+  }
+
+  return url;
 }
 
 async function readBotErrorDetails(response: Response) {
@@ -235,6 +268,17 @@ function normalizeRosterResponse(raw: unknown) {
   };
 }
 
+async function readJsonBody(response: Response) {
+  const raw = await response.text();
+  if (!raw.trim()) return null;
+
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchBotTournamentRoster(tournamentBotId: number) {
   const url = fillUrlTemplate(ROSTER_URL_TEMPLATE, tournamentBotId);
   if (!url) {
@@ -271,6 +315,137 @@ export async function fetchBotTournamentRoster(tournamentBotId: number) {
       unsupported: false,
     };
   }
+}
+
+export async function addBotTournamentPlayer(
+  tournamentBotId: number | null,
+  payload: BotTournamentPlayerMutationPayload
+) {
+  const url = fillUrlTemplate(ADD_PLAYER_URL_TEMPLATE, tournamentBotId);
+  if (!url) {
+    return {
+      ok: false as const,
+      error: 'Не настроен URL для ручной записи игрока в боте.',
+      unsupported: true,
+    };
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(BOT_ADMIN_TOKEN ? { 'X-Admin-Token': BOT_ADMIN_TOKEN } : {}),
+      },
+      body: JSON.stringify({
+        name: payload.name,
+        username: payload.username ?? null,
+        telegram_id: payload.telegramId ?? null,
+        registration_source: payload.registrationSource ?? 'registered',
+        source: 'admin',
+      }),
+    });
+
+    if (!response.ok) {
+      const details = await readBotErrorDetails(response);
+      return {
+        ok: false as const,
+        error: details
+          ? `Бот не записал игрока (HTTP ${response.status}): ${details}.`
+          : `Бот не записал игрока (HTTP ${response.status}).`,
+        unsupported: response.status === 404 || response.status === 405,
+      };
+    }
+
+    const raw = await readJsonBody(response);
+    const player = normalizeImportedPlayer(raw, 0, payload.registrationSource ?? 'registered');
+    return {
+      ok: true as const,
+      player,
+      url,
+    };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : 'Не удалось записать игрока в боте.',
+      unsupported: false,
+    };
+  }
+}
+
+export async function removeBotTournamentPlayer(
+  tournamentBotId: number | null,
+  payload: BotTournamentPlayerRemovePayload
+) {
+  const url = fillUrlTemplate(REMOVE_PLAYER_URL_TEMPLATE, tournamentBotId, {
+    registrationId: payload.botRegistrationId,
+    playerId: payload.playerId,
+    telegramId: payload.telegramId,
+  });
+  const fallbackUrl = fillUrlTemplate(`${BOT_API}/api/admin/games/{id}/players/remove`, tournamentBotId);
+
+  if (!url && !fallbackUrl) {
+    return {
+      ok: false as const,
+      error: 'Не настроен URL для удаления игрока в боте.',
+      unsupported: true,
+    };
+  }
+
+  const body = JSON.stringify({
+    player_id: payload.playerId,
+    registration_id: payload.botRegistrationId,
+    telegram_id: payload.telegramId,
+    name: payload.name,
+    username: payload.username,
+  });
+
+  const requests = [
+    url ? { url, method: 'DELETE' } : null,
+    fallbackUrl ? { url: fallbackUrl, method: 'POST' } : null,
+  ].filter((item): item is { url: string; method: string } => item !== null);
+
+  let lastError = 'Бот не удалил игрока.';
+  let unsupported = false;
+
+  for (const request of requests) {
+    try {
+      const response = await fetch(request.url, {
+        method: request.method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(BOT_ADMIN_TOKEN ? { 'X-Admin-Token': BOT_ADMIN_TOKEN } : {}),
+        },
+        body,
+      });
+
+      if (response.ok) {
+        return {
+          ok: true as const,
+          url: request.url,
+        };
+      }
+
+      const details = await readBotErrorDetails(response);
+      lastError = details
+        ? `Бот не удалил игрока (HTTP ${response.status}): ${details}.`
+        : `Бот не удалил игрока (HTTP ${response.status}).`;
+      unsupported = response.status === 404 || response.status === 405;
+      if (!unsupported) break;
+    } catch (error) {
+      return {
+        ok: false as const,
+        error: error instanceof Error ? error.message : 'Не удалось удалить игрока в боте.',
+        unsupported: false,
+      };
+    }
+  }
+
+  return {
+    ok: false as const,
+    error: lastError,
+    unsupported,
+  };
 }
 
 export async function submitBotTournamentResults(payload: TournamentResultsPayload) {

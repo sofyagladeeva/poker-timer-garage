@@ -42,6 +42,7 @@ type Props = {
   onOpenControlTab: () => void;
   onRefreshFromBot: (force?: boolean) => Promise<boolean>;
   onAddManualPlayer: (name: string) => Promise<boolean>;
+  onRemovePlayer: (playerId: string) => Promise<boolean>;
   onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<boolean>;
   onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
   onMarkPlayerOut: (playerId: string, options?: { bounty?: number }) => Promise<void>;
@@ -65,6 +66,7 @@ export function TournamentPlayersTab({
   onOpenControlTab,
   onRefreshFromBot,
   onAddManualPlayer,
+  onRemovePlayer,
   onUpdatePlayerField,
   onSetPlayerArrival,
   onMarkPlayerOut,
@@ -177,6 +179,16 @@ export function TournamentPlayersTab({
   const handleAddManualPlayer = async () => {
     const ok = await onAddManualPlayer(manualPlayerName);
     if (ok) setManualPlayerName('');
+  };
+
+  const handleRemovePlayer = async (player: LiveTournamentPlayer) => {
+    if (!confirm('Удалить игрока из турнира? Место освободится для других игроков.')) return;
+
+    setPlaceConflictNotice(null);
+    const ok = await onRemovePlayer(player.id);
+    if (!ok) {
+      setPlaceConflictNotice('Не удалось удалить игрока. Проверьте синхронизацию с ботом и попробуйте ещё раз.');
+    }
   };
 
   const handleRestoreBackup = async (backupId: string) => {
@@ -580,6 +592,7 @@ export function TournamentPlayersTab({
                     onRequestActivate={handleRequestActivate}
                     onOpenOutDialog={openOutDialog}
                     onRestorePlayer={onRestorePlayer}
+                    onRemovePlayer={handleRemovePlayer}
                     onShowContact={setContactPlayer}
                   />
                 ))}
@@ -600,6 +613,7 @@ export function TournamentPlayersTab({
                       onRequestActivate={handleRequestActivate}
                       onOpenOutDialog={openOutDialog}
                       onRestorePlayer={onRestorePlayer}
+                      onRemovePlayer={handleRemovePlayer}
                       onShowContact={setContactPlayer}
                     />
                   ))}
@@ -632,6 +646,7 @@ export function TournamentPlayersTab({
                           onSetPlayerArrival={onSetPlayerArrival}
                           onOpenOutDialog={openOutDialog}
                           onRestorePlayer={onRestorePlayer}
+                          onRemovePlayer={handleRemovePlayer}
                           onShowContact={setContactPlayer}
                           onRequestActivate={handleRequestActivate}
                         />
@@ -920,6 +935,7 @@ function MobilePlayerCard({
   onRequestActivate,
   onOpenOutDialog,
   onRestorePlayer,
+  onRemovePlayer,
   onShowContact,
 }: {
   player: LiveTournamentPlayer;
@@ -932,6 +948,7 @@ function MobilePlayerCard({
   onRequestActivate: (player: LiveTournamentPlayer) => void;
   onOpenOutDialog: (player: LiveTournamentPlayer) => void;
   onRestorePlayer: (playerId: string) => Promise<void>;
+  onRemovePlayer: (player: LiveTournamentPlayer) => Promise<void>;
   onShowContact: (player: LiveTournamentPlayer) => void;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -1239,6 +1256,14 @@ function MobilePlayerCard({
           </div>
         </>
       )}
+
+      <button
+        type="button"
+        onClick={() => void onRemovePlayer(player)}
+        className="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-[#5A1712] bg-[#1A0C0A] px-3 py-2 text-sm font-bold text-[#FFD5D0] transition-colors hover:bg-[#2A0C0A]"
+      >
+        Удалить
+      </button>
     </div>
   );
 }
@@ -1253,6 +1278,7 @@ function PlayerRow({
   onSetPlayerArrival,
   onOpenOutDialog,
   onRestorePlayer,
+  onRemovePlayer,
   onShowContact,
   onRequestActivate,
 }: {
@@ -1265,6 +1291,7 @@ function PlayerRow({
   onSetPlayerArrival: (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => Promise<void>;
   onOpenOutDialog: (player: LiveTournamentPlayer) => void;
   onRestorePlayer: (playerId: string) => Promise<void>;
+  onRemovePlayer: (player: LiveTournamentPlayer) => Promise<void>;
   onShowContact: (player: LiveTournamentPlayer) => void;
   onRequestActivate: (player: LiveTournamentPlayer) => void;
 }) {
@@ -1606,6 +1633,13 @@ function PlayerRow({
             />
             {player.paymentDueOverride && <span className="text-amber-400 text-[8px]">✎</span>}
           </div>
+          <button
+            type="button"
+            onClick={() => void onRemovePlayer(player)}
+            className="inline-flex w-full items-center justify-center rounded-lg border border-[#5A1712] bg-[#1A0C0A] px-1 py-1 text-[9px] sm:px-1.5 sm:text-[11px] font-bold text-[#FFD5D0] hover:bg-[#2A0C0A]"
+          >
+            Удалить
+          </button>
         </div>
       </td>
     </tr>
