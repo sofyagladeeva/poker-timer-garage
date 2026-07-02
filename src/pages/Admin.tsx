@@ -1556,11 +1556,10 @@ export function Admin() {
   }, [activeTab, archiveAuthed, archiveSubTab, contactsLoaded]);
 
   const handleOpenPriceConfirm = () => {
-    const defaultPrice = gameState.tournamentBuyIn ?? 1000;
     setPriceDraft({
-      buyIn: String(defaultPrice),
-      rebuy: String(gameState.rebuyCost ?? defaultPrice),
-      addon: String(gameState.addonCost ?? (gameState.tournamentBuyIn !== null && gameState.tournamentBuyIn > 0 ? gameState.tournamentBuyIn : 1000)),
+      buyIn: String(gameState.tournamentBuyIn ?? 1000),
+      rebuy: String(gameState.rebuyCost ?? 1000),
+      addon: String(gameState.addonCost ?? 1000),
     });
     setPriceConfirmOpen(true);
   };

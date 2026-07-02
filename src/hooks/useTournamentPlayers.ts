@@ -330,10 +330,10 @@ export function calcPaymentDue(
 ) {
   if (arrivalStatus === 'absent') return 0;
 
+  // Entry price comes from the bot game setting; rebuy/addon default to 1000 regardless.
   const entryPrice = tournamentBuyIn !== null ? tournamentBuyIn : TOURNAMENT_UNIT_PRICE;
-  const defaultUnitPrice = (tournamentBuyIn !== null && tournamentBuyIn > 0) ? tournamentBuyIn : TOURNAMENT_UNIT_PRICE;
-  const rebuyPrice = rebuyCost !== null ? rebuyCost : defaultUnitPrice;
-  const addonPrice = addonCost !== null ? addonCost : defaultUnitPrice;
+  const rebuyPrice = rebuyCost !== null ? rebuyCost : TOURNAMENT_UNIT_PRICE;
+  const addonPrice = addonCost !== null ? addonCost : TOURNAMENT_UNIT_PRICE;
 
   const rCount = clampWhole(rebuyCount);
   const aCount = clampWhole(addonCount);
