@@ -19,7 +19,7 @@ const ENV = (import.meta as ImportMeta & {
 const BOT_API = ENV?.VITE_BOT_API_URL || 'https://web-production-6035.up.railway.app';
 const ROSTER_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_PLAYERS_URL_TEMPLATE || `${BOT_API}/api/games/{id}/players`;
 const ADD_PLAYER_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_PLAYER_ADD_URL_TEMPLATE || `${BOT_API}/api/admin/games/{id}/players`;
-const REMOVE_PLAYER_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_PLAYER_REMOVE_URL_TEMPLATE || `${BOT_API}/api/admin/games/{id}/players/{registrationId}`;
+const REMOVE_PLAYER_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_PLAYER_REMOVE_URL_TEMPLATE || `${BOT_API}/api/admin/games/{id}/players/remove`;
 const RESULTS_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_RESULTS_URL_TEMPLATE || `${BOT_API}/api/games/{id}/results`;
 const FINANCE_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_FINANCE_URL_TEMPLATE || `${BOT_API}/api/games/{id}/finance`;
 const BOT_ADMIN_TOKEN = ENV?.VITE_BOT_ADMIN_TOKEN || '';
@@ -382,9 +382,7 @@ export async function removeBotTournamentPlayer(
     playerId: payload.playerId,
     telegramId: payload.telegramId,
   });
-  const fallbackUrl = fillUrlTemplate(`${BOT_API}/api/admin/games/{id}/players/remove`, tournamentBotId);
-
-  if (!url && !fallbackUrl) {
+  if (!url) {
     return {
       ok: false as const,
       error: 'Не настроен URL для удаления игрока в боте.',
@@ -400,15 +398,10 @@ export async function removeBotTournamentPlayer(
     username: payload.username,
   });
 
-  const requests = [
-    url ? { url, method: 'DELETE' } : null,
-    fallbackUrl ? { url: fallbackUrl, method: 'POST' } : null,
-  ].filter((item): item is { url: string; method: string } => item !== null);
-
   let lastError = 'Бот не удалил игрока.';
   let unsupported = false;
 
-  for (const request of requests) {
+  for (const request of [{ url, method: 'POST' }]) {
     try {
       const response = await fetch(request.url, {
         method: request.method,
