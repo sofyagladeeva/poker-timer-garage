@@ -229,6 +229,17 @@ export interface TournamentArchivePlayerRecord {
   updatedAt: string;
 }
 
+export type PersonnelRole = 'dealer' | 'admin' | 'custom';
+
+export interface PersonnelRecord {
+  id: string;
+  name: string;
+  role: PersonnelRole;
+  roleLabel: string;
+  cashAmount: number;
+  cardAmount: number;
+}
+
 export interface TournamentArchiveDetails {
   tournamentBotId?: number | null;
   tournamentTitle?: string;
@@ -237,6 +248,7 @@ export interface TournamentArchiveDetails {
   players: TournamentArchivePlayerRecord[];
   summary: TournamentPlayersSummary | null;
   savedAt: string;
+  personnel?: PersonnelRecord[];
 }
 
 export interface TournamentFinancePlayerRecord {

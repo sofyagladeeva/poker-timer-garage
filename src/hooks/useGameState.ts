@@ -154,6 +154,7 @@ function parseArchiveDetailsPayload(payload: unknown): TournamentArchiveDetails 
     players: details.players,
     summary: details.summary && typeof details.summary === 'object' ? details.summary : null,
     savedAt: details.savedAt,
+    personnel: Array.isArray(details.personnel) ? details.personnel : undefined,
   } as TournamentArchiveDetails;
 }
 
@@ -1316,6 +1317,26 @@ export function useGameState(readOnly = false) {
     return next;
   }, [isSupabaseConfigured]);
 
+  const updateTournamentArchiveDetails = useCallback(async (
+    tournamentId: number,
+    finishedAt: string,
+    details: TournamentArchiveDetails
+  ): Promise<void> => {
+    if (!isSupabaseConfigured) {
+      const existing = loadLocal<TournamentRecord[]>(TOURNAMENTS_KEY, []);
+      const updated = existing.map(t =>
+        t.id === tournamentId ? { ...t, archive_details: details } : t
+      );
+      saveLocal(TOURNAMENTS_KEY, updated);
+      return;
+    }
+    await supabase.from(ARCHIVE_DETAILS_TABLE).upsert({
+      id: archiveDetailsStorageId(tournamentId),
+      name: buildArchiveDetailsStorageName(finishedAt),
+      levels: details,
+    });
+  }, [isSupabaseConfigured]);
+
   const deleteTournament = useCallback(async (id: number): Promise<void> => {
     if (!isSupabaseConfigured) {
       const existing = loadLocal<TournamentRecord[]>(TOURNAMENTS_KEY, []);
@@ -1377,6 +1398,7 @@ export function useGameState(readOnly = false) {
     fetchTournaments,
     fetchTournamentArchiveDetails,
     fetchTournamentArchiveDetailsBatch,
+    updateTournamentArchiveDetails,
     deleteTournament,
   };
 }

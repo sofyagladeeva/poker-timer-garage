@@ -30,7 +30,9 @@ import type {
   ChipLeaderEntry,
   LiveTournamentPlayer,
   FloorNotification,
+  PersonnelRecord,
 } from '../types';
+import { PersonnelForm, formatPersonnelRole, personnelTotals } from '../components/PersonnelForm';
 import { SUIT_SYMBOLS, getRankPoints } from '../types';
 import {
   buildFloorBustoutConfirmationEntries,
@@ -696,7 +698,7 @@ export function Admin() {
   const {
     gameState, blindLevels, combinations, syncReady, authoritativeReady, syncError, getAuthoritativeNow, retrySync,
     updateGameState, forceSyncDisplays, startTimer, pauseTimer, nextLevel, prevLevel, resetTournament,
-    updateBlindLevels, updateCombinations, saveTournament, fetchTournaments, fetchTournamentArchiveDetails, fetchTournamentArchiveDetailsBatch, deleteTournament,
+    updateBlindLevels, updateCombinations, saveTournament, fetchTournaments, fetchTournamentArchiveDetails, fetchTournamentArchiveDetailsBatch, updateTournamentArchiveDetails, deleteTournament,
   } = useGameState();
   const gameStateSnapshotRef = useRef(gameState);
   const displayPresenceEnabled = isDisplayPresenceEnabled();
@@ -708,9 +710,9 @@ export function Admin() {
 
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([]);
   const [archiveDetailsById, setArchiveDetailsById] = useState<Record<number, TournamentArchiveDetails | null>>({});
-  const [archiveSubTab, setArchiveSubTab] = useState<'games' | 'players'>('games');
+  const [archiveSubTab, setArchiveSubTab] = useState<'games' | 'players' | 'salary'>('games');
   const [playerHistorySearch, setPlayerHistorySearch] = useState('');
-  const [playerHistoryPeriod, setPlayerHistoryPeriod] = useState<'7' | '30' | '90' | '365' | 'all'>('all');
+  const [archivePeriod, setArchivePeriod] = useState<'7' | '30' | '90' | '365' | 'all'>('all');
   const [playerHistoryLoading, setPlayerHistoryLoading] = useState(false);
   const [playerHistorySort, setPlayerHistorySort] = useState<'games' | 'spend_desc' | 'spend_asc' | 'rebuys' | 'discount' | 'avg_desc'>('games');
   const [expandedPlayerKey, setExpandedPlayerKey] = useState<string | null>(null);
@@ -725,6 +727,19 @@ export function Admin() {
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [finishReviewOpen, setFinishReviewOpen] = useState(false);
+  const [finishStep, setFinishStep] = useState<'review' | 'personnel'>('review');
+  const [finishPersonnel, setFinishPersonnel] = useState<PersonnelRecord[]>([]);
+  const finishPersonnelRef = useRef<PersonnelRecord[]>([]);
+  useEffect(() => { finishPersonnelRef.current = finishPersonnel; }, [finishPersonnel]);
+  const [editingPersonnelId, setEditingPersonnelId] = useState<number | null>(null);
+  const [personnelExpandedId, setPersonnelExpandedId] = useState<number | null>(null);
+  const [personnelDraft, setPersonnelDraft] = useState<PersonnelRecord[]>([]);
+  const [personnelConfirm, setPersonnelConfirm] = useState<{
+    tournamentId: number; finishedAt: string;
+    oldPersonnel: PersonnelRecord[]; newPersonnel: PersonnelRecord[];
+  } | null>(null);
+  const [personnelSavingId, setPersonnelSavingId] = useState<number | null>(null);
+  const [financialExportBusy, setFinancialExportBusy] = useState(false);
   const [priceConfirmOpen, setPriceConfirmOpen] = useState(false);
   const [priceDraft, setPriceDraft] = useState({ buyIn: '', rebuy: '', addon: '' });
   const [finishBusy, setFinishBusy] = useState(false);
@@ -948,6 +963,7 @@ export function Admin() {
         })),
         summary: tournamentPlayersSummary,
         savedAt: new Date().toISOString(),
+        personnel: finishPersonnel.length > 0 ? finishPersonnel : undefined,
       }
     : null;
   const playersMissingFinalPlace = finishReviewPlayers.filter(player => (
@@ -1210,11 +1226,16 @@ export function Admin() {
     // resetTournament fails and the admin retries (gameState may have partially reset by then).
     if (!pendingTournamentSaveRef.current) {
       const latestArchiveDetails = await getLatestTournamentArchiveDetails();
+      const personnelSnapshot = finishPersonnelRef.current;
+      const baseDetails = latestArchiveDetails ?? archiveDetailsPayload;
+      const detailsToSave = baseDetails && personnelSnapshot.length > 0
+        ? { ...baseDetails, personnel: personnelSnapshot }
+        : baseDetails;
       pendingTournamentSaveRef.current = {
         saved: false,
         gs: gameState,
         levels: levelsPlayed,
-        details: latestArchiveDetails ?? archiveDetailsPayload,
+        details: detailsToSave,
       };
     }
 
@@ -1237,6 +1258,7 @@ export function Admin() {
 
       // Flow completed — clear the pending save guard.
       pendingTournamentSaveRef.current = null;
+      setFinishPersonnel([]);
 
       // After resetTournament, sessionIdRef has updated (React ran effects during the DB write
       // await). Explicitly initialise an empty players slot for the new session so the Players
@@ -1280,6 +1302,7 @@ export function Admin() {
           : 'Нельзя начать новый турнир: итоги игры из бота ещё не готовы к отправке. Проверьте места и список игроков.',
       });
       setFinishReviewOpen(true);
+      setFinishStep('review');
       setActiveTab('control');
       return;
     }
@@ -1462,7 +1485,7 @@ export function Admin() {
   useEffect(() => { archiveDetailsByIdRef.current = archiveDetailsById; }, [archiveDetailsById]);
 
   useEffect(() => {
-    if (activeTab !== 'archive' || !archiveAuthed || archiveSubTab !== 'players') return;
+    if (activeTab !== 'archive' || !archiveAuthed || (archiveSubTab !== 'players' && archiveSubTab !== 'salary')) return;
     if (tournaments.length === 0) return;
 
     const missingIds = tournaments
@@ -1596,7 +1619,7 @@ export function Admin() {
       .map(agg => {
         const entries = filterByPeriod(
           [...agg.tournaments].sort((a, b) => new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime()),
-          playerHistoryPeriod
+          archivePeriod
         );
         return { agg, entries };
       })
@@ -1692,8 +1715,103 @@ export function Admin() {
     XLSX.utils.book_append_sheet(wb, ws3, 'История игр');
 
     const dateStr = new Date().toISOString().slice(0, 10);
-    const periodLabel = playerHistoryPeriod === 'all' ? '' : `_${playerHistoryPeriod}d`;
+    const periodLabel = archivePeriod === 'all' ? '' : `_${archivePeriod}d`;
     XLSX.writeFile(wb, `garage_players_export_${dateStr}${periodLabel}.xlsx`);
+  };
+
+  const handleExportFinancialXlsx = async (tournamentsToExport: TournamentRecord[]) => {
+    setFinancialExportBusy(true);
+    try {
+      const missingIds = tournamentsToExport
+        .map(t => t.id)
+        .filter(id => !Object.prototype.hasOwnProperty.call(archiveDetailsById, id));
+
+      let detailsMap = { ...archiveDetailsById };
+      if (missingIds.length > 0) {
+        const results = await fetchTournamentArchiveDetailsBatch(missingIds);
+        detailsMap = { ...detailsMap, ...results };
+        setArchiveDetailsById(prev => ({ ...prev, ...results }));
+      }
+
+      const wb = XLSX.utils.book_new();
+
+      // Sheet 1: Игры
+      type GamesRow = {
+        'Дата': string; 'Название': string; 'Игроков': number; 'Входов': number;
+        'Ребаев': number; 'Аддонов': number; 'Бонусов': number;
+        'Оплачено ₽': number; 'Наличные ₽': number; 'Карта ₽': number;
+        'Расходы персонал ₽': number; 'Чистый доход ₽': number;
+      };
+      const gamesRows: GamesRow[] = tournamentsToExport.map(t => {
+        const details = detailsMap[t.id] ?? t.archive_details ?? null;
+        const players = details?.players ?? [];
+        const cashTotal = players.reduce((s, p) => s + (p.cashPaid ?? (p.paymentMethod === 'cash' ? p.paymentDue : 0)), 0);
+        const cardTotal = players.reduce((s, p) => s + (p.cardPaid ?? (p.paymentMethod === 'card' ? p.paymentDue : 0)), 0);
+        const revenue = cashTotal + cardTotal;
+        const { total: personnelCost } = personnelTotals(details?.personnel ?? []);
+        return {
+          'Дата': new Date(t.finished_at).toLocaleDateString('ru-RU'),
+          'Название': t.title ?? 'Без названия',
+          'Игроков': t.players,
+          'Входов': details?.summary?.entrants ?? t.players,
+          'Ребаев': t.rebuys,
+          'Аддонов': t.addon_count,
+          'Бонусов': t.bonus_count ?? 0,
+          'Оплачено ₽': revenue,
+          'Наличные ₽': cashTotal,
+          'Карта ₽': cardTotal,
+          'Расходы персонал ₽': personnelCost,
+          'Чистый доход ₽': revenue - personnelCost,
+        };
+      });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(gamesRows), 'Игры');
+
+      // Sheet 2: Персонал
+      type SalaryRow = {
+        'Дата игры': string; 'Название игры': string; 'Имя сотрудника': string;
+        'Статус': string; 'Наличными ₽': number; 'Картой ₽': number; 'Итого ₽': number;
+      };
+      const salaryRows: SalaryRow[] = [];
+      for (const t of tournamentsToExport) {
+        const details = detailsMap[t.id] ?? t.archive_details ?? null;
+        for (const p of details?.personnel ?? []) {
+          salaryRows.push({
+            'Дата игры': new Date(t.finished_at).toLocaleDateString('ru-RU'),
+            'Название игры': t.title ?? 'Без названия',
+            'Имя сотрудника': p.name,
+            'Статус': formatPersonnelRole(p),
+            'Наличными ₽': p.cashAmount,
+            'Картой ₽': p.cardAmount,
+            'Итого ₽': p.cashAmount + p.cardAmount,
+          });
+        }
+      }
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(salaryRows.length > 0 ? salaryRows : [{ 'Данные': 'Нет данных о персонале' }]), 'Персонал');
+
+      // Sheet 3: Финансовая сводка
+      const totalRevenueCash = gamesRows.reduce((s, r) => s + r['Наличные ₽'], 0);
+      const totalRevenueCard = gamesRows.reduce((s, r) => s + r['Карта ₽'], 0);
+      const totalRevenue = totalRevenueCash + totalRevenueCard;
+      const totalPersonnelCash = salaryRows.reduce((s, r) => s + r['Наличными ₽'], 0);
+      const totalPersonnelCard = salaryRows.reduce((s, r) => s + r['Картой ₽'], 0);
+      const totalPersonnel = totalPersonnelCash + totalPersonnelCard;
+      const summaryRows = [
+        { 'Показатель': 'Общий доход', 'Сумма ₽': totalRevenue },
+        { 'Показатель': '  в т.ч. наличными', 'Сумма ₽': totalRevenueCash },
+        { 'Показатель': '  в т.ч. картой', 'Сумма ₽': totalRevenueCard },
+        { 'Показатель': 'Расходы на персонал', 'Сумма ₽': totalPersonnel },
+        { 'Показатель': '  в т.ч. наличными', 'Сумма ₽': totalPersonnelCash },
+        { 'Показатель': '  в т.ч. картой', 'Сумма ₽': totalPersonnelCard },
+        { 'Показатель': 'Чистый доход', 'Сумма ₽': totalRevenue - totalPersonnel },
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Финансовая сводка');
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const periodLabel = archivePeriod === 'all' ? '' : `_${archivePeriod}d`;
+      XLSX.writeFile(wb, `garage_finance_report_${dateStr}${periodLabel}.xlsx`);
+    } finally {
+      setFinancialExportBusy(false);
+    }
   };
 
   const toggleArchiveDetails = async (tournamentId: number) => {
@@ -2829,7 +2947,7 @@ export function Admin() {
                 )}
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <button
-                    onClick={() => setFinishReviewOpen(true)}
+                    onClick={() => { setFinishReviewOpen(true); setFinishStep('review'); }}
                     className="admin-btn-secondary py-4 text-sm font-bold"
                   >
                     {resultsAlreadyCurrent ? '🧾 Итоги отправлены' : '🧾 Итоги и отправка'}
@@ -2946,7 +3064,7 @@ export function Admin() {
                     ↺ Сбросить время
                   </button>
                   <button
-                    onClick={() => setFinishReviewOpen(true)}
+                    onClick={() => { setFinishReviewOpen(true); setFinishStep('review'); }}
                     className="admin-btn-danger py-4 text-sm"
                   >
                     ✕ Завершить
@@ -3573,9 +3691,9 @@ export function Admin() {
               </div>
             ) : (
               <>
-                {/* Sub-tab switcher */}
-                <div className="flex gap-2">
-                  {(['games', 'players'] as const).map(tab => (
+                {/* Sub-tab switcher + period filter */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {(['games', 'players', 'salary'] as const).map(tab => (
                     <button
                       key={tab}
                       type="button"
@@ -3586,19 +3704,50 @@ export function Admin() {
                           : 'bg-[#111] border border-[#2D2D2D] text-[#888] hover:text-white hover:border-[#555]'
                       }`}
                     >
-                      {tab === 'games' ? 'Игры' : 'Игроки'}
+                      {tab === 'games' ? 'Игры' : tab === 'players' ? 'Игроки' : 'Зарплаты'}
                     </button>
                   ))}
+                  <div className="flex gap-1 ml-auto">
+                    {(['7', '30', '90', '365', 'all'] as PeriodFilter[]).map(p => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setArchivePeriod(p)}
+                        className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
+                          archivePeriod === p
+                            ? 'bg-[#C0392B] text-white'
+                            : 'bg-[#111] border border-[#2D2D2D] text-[#888] hover:text-white hover:border-[#555]'
+                        }`}
+                      >
+                        {p === 'all' ? 'Все' : `${p}д`}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* ── GAMES sub-tab ─────────────────────────────────────── */}
-                {archiveSubTab === 'games' && (
+                {archiveSubTab === 'games' && (() => {
+                  const cutoff = archivePeriod === 'all' ? 0 : Date.now() - Number(archivePeriod) * 24 * 60 * 60 * 1000;
+                  const filteredTournaments = archivePeriod === 'all' ? tournaments : tournaments.filter(t => new Date(t.finished_at).getTime() >= cutoff);
+                  return (
                   <>
+                {!archiveLoading && filteredTournaments.length > 0 && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => void handleExportFinancialXlsx(filteredTournaments)}
+                      disabled={financialExportBusy}
+                      className="admin-btn-secondary px-4 py-2 text-xs disabled:opacity-40"
+                    >
+                      {financialExportBusy ? 'Экспорт...' : '📊 Скачать финансовый отчёт'}
+                    </button>
+                  </div>
+                )}
                 {archiveLoading && (
                   <div className="text-[#444] text-sm text-center py-8">Загрузка...</div>
                 )}
 
-                {!archiveLoading && tournaments.length === 0 && (
+                {!archiveLoading && filteredTournaments.length === 0 && (
                   <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-8 text-center">
                     <div className="text-[#444] text-4xl mb-3">📋</div>
                     <div className="text-[#555] text-sm">Архив пуст</div>
@@ -3608,7 +3757,7 @@ export function Admin() {
                   </div>
                 )}
 
-                {tournaments.map(t => {
+                {filteredTournaments.map(t => {
                   const date = new Date(t.finished_at);
                   const dateStr = date.toLocaleDateString('ru-RU', {
                     day: 'numeric', month: 'short', year: 'numeric',
@@ -3770,6 +3919,102 @@ export function Admin() {
                                       </>
                                     )}
                                   </div>
+
+                                  {(() => {
+                                    const currentPersonnel = archiveDetails.personnel ?? [];
+                                    const revenue = archiveCashTotal + archiveCardTotal;
+                                    const { cash: pCash, card: pCard, total: pTotal } = personnelTotals(currentPersonnel);
+                                    const isExpanded = personnelExpandedId === t.id;
+                                    const isEditing = editingPersonnelId === t.id;
+                                    return (
+                                      <div className="flex flex-col gap-2">
+                                        <div className={`grid gap-2 ${revenue > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                                          <button
+                                            type="button"
+                                            onClick={() => setPersonnelExpandedId(isExpanded ? null : t.id)}
+                                            className="bg-[#111] rounded-xl p-3 text-left hover:bg-[#160808] transition-colors w-full"
+                                          >
+                                            <div className="flex items-center justify-between">
+                                              <div className="text-[#666] text-[10px] uppercase">Расходы на персонал</div>
+                                              <div className="text-[#444] text-[10px]">{isExpanded ? '▲' : '▼'}</div>
+                                            </div>
+                                            <div className={`font-black text-lg mt-1 ${pTotal > 0 ? 'text-[#C0392B]' : 'text-[#444]'}`}>
+                                              {pTotal > 0 ? `${pTotal.toLocaleString('ru-RU')} ₽` : '—'}
+                                            </div>
+                                            {pTotal > 0 && (
+                                              <div className="text-[#555] text-[10px] mt-0.5">
+                                                нал {pCash.toLocaleString('ru-RU')} ₽ · карта {pCard.toLocaleString('ru-RU')} ₽
+                                              </div>
+                                            )}
+                                          </button>
+                                          {revenue > 0 && (
+                                            <div className="bg-[#111] rounded-xl p-3">
+                                              <div className="text-[#666] text-[10px] uppercase">Чистый доход</div>
+                                              <div className={`font-black text-lg mt-1 ${revenue - pTotal >= 0 ? 'text-green-400' : 'text-[#C0392B]'}`}>
+                                                {(revenue - pTotal).toLocaleString('ru-RU')} ₽
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {isExpanded && (
+                                          <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] p-3">
+                                            <div className="flex items-center justify-between mb-2">
+                                              <div className="text-[#666] text-[10px] uppercase">Кому и сколько</div>
+                                              {!isEditing && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => { setPersonnelDraft([...currentPersonnel]); setEditingPersonnelId(t.id); }}
+                                                  className="text-[#555] text-xs hover:text-white transition-colors"
+                                                >
+                                                  {currentPersonnel.length > 0 ? 'Редактировать' : '+ Добавить'}
+                                                </button>
+                                              )}
+                                            </div>
+                                            {isEditing ? (
+                                              <>
+                                                <PersonnelForm value={personnelDraft} onChange={setPersonnelDraft} />
+                                                <div className="flex gap-2 mt-3">
+                                                  <button type="button" onClick={() => setEditingPersonnelId(null)} className="admin-btn-secondary px-4 py-2 text-sm">Отмена</button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => setPersonnelConfirm({
+                                                      tournamentId: t.id,
+                                                      finishedAt: t.finished_at,
+                                                      oldPersonnel: currentPersonnel,
+                                                      newPersonnel: personnelDraft,
+                                                    })}
+                                                    className="admin-btn-primary px-4 py-2 text-sm"
+                                                  >
+                                                    Сохранить
+                                                  </button>
+                                                </div>
+                                              </>
+                                            ) : currentPersonnel.length === 0 ? (
+                                              <div className="text-[#444] text-xs">Не заполнено</div>
+                                            ) : (
+                                              <div className="flex flex-col gap-1.5">
+                                                {currentPersonnel.map(p => (
+                                                  <div key={p.id} className="flex items-center justify-between gap-2 text-xs">
+                                                    <div className="min-w-0">
+                                                      <span className="text-white font-bold">{p.name || '—'}</span>
+                                                      <span className="text-[#555] ml-1.5">({formatPersonnelRole(p)})</span>
+                                                    </div>
+                                                    <div className="shrink-0 text-[#888] text-right">
+                                                      {p.cashAmount > 0 && <span className="mr-1">нал {p.cashAmount.toLocaleString('ru-RU')} ₽</span>}
+                                                      {p.cardAmount > 0 && <span>карта {p.cardAmount.toLocaleString('ru-RU')} ₽</span>}
+                                                      {p.cashAmount === 0 && p.cardAmount === 0 && <span className="text-[#444]">0 ₽</span>}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                                {personnelSavingId === t.id && <div className="text-[#888] text-xs mt-1">Сохранение...</div>}
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               )}
 
@@ -3812,6 +4057,7 @@ export function Admin() {
                                   </div>
                                 ))}
                               </div>
+
                             </div>
                           )}
                         </div>
@@ -3820,7 +4066,8 @@ export function Admin() {
                   );
                 })}
                   </>
-                )}
+                  );
+                })()}
 
                 {/* ── PLAYERS sub-tab ───────────────────────────────────── */}
                 {archiveSubTab === 'players' && (() => {
@@ -3839,7 +4086,7 @@ export function Admin() {
                     .map(agg => {
                       const entries = filterByPeriod(
                         [...agg.tournaments].sort((a, b) => new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime()),
-                        playerHistoryPeriod
+                        archivePeriod
                       );
                       const periodCash = entries.reduce((s, e) => s + e.cashPaid, 0);
                       const periodCard = entries.reduce((s, e) => s + e.cardPaid, 0);
@@ -3879,31 +4126,13 @@ export function Admin() {
                     <div className="flex flex-col gap-3">
                       {/* Controls */}
                       <div className="flex flex-col gap-2">
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <input
-                            type="text"
-                            value={playerHistorySearch}
-                            onChange={e => setPlayerHistorySearch(e.target.value)}
-                            placeholder="Поиск по нику"
-                            className="admin-input flex-1"
-                          />
-                          <div className="flex gap-1">
-                            {(['7', '30', '90', '365', 'all'] as PeriodFilter[]).map(p => (
-                              <button
-                                key={p}
-                                type="button"
-                                onClick={() => setPlayerHistoryPeriod(p)}
-                                className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
-                                  playerHistoryPeriod === p
-                                    ? 'bg-[#C0392B] text-white'
-                                    : 'bg-[#111] border border-[#2D2D2D] text-[#888] hover:text-white hover:border-[#555]'
-                                }`}
-                              >
-                                {p === 'all' ? 'Всё' : `${p}д`}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
+                        <input
+                          type="text"
+                          value={playerHistorySearch}
+                          onChange={e => setPlayerHistorySearch(e.target.value)}
+                          placeholder="Поиск по нику"
+                          className="admin-input"
+                        />
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-[#444] text-[10px] uppercase tracking-wider mr-1">Сортировка:</span>
                           {sortOptions.map(({ key, label }) => (
@@ -4100,6 +4329,116 @@ export function Admin() {
                           </div>
                         );
                       })}
+                    </div>
+                  );
+                })()}
+
+                {/* ── SALARY sub-tab ────────────────────────────────── */}
+                {archiveSubTab === 'salary' && (() => {
+                  const cutoff = archivePeriod === 'all' ? 0 : Date.now() - Number(archivePeriod) * 24 * 60 * 60 * 1000;
+                  const filteredTournaments = archivePeriod === 'all' ? tournaments : tournaments.filter(t => new Date(t.finished_at).getTime() >= cutoff);
+                  type SalaryEntry = {
+                    tournamentId: number; date: string; title: string;
+                    personnel: PersonnelRecord;
+                  };
+                  const rows: SalaryEntry[] = [];
+                  for (const t of filteredTournaments) {
+                    const details = archiveDetailsById[t.id] ?? t.archive_details ?? null;
+                    for (const p of details?.personnel ?? []) {
+                      rows.push({
+                        tournamentId: t.id,
+                        date: new Date(t.finished_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }),
+                        title: t.title ?? 'Без названия',
+                        personnel: p,
+                      });
+                    }
+                  }
+                  const { cash: totalCash, card: totalCard, total: grandTotal } = personnelTotals(rows.map(r => r.personnel));
+                  const loadedCount = filteredTournaments.filter(t => Object.prototype.hasOwnProperty.call(archiveDetailsById, t.id)).length;
+                  const isLoading = playerHistoryLoading || loadedCount < filteredTournaments.length;
+
+                  return (
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="text-[#555] text-xs">
+                          {isLoading
+                            ? `Загрузка данных... (${loadedCount}/${filteredTournaments.length})`
+                            : `${rows.length} выплат по ${filteredTournaments.length} играм`}
+                        </div>
+                        {rows.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => void handleExportFinancialXlsx(filteredTournaments)}
+                            disabled={financialExportBusy}
+                            className="admin-btn-secondary px-4 py-2 text-xs disabled:opacity-40"
+                          >
+                            {financialExportBusy ? 'Экспорт...' : '📊 Скачать зарплатный отчёт'}
+                          </button>
+                        )}
+                      </div>
+
+                      {rows.length === 0 && !isLoading && (
+                        <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-8 text-center">
+                          <div className="text-[#444] text-4xl mb-3">💰</div>
+                          <div className="text-[#555] text-sm">Нет данных о персонале</div>
+                          <div className="text-[#333] text-xs mt-1">
+                            Добавьте данные о персонале в архивных блоках турниров
+                          </div>
+                        </div>
+                      )}
+
+                      {rows.length > 0 && (
+                        <>
+                          <div className="grid grid-cols-3 gap-2 rounded-xl border border-[#3D1A1A] bg-[#140909] p-3">
+                            <div className="text-center">
+                              <div className="text-[#888] text-[10px] uppercase mb-1">Нал всего</div>
+                              <div className="text-white font-black text-sm">{totalCash.toLocaleString('ru-RU')} ₽</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-[#888] text-[10px] uppercase mb-1">Карта всего</div>
+                              <div className="text-white font-black text-sm">{totalCard.toLocaleString('ru-RU')} ₽</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-[#888] text-[10px] uppercase mb-1">Итого</div>
+                              <div className="text-[#C0392B] font-black text-sm">{grandTotal.toLocaleString('ru-RU')} ₽</div>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-2">
+                            {rows.map((row, idx) => {
+                              const p = row.personnel;
+                              const total = p.cashAmount + p.cardAmount;
+                              return (
+                                <div key={`${row.tournamentId}-${p.id}-${idx}`} className="bg-[#111] border border-[#2D2D2D] rounded-xl px-4 py-3">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <div className="text-white font-bold text-sm">{p.name || '—'}</div>
+                                      <div className="text-[#555] text-xs mt-0.5">{formatPersonnelRole(p)}</div>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                      <div className="text-white font-black text-sm">{total.toLocaleString('ru-RU')} ₽</div>
+                                      {p.cashAmount > 0 && p.cardAmount > 0 && (
+                                        <div className="text-[#555] text-[10px]">
+                                          нал {p.cashAmount.toLocaleString('ru-RU')} + карта {p.cardAmount.toLocaleString('ru-RU')}
+                                        </div>
+                                      )}
+                                      {p.cashAmount > 0 && p.cardAmount === 0 && (
+                                        <div className="text-[#555] text-[10px]">наличными</div>
+                                      )}
+                                      {p.cardAmount > 0 && p.cashAmount === 0 && (
+                                        <div className="text-[#555] text-[10px]">картой</div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="mt-2 text-[#444] text-[10px]">
+                                    {row.date} · {row.title}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
                     </div>
                   );
                 })()}
@@ -4464,103 +4803,124 @@ export function Admin() {
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-3 sm:items-center sm:p-6">
           <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-[#2D2D2D] bg-[#111] shadow-2xl">
             <div className="border-b border-[#2D2D2D] px-5 py-4">
-              <div className="text-white font-black text-lg uppercase tracking-[0.14em]">
-                {gameState.status === 'ended' ? 'Итоги турнира' : 'Завершить турнир'}
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-white font-black text-lg uppercase tracking-[0.14em]">
+                  {gameState.status === 'ended'
+                    ? 'Итоги турнира'
+                    : finishStep === 'personnel'
+                      ? 'Персонал'
+                      : 'Завершить турнир'}
+                </div>
+                {gameState.status !== 'ended' && (
+                  <div className="text-[#555] text-xs tracking-widest shrink-0">
+                    {finishStep === 'review' ? '1 / 2' : '2 / 2'}
+                  </div>
+                )}
               </div>
               <div className="text-[#888] text-sm mt-1">
                 {gameState.status === 'ended'
                   ? 'Проверьте результаты прямо в этом окне, внесите правки если нужно и отправьте итог в бот отсюда же.'
-                  : requiresBotResults
-                    ? 'Проверьте результаты прямо в этом окне. После кнопки `Завершить и отправить в бот` турнир завершится только после успешной отправки.'
-                    : 'Проверьте результаты прямо в этом окне и завершите турнир отсюда же.'}
+                  : finishStep === 'personnel'
+                    ? 'Внесите выплаты сотрудникам или нажмите «Внести позже» — данные можно добавить в архиве.'
+                    : requiresBotResults
+                      ? 'Проверьте результаты прямо в этом окне. После кнопки `Завершить и отправить в бот` турнир завершится только после успешной отправки.'
+                      : 'Проверьте результаты прямо в этом окне и завершите турнир отсюда же.'}
               </div>
             </div>
 
             <div className="overflow-y-auto px-5 py-4">
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-xl bg-[#0A0A0A] px-3 py-3 text-center">
-                  <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">В игре</div>
-                  <div className="mt-1 text-2xl font-black text-white">{tournamentPlayersSummary.active}</div>
-                </div>
-                <div className="rounded-xl bg-[#0A0A0A] px-3 py-3 text-center">
-                  <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Выбыли</div>
-                  <div className="mt-1 text-2xl font-black text-white">{tournamentPlayersSummary.bustouts}</div>
-                </div>
-                <div className="rounded-xl bg-[#0A0A0A] px-3 py-3 text-center">
-                  <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Входов</div>
-                  <div className="mt-1 text-2xl font-black text-white">{tournamentPlayersSummary.entrants}</div>
-                </div>
-              </div>
+              {(gameState.status === 'ended' || finishStep === 'review') && (
+                <>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded-xl bg-[#0A0A0A] px-3 py-3 text-center">
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">В игре</div>
+                      <div className="mt-1 text-2xl font-black text-white">{tournamentPlayersSummary.active}</div>
+                    </div>
+                    <div className="rounded-xl bg-[#0A0A0A] px-3 py-3 text-center">
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Выбыли</div>
+                      <div className="mt-1 text-2xl font-black text-white">{tournamentPlayersSummary.bustouts}</div>
+                    </div>
+                    <div className="rounded-xl bg-[#0A0A0A] px-3 py-3 text-center">
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Входов</div>
+                      <div className="mt-1 text-2xl font-black text-white">{tournamentPlayersSummary.entrants}</div>
+                    </div>
+                  </div>
 
-              {missingBotRosterForFinish && (
-                <div className="mt-4 rounded-xl border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
-                  Перед завершением игры из бота нужен список игроков. Нажмите `Синхронизировать` или добавьте игроков вручную.
-                </div>
+                  {missingBotRosterForFinish && (
+                    <div className="mt-4 rounded-xl border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
+                      Перед завершением игры из бота нужен список игроков. Нажмите `Синхронизировать` или добавьте игроков вручную.
+                    </div>
+                  )}
+
+                  {playersMissingFinalPlace > 0 && (
+                    <div className="mt-4 rounded-xl border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
+                      Без итогового места: {playersMissingFinalPlace}. Перед отправкой переведите оставшихся игроков в `Выбыл` и при необходимости поправьте место вручную.
+                    </div>
+                  )}
+
+                  {duplicateResultPlaces.length > 0 && (
+                    <div className="mt-4 rounded-xl border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm text-red-300">
+                      Дублируются места: {duplicateResultPlacesLabel}. Перед отправкой у каждого участника должно быть уникальное итоговое место.
+                    </div>
+                  )}
+
+                  {visibleResultsNotice && (
+                    <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
+                      visibleResultsNotice.tone === 'success'
+                        ? 'border-green-900/60 bg-green-950/30 text-green-200'
+                        : visibleResultsNotice.tone === 'warning'
+                          ? 'border-amber-900/60 bg-amber-950/30 text-amber-200'
+                          : 'border-red-900/60 bg-red-950/40 text-red-300'
+                    }`}>
+                      {visibleResultsNotice.text}
+                    </div>
+                  )}
+
+                  {resultsAlreadyCurrent && (
+                    <div className="mt-4 rounded-xl border border-green-900/60 bg-green-950/30 px-4 py-3 text-sm text-green-200">
+                      Текущая версия итогов уже отправлена в бот{resultsSentLabel ? ` · ${resultsSentLabel}` : ''}.
+                    </div>
+                  )}
+
+                  {resultsNeedResubmit && (
+                    <div className="mt-4 rounded-xl border border-blue-900/60 bg-blue-950/30 px-4 py-3 text-sm text-blue-200">
+                      После прошлой отправки данные менялись. Можно отправить обновлённую версию результатов.
+                    </div>
+                  )}
+
+                  <div className="mt-4">
+                    <TournamentPlayersTab
+                      groupedPlayers={groupedPlayers}
+                      playerSyncState={playerSyncState}
+                      playerBackups={playerBackups}
+                      botSyncState={botSyncState}
+                      tournamentBotId={gameState.tournamentBotId}
+                      tournamentDate={selectedBotGame?.date ?? null}
+                      earlyBirdBonusEnabled={selectedTournamentIsClassic}
+                      isTournamentEnded={false}
+                      preferMobileCards={tabletAdminLayout}
+                      reviewPlayers={[]}
+                      tableCount={gameState.tableCount}
+                      onOpenControlTab={() => {}}
+                      onRefreshFromBot={refreshFromBot}
+                      onAddManualPlayer={addManualPlayer}
+                      onRemovePlayer={removePlayer}
+                      onUpdatePlayerField={updatePlayerField}
+                      onSetPlayerArrival={setPlayerArrival}
+                      onMarkPlayerOut={markPlayerOut}
+                      onRestorePlayer={restorePlayer}
+                      onRestorePlayersFromBackup={restorePlayersFromBackup}
+                      onAssignSeat={async (playerId, tableNumber, seatNumber) => {
+                        await assignPlayerSeat(playerId, tableNumber, seatNumber);
+                      }}
+                    />
+                  </div>
+                </>
               )}
 
-              {playersMissingFinalPlace > 0 && (
-                <div className="mt-4 rounded-xl border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
-                  Без итогового места: {playersMissingFinalPlace}. Перед отправкой переведите оставшихся игроков в `Выбыл` и при необходимости поправьте место вручную.
-                </div>
+              {gameState.status !== 'ended' && finishStep === 'personnel' && (
+                <PersonnelForm value={finishPersonnel} onChange={setFinishPersonnel} />
               )}
-
-              {duplicateResultPlaces.length > 0 && (
-                <div className="mt-4 rounded-xl border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm text-red-300">
-                  Дублируются места: {duplicateResultPlacesLabel}. Перед отправкой у каждого участника должно быть уникальное итоговое место.
-                </div>
-              )}
-
-              {visibleResultsNotice && (
-                <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
-                  visibleResultsNotice.tone === 'success'
-                    ? 'border-green-900/60 bg-green-950/30 text-green-200'
-                    : visibleResultsNotice.tone === 'warning'
-                      ? 'border-amber-900/60 bg-amber-950/30 text-amber-200'
-                      : 'border-red-900/60 bg-red-950/40 text-red-300'
-                }`}>
-                  {visibleResultsNotice.text}
-                </div>
-              )}
-
-              {resultsAlreadyCurrent && (
-                <div className="mt-4 rounded-xl border border-green-900/60 bg-green-950/30 px-4 py-3 text-sm text-green-200">
-                  Текущая версия итогов уже отправлена в бот{resultsSentLabel ? ` · ${resultsSentLabel}` : ''}.
-                </div>
-              )}
-
-              {resultsNeedResubmit && (
-                <div className="mt-4 rounded-xl border border-blue-900/60 bg-blue-950/30 px-4 py-3 text-sm text-blue-200">
-                  После прошлой отправки данные менялись. Можно отправить обновлённую версию результатов.
-                </div>
-              )}
-
-              <div className="mt-4">
-                <TournamentPlayersTab
-                  groupedPlayers={groupedPlayers}
-                  playerSyncState={playerSyncState}
-                  playerBackups={playerBackups}
-                  botSyncState={botSyncState}
-                  tournamentBotId={gameState.tournamentBotId}
-                  tournamentDate={selectedBotGame?.date ?? null}
-                  earlyBirdBonusEnabled={selectedTournamentIsClassic}
-                  isTournamentEnded={false}
-                  preferMobileCards={tabletAdminLayout}
-                  reviewPlayers={[]}
-                  tableCount={gameState.tableCount}
-                  onOpenControlTab={() => {}}
-                  onRefreshFromBot={refreshFromBot}
-                  onAddManualPlayer={addManualPlayer}
-                  onRemovePlayer={removePlayer}
-                  onUpdatePlayerField={updatePlayerField}
-                  onSetPlayerArrival={setPlayerArrival}
-                  onMarkPlayerOut={markPlayerOut}
-                  onRestorePlayer={restorePlayer}
-                  onRestorePlayersFromBackup={restorePlayersFromBackup}
-                  onAssignSeat={async (playerId, tableNumber, seatNumber) => {
-                    await assignPlayerSeat(playerId, tableNumber, seatNumber);
-                  }}
-                />
-              </div>
             </div>
 
             <div className="border-t border-[#2D2D2D] px-5 py-4">
@@ -4590,7 +4950,7 @@ export function Admin() {
                     {newTournamentBusy ? 'Сохранение...' : '↺ Новый турнир'}
                   </button>
                 </div>
-              ) : (
+              ) : finishStep === 'review' ? (
                 <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                   <button
                     type="button"
@@ -4598,6 +4958,32 @@ export function Admin() {
                     className="admin-btn-secondary px-4 py-3 text-sm"
                   >
                     Отмена
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFinishStep('personnel')}
+                    disabled={!canFinishTournamentFromReview}
+                    className="admin-btn-danger px-4 py-3 text-sm disabled:opacity-40"
+                  >
+                    Далее: Персонал →
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setFinishStep('review')}
+                    className="admin-btn-secondary px-4 py-3 text-sm"
+                  >
+                    ← Назад
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { finishPersonnelRef.current = []; void finishAndSubmitTournament(); }}
+                    disabled={!canFinishTournamentFromReview}
+                    className="admin-btn-secondary px-4 py-3 text-sm disabled:opacity-40"
+                  >
+                    Внести позже
                   </button>
                   <button
                     type="button"
@@ -4614,6 +5000,100 @@ export function Admin() {
         </div>
       )}
     </div>
+
+    {personnelConfirm && (() => {
+      const { oldPersonnel, newPersonnel, tournamentId, finishedAt } = personnelConfirm;
+      const oldById = new Map(oldPersonnel.map(p => [p.id, p]));
+      const newById = new Map(newPersonnel.map(p => [p.id, p]));
+      const diffRows: Array<{ type: 'added' | 'removed' | 'changed'; old?: PersonnelRecord; new?: PersonnelRecord }> = [];
+      for (const p of oldPersonnel) {
+        const updated = newById.get(p.id);
+        if (!updated) diffRows.push({ type: 'removed', old: p });
+        else if (updated.name !== p.name || updated.cashAmount !== p.cashAmount || updated.cardAmount !== p.cardAmount || updated.role !== p.role || updated.roleLabel !== p.roleLabel)
+          diffRows.push({ type: 'changed', old: p, new: updated });
+      }
+      for (const p of newPersonnel) {
+        if (!oldById.has(p.id)) diffRows.push({ type: 'added', new: p });
+      }
+      const noChanges = diffRows.length === 0;
+
+      return (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-6">
+          <div className="w-full max-w-md rounded-3xl border border-[#2D2D2D] bg-[#111] shadow-2xl">
+            <div className="border-b border-[#2D2D2D] px-5 py-4 flex items-center justify-between gap-3">
+              <div className="text-white font-black text-base uppercase tracking-[0.12em]">Подтвердить изменения</div>
+              <button type="button" onClick={() => setPersonnelConfirm(null)} className="text-[#666] hover:text-white text-lg leading-none">✕</button>
+            </div>
+            <div className="px-5 py-4 flex flex-col gap-3 max-h-[60vh] overflow-y-auto">
+              {noChanges ? (
+                <div className="text-[#888] text-sm">Изменений нет. Данные уже актуальны.</div>
+              ) : (
+                <>
+                  <div className="text-[#888] text-sm mb-1">Следующие изменения будут сохранены:</div>
+                  {diffRows.map((row, idx) => (
+                    <div key={idx} className={"rounded-xl p-3 text-sm " + (row.type === 'added' ? 'bg-green-950/40 border border-green-900/40' : row.type === 'removed' ? 'bg-red-950/40 border border-red-900/40' : 'bg-[#0A0A0A] border border-[#2D2D2D]')}>
+                      {row.type === 'added' && (
+                        <>
+                          <div className="text-green-400 text-[10px] uppercase mb-1">Добавлен</div>
+                          <div className="text-white font-bold">{row.new!.name || '—'} <span className="text-[#666] font-normal">({formatPersonnelRole(row.new!)})</span></div>
+                          <div className="text-[#888] text-xs mt-0.5">нал {row.new!.cashAmount.toLocaleString('ru-RU')} ₽ · карта {row.new!.cardAmount.toLocaleString('ru-RU')} ₽</div>
+                        </>
+                      )}
+                      {row.type === 'removed' && (
+                        <>
+                          <div className="text-[#C0392B] text-[10px] uppercase mb-1">Удалён</div>
+                          <div className="text-[#888] line-through">{row.old!.name || '—'} ({formatPersonnelRole(row.old!)})</div>
+                        </>
+                      )}
+                      {row.type === 'changed' && (
+                        <>
+                          <div className="text-[#888] text-[10px] uppercase mb-1">Изменён</div>
+                          <div className="text-white font-bold">{row.new!.name || '—'} <span className="text-[#666] font-normal">({formatPersonnelRole(row.new!)})</span></div>
+                          <div className="flex gap-2 mt-1 text-xs">
+                            <div className="text-[#555]">было: нал {row.old!.cashAmount.toLocaleString('ru-RU')} + карта {row.old!.cardAmount.toLocaleString('ru-RU')}</div>
+                            <div className="text-[#888]">→</div>
+                            <div className="text-white">нал {row.new!.cashAmount.toLocaleString('ru-RU')} + карта {row.new!.cardAmount.toLocaleString('ru-RU')}</div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+            <div className="border-t border-[#2D2D2D] px-5 py-4 flex gap-2 justify-end">
+              <button type="button" onClick={() => setPersonnelConfirm(null)} className="admin-btn-secondary px-4 py-2 text-sm">
+                Отмена
+              </button>
+              {!noChanges && (
+                <button
+                  type="button"
+                  disabled={personnelSavingId === tournamentId}
+                  onClick={async () => {
+                    setPersonnelSavingId(tournamentId);
+                    try {
+                      const currentDetails = archiveDetailsById[tournamentId] ?? tournaments.find(t => t.id === tournamentId)?.archive_details ?? null;
+                      if (currentDetails) {
+                        const updated = { ...currentDetails, personnel: newPersonnel };
+                        await updateTournamentArchiveDetails(tournamentId, finishedAt, updated);
+                        setArchiveDetailsById(prev => ({ ...prev, [tournamentId]: updated }));
+                      }
+                      setPersonnelConfirm(null);
+                      setEditingPersonnelId(null);
+                    } finally {
+                      setPersonnelSavingId(null);
+                    }
+                  }}
+                  className="admin-btn-primary px-4 py-2 text-sm disabled:opacity-40"
+                >
+                  {personnelSavingId === tournamentId ? 'Сохранение...' : 'Подтвердить'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    })()}
 
     {showScrollTop && (
       <button
