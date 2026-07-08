@@ -1,4 +1,5 @@
 import type { PersonnelRecord, PersonnelRole } from '../types';
+import { personnelTotals } from '../personnel';
 
 function makePersonnelId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -9,18 +10,6 @@ function makePersonnelId(): string {
 
 function blankPersonnel(): PersonnelRecord {
   return { id: makePersonnelId(), name: '', role: 'dealer', roleLabel: 'Дилер', cashAmount: 0, cardAmount: 0 };
-}
-
-export function formatPersonnelRole(p: Pick<PersonnelRecord, 'role' | 'roleLabel'>): string {
-  if (p.role === 'dealer') return 'Дилер';
-  if (p.role === 'admin') return 'Админ';
-  return p.roleLabel || 'Другое';
-}
-
-export function personnelTotals(personnel: PersonnelRecord[]) {
-  const cash = personnel.reduce((s, p) => s + p.cashAmount, 0);
-  const card = personnel.reduce((s, p) => s + p.cardAmount, 0);
-  return { cash, card, total: cash + card };
 }
 
 interface PersonnelFormProps {
@@ -43,7 +32,7 @@ export function PersonnelForm({ value, onChange }: PersonnelFormProps) {
       {value.map(p => {
         const rowTotal = p.cashAmount + p.cardAmount;
         return (
-          <div key={p.id} className="bg-[#0A0A0A] rounded-xl border border-[#2D2D2D] p-3 flex flex-col gap-2">
+          <div key={p.id} className="bg-[#0A0A0A] rounded-xl border border-[#2D2D2D] p-3 flex flex-col gap-3">
             <div className="flex gap-2 items-center">
               <input
                 type="text"
@@ -55,13 +44,13 @@ export function PersonnelForm({ value, onChange }: PersonnelFormProps) {
               <button
                 type="button"
                 onClick={() => remove(p.id)}
-                className="text-[#555] hover:text-[#C0392B] transition-colors text-sm px-2 py-2 leading-none shrink-0"
+                className="personnel-remove-button grid h-10 w-10 place-items-center rounded-lg text-[#555] hover:bg-[#1A1A1A] hover:text-[#C0392B] transition-colors text-sm leading-none shrink-0"
               >
                 ✕
               </button>
             </div>
 
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <select
                 value={p.role}
                 onChange={e => {
@@ -71,7 +60,7 @@ export function PersonnelForm({ value, onChange }: PersonnelFormProps) {
                     roleLabel: role === 'custom' ? '' : (role === 'dealer' ? 'Дилер' : 'Админ'),
                   });
                 }}
-                className="admin-input flex-1 min-w-[120px]"
+                className="admin-input flex-1 min-w-0"
               >
                 <option value="dealer">Дилер</option>
                 <option value="admin">Админ</option>
@@ -84,12 +73,12 @@ export function PersonnelForm({ value, onChange }: PersonnelFormProps) {
                   placeholder="Должность"
                   value={p.roleLabel}
                   onChange={e => update(p.id, { roleLabel: e.target.value })}
-                  className="admin-input flex-1 min-w-[120px]"
+                  className="admin-input flex-1 min-w-0"
                 />
               )}
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="personnel-money-grid grid grid-cols-2 gap-2 sm:grid-cols-3">
               <div>
                 <label className="text-[#555] text-[10px] uppercase tracking-widest block mb-1">Наличными ₽</label>
                 <input
@@ -114,7 +103,7 @@ export function PersonnelForm({ value, onChange }: PersonnelFormProps) {
                   className="admin-input w-full"
                 />
               </div>
-              <div>
+              <div className="col-span-2 sm:col-span-1">
                 <label className="text-[#555] text-[10px] uppercase tracking-widest block mb-1">Итого ₽</label>
                 <div className="admin-input w-full text-white font-bold bg-[#111] flex items-center">
                   {rowTotal.toLocaleString('ru-RU')}
@@ -130,7 +119,7 @@ export function PersonnelForm({ value, onChange }: PersonnelFormProps) {
       </button>
 
       {value.length > 0 && (
-        <div className="grid grid-cols-3 gap-2 rounded-xl border border-[#3D1A1A] bg-[#140909] p-3">
+        <div className="personnel-summary-grid grid grid-cols-1 gap-2 rounded-xl border border-[#3D1A1A] bg-[#140909] p-3 sm:grid-cols-3">
           <div className="text-center">
             <div className="text-[#888] text-[10px] uppercase mb-1">Нал итого</div>
             <div className="text-white font-black text-sm">{totalCash.toLocaleString('ru-RU')} ₽</div>

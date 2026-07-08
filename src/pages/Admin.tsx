@@ -32,7 +32,8 @@ import type {
   FloorNotification,
   PersonnelRecord,
 } from '../types';
-import { PersonnelForm, formatPersonnelRole, personnelTotals } from '../components/PersonnelForm';
+import { PersonnelForm } from '../components/PersonnelForm';
+import { formatPersonnelRole, personnelTotals } from '../personnel';
 import { SUIT_SYMBOLS, getRankPoints } from '../types';
 import {
   buildFloorBustoutConfirmationEntries,
@@ -2424,6 +2425,14 @@ export function Admin() {
     setActiveTab(tabId);
   };
 
+  const selectArchiveSubTab = (tabId: 'games' | 'players' | 'salary') => {
+    setArchiveSubTab(tabId);
+  };
+
+  const selectArchivePeriod = (period: PeriodFilter) => {
+    setArchivePeriod(period);
+  };
+
   const applyAnteStartLevel = (startLevel: number) => {
     updateBlindLevels(
       blindLevels.map(level => {
@@ -3692,13 +3701,14 @@ export function Admin() {
             ) : (
               <>
                 {/* Sub-tab switcher + period filter */}
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
                   {(['games', 'players', 'salary'] as const).map(tab => (
                     <button
                       key={tab}
                       type="button"
-                      onClick={() => setArchiveSubTab(tab)}
-                      className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-colors ${
+                      onClick={() => selectArchiveSubTab(tab)}
+                      className={`admin-filter-button min-h-10 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-colors sm:px-4 ${
                         archiveSubTab === tab
                           ? 'bg-[#C0392B] text-white'
                           : 'bg-[#111] border border-[#2D2D2D] text-[#888] hover:text-white hover:border-[#555]'
@@ -3707,13 +3717,14 @@ export function Admin() {
                       {tab === 'games' ? 'Игры' : tab === 'players' ? 'Игроки' : 'Зарплаты'}
                     </button>
                   ))}
-                  <div className="flex gap-1 ml-auto">
+                  </div>
+                  <div className="grid grid-cols-5 gap-1 sm:flex">
                     {(['7', '30', '90', '365', 'all'] as PeriodFilter[]).map(p => (
                       <button
                         key={p}
                         type="button"
-                        onClick={() => setArchivePeriod(p)}
-                        className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
+                        onClick={() => selectArchivePeriod(p)}
+                        className={`admin-filter-button min-h-10 px-2 py-2 rounded-lg text-xs font-bold transition-colors sm:px-3 ${
                           archivePeriod === p
                             ? 'bg-[#C0392B] text-white'
                             : 'bg-[#111] border border-[#2D2D2D] text-[#888] hover:text-white hover:border-[#555]'
@@ -3727,7 +3738,7 @@ export function Admin() {
 
                 {/* ── GAMES sub-tab ─────────────────────────────────────── */}
                 {archiveSubTab === 'games' && (() => {
-                  const cutoff = archivePeriod === 'all' ? 0 : Date.now() - Number(archivePeriod) * 24 * 60 * 60 * 1000;
+                  const cutoff = archivePeriod === 'all' ? 0 : presenceNow - Number(archivePeriod) * 24 * 60 * 60 * 1000;
                   const filteredTournaments = archivePeriod === 'all' ? tournaments : tournaments.filter(t => new Date(t.finished_at).getTime() >= cutoff);
                   return (
                   <>
@@ -3928,7 +3939,7 @@ export function Admin() {
                                     const isEditing = editingPersonnelId === t.id;
                                     return (
                                       <div className="flex flex-col gap-2">
-                                        <div className={`grid gap-2 ${revenue > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                                        <div className={`grid gap-2 ${revenue > 0 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
                                           <button
                                             type="button"
                                             onClick={() => setPersonnelExpandedId(isExpanded ? null : t.id)}
@@ -3995,12 +4006,12 @@ export function Admin() {
                                             ) : (
                                               <div className="flex flex-col gap-1.5">
                                                 {currentPersonnel.map(p => (
-                                                  <div key={p.id} className="flex items-center justify-between gap-2 text-xs">
+                                                  <div key={p.id} className="flex flex-col gap-1 rounded-lg bg-[#111] p-2 text-xs sm:flex-row sm:items-center sm:justify-between">
                                                     <div className="min-w-0">
                                                       <span className="text-white font-bold">{p.name || '—'}</span>
                                                       <span className="text-[#555] ml-1.5">({formatPersonnelRole(p)})</span>
                                                     </div>
-                                                    <div className="shrink-0 text-[#888] text-right">
+                                                    <div className="shrink-0 text-[#888] text-left sm:text-right">
                                                       {p.cashAmount > 0 && <span className="mr-1">нал {p.cashAmount.toLocaleString('ru-RU')} ₽</span>}
                                                       {p.cardAmount > 0 && <span>карта {p.cardAmount.toLocaleString('ru-RU')} ₽</span>}
                                                       {p.cashAmount === 0 && p.cardAmount === 0 && <span className="text-[#444]">0 ₽</span>}
@@ -4335,7 +4346,7 @@ export function Admin() {
 
                 {/* ── SALARY sub-tab ────────────────────────────────── */}
                 {archiveSubTab === 'salary' && (() => {
-                  const cutoff = archivePeriod === 'all' ? 0 : Date.now() - Number(archivePeriod) * 24 * 60 * 60 * 1000;
+                  const cutoff = archivePeriod === 'all' ? 0 : presenceNow - Number(archivePeriod) * 24 * 60 * 60 * 1000;
                   const filteredTournaments = archivePeriod === 'all' ? tournaments : tournaments.filter(t => new Date(t.finished_at).getTime() >= cutoff);
                   type SalaryEntry = {
                     tournamentId: number; date: string; title: string;
@@ -4359,7 +4370,7 @@ export function Admin() {
 
                   return (
                     <div className="flex flex-col gap-3">
-                      <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="text-[#555] text-xs">
                           {isLoading
                             ? `Загрузка данных... (${loadedCount}/${filteredTournaments.length})`
@@ -4370,7 +4381,7 @@ export function Admin() {
                             type="button"
                             onClick={() => void handleExportFinancialXlsx(filteredTournaments)}
                             disabled={financialExportBusy}
-                            className="admin-btn-secondary px-4 py-2 text-xs disabled:opacity-40"
+                            className="admin-btn-secondary w-full px-4 py-3 text-xs disabled:opacity-40 sm:w-auto sm:py-2"
                           >
                             {financialExportBusy ? 'Экспорт...' : '📊 Скачать зарплатный отчёт'}
                           </button>
@@ -4389,7 +4400,7 @@ export function Admin() {
 
                       {rows.length > 0 && (
                         <>
-                          <div className="grid grid-cols-3 gap-2 rounded-xl border border-[#3D1A1A] bg-[#140909] p-3">
+                          <div className="grid grid-cols-1 gap-2 rounded-xl border border-[#3D1A1A] bg-[#140909] p-3 sm:grid-cols-3">
                             <div className="text-center">
                               <div className="text-[#888] text-[10px] uppercase mb-1">Нал всего</div>
                               <div className="text-white font-black text-sm">{totalCash.toLocaleString('ru-RU')} ₽</div>
@@ -4410,12 +4421,12 @@ export function Admin() {
                               const total = p.cashAmount + p.cardAmount;
                               return (
                                 <div key={`${row.tournamentId}-${p.id}-${idx}`} className="bg-[#111] border border-[#2D2D2D] rounded-xl px-4 py-3">
-                                  <div className="flex items-start justify-between gap-2">
+                                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                     <div className="min-w-0">
-                                      <div className="text-white font-bold text-sm">{p.name || '—'}</div>
+                                      <div className="text-white font-bold text-sm break-words">{p.name || '—'}</div>
                                       <div className="text-[#555] text-xs mt-0.5">{formatPersonnelRole(p)}</div>
                                     </div>
-                                    <div className="text-right shrink-0">
+                                    <div className="text-left shrink-0 sm:text-right">
                                       <div className="text-white font-black text-sm">{total.toLocaleString('ru-RU')} ₽</div>
                                       {p.cashAmount > 0 && p.cardAmount > 0 && (
                                         <div className="text-[#555] text-[10px]">

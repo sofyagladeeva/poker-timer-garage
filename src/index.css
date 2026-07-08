@@ -26,6 +26,8 @@ body {
   color: white;
   font-family: 'JetBrains Mono', 'Courier New', monospace;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
 }
 
 #root {
@@ -125,14 +127,18 @@ body.tv-safe-display {
   border-radius: 8px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, opacity 0.15s;
+  transition: background 0.15s, opacity 0.15s, transform 0.15s;
   font-family: inherit;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
+.admin-btn:active {
+  transform: scale(0.96);
+}
 .admin-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+  transform: none;
 }
 
 .admin-btn-primary {
@@ -146,10 +152,16 @@ body.tv-safe-display {
   font-family: inherit;
   background: #C0392B;
   color: white;
-  transition: background 0.15s;
+  transition: background 0.15s, transform 0.15s;
   padding: 8px 16px;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+}
+.admin-btn-primary:active {
+  transform: scale(0.96);
+}
+.admin-btn-primary:disabled {
+  transform: none;
 }
 .admin-btn-primary:hover {
   background: #E74C3C;
@@ -166,10 +178,16 @@ body.tv-safe-display {
   font-family: inherit;
   background: #1A1A1A;
   color: #aaa;
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s, transform 0.15s;
   padding: 8px 16px;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+}
+.admin-btn-secondary:active {
+  transform: scale(0.96);
+}
+.admin-btn-secondary:disabled {
+  transform: none;
 }
 .admin-btn-secondary:hover {
   background: #252525;
@@ -187,10 +205,21 @@ body.tv-safe-display {
   font-family: inherit;
   background: #4A1010;
   color: #E74C3C;
-  transition: background 0.15s;
+  transition: background 0.15s, transform 0.15s;
   padding: 8px 14px;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+}
+.admin-btn-danger:active {
+  transform: scale(0.96);
+}
+.admin-btn-danger:disabled {
+  transform: none;
+}
+
+.personnel-money-grid,
+.personnel-summary-grid {
+  font-variant-numeric: tabular-nums;
 }
 .admin-btn-danger:hover {
   background: #6B1515;
@@ -241,5 +270,16 @@ body.tv-safe-display {
   .admin-tablet-shell .mobile-counter-value {
     min-width: 36px;
     font-size: 22px;
+  }
+
+  .admin-tablet-shell .personnel-money-grid,
+  .admin-tablet-shell .personnel-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .admin-tablet-shell .personnel-remove-button {
+    height: 52px;
+    width: 52px;
+    border-radius: 12px;
   }
 }
