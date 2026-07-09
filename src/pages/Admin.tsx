@@ -2730,6 +2730,14 @@ export function Admin() {
       setStaffDeletePassword('');
       setStaffDeleteError(false);
       if (staffDraft?.id === member.id) setStaffDraft(null);
+      const deletedName = member.name.trim().toLocaleLowerCase('ru');
+      const personnelWithoutDeleted = finishPersonnel.filter(record =>
+        record.staffMemberId !== member.id &&
+        !(record.staffMemberId == null && record.name.trim().toLocaleLowerCase('ru') === deletedName)
+      );
+      if (personnelWithoutDeleted.length !== finishPersonnel.length) {
+        handlePersonnelChange(personnelWithoutDeleted);
+      }
     } catch (error) {
       setStaffError(error instanceof Error ? error.message : 'Не удалось удалить сотрудника.');
     } finally {
