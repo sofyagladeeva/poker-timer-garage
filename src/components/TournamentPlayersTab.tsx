@@ -39,6 +39,7 @@ type Props = {
   isTournamentEnded: boolean;
   preferMobileCards?: boolean;
   reviewPlayers: LiveTournamentPlayer[];
+  cashAdditionalContent?: ReactNode;
   onOpenControlTab: () => void;
   onRefreshFromBot: (force?: boolean) => Promise<boolean>;
   onAddManualPlayer: (name: string) => Promise<boolean>;
@@ -63,6 +64,7 @@ export function TournamentPlayersTab({
   isTournamentEnded,
   preferMobileCards = false,
   reviewPlayers,
+  cashAdditionalContent,
   onOpenControlTab,
   onRefreshFromBot,
   onAddManualPlayer,
@@ -417,7 +419,7 @@ export function TournamentPlayersTab({
           </div>
         )}
 
-        {arrivedPlayers.length > 0 && (
+        {(arrivedPlayers.length > 0 || cashAdditionalContent) && (
           <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-3">
             <div className="flex items-center justify-between gap-3">
               <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Касса</div>
@@ -430,7 +432,9 @@ export function TournamentPlayersTab({
               </button>
             </div>
             {cashSummaryOpen && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+              <div className="mt-3 flex flex-col gap-3">
+              {arrivedPlayers.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div className="rounded-lg bg-[#111] px-3 py-2">
                   <div className="text-[#555] text-[10px] uppercase">К оплате</div>
                   <div className="text-white font-black text-base mt-0.5">{payTotalDue.toLocaleString('ru-RU')} ₽</div>
@@ -475,6 +479,13 @@ export function TournamentPlayersTab({
                     {payUnpaid.toLocaleString('ru-RU')} ₽
                   </div>
                 </button>
+              </div>
+              )}
+              {cashAdditionalContent && (
+                <div className="border-t border-[#2D2D2D] pt-3">
+                  {cashAdditionalContent}
+                </div>
+              )}
               </div>
             )}
           </div>

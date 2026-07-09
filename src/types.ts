@@ -231,8 +231,21 @@ export interface TournamentArchivePlayerRecord {
 
 export type PersonnelRole = 'dealer' | 'admin' | 'custom';
 
+export interface StaffMember {
+  id: string;
+  name: string;
+  role: PersonnelRole;
+  roleLabel: string;
+  baseRate: number;
+  phone: string;
+  telegramUsername: string;
+  active: boolean;
+  createdAt: string;
+}
+
 export interface PersonnelRecord {
   id: string;
+  staffMemberId?: string;
   name: string;
   role: PersonnelRole;
   roleLabel: string;

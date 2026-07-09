@@ -31,6 +31,7 @@ import type {
   LiveTournamentPlayer,
   FloorNotification,
   PersonnelRecord,
+  StaffMember,
 } from '../types';
 import { PersonnelForm } from '../components/PersonnelForm';
 import { formatPersonnelRole, personnelTotals } from '../personnel';
@@ -79,6 +80,18 @@ import {
   isDisplayPresenceEnabled,
 } from '../displayPresence';
 import type { DisplayClient } from '../displayPresence';
+import {
+  createStaffMember,
+  deleteStaffMember,
+  deletePersonnelDraft,
+  fetchPersonnelDraft,
+  fetchStaffDirectory,
+  isPersonnelDraftRowId,
+  loadLocalStaffDirectory,
+  mergePersonnelRecords,
+  savePersonnelDraft,
+  saveStaffMember,
+} from '../staffDirectory';
 
 // ─── Error Boundary ────────────────────────────────────────────────────────
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
@@ -711,7 +724,7 @@ export function Admin() {
 
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([]);
   const [archiveDetailsById, setArchiveDetailsById] = useState<Record<number, TournamentArchiveDetails | null>>({});
-  const [archiveSubTab, setArchiveSubTab] = useState<'games' | 'players' | 'salary'>('games');
+  const [archiveSubTab, setArchiveSubTab] = useState<'games' | 'players' | 'salary' | 'staff'>('games');
   const [playerHistorySearch, setPlayerHistorySearch] = useState('');
   const [archivePeriod, setArchivePeriod] = useState<'7' | '30' | '90' | '365' | 'all'>('all');
   const [playerHistoryLoading, setPlayerHistoryLoading] = useState(false);
@@ -732,6 +745,17 @@ export function Admin() {
   const [finishPersonnel, setFinishPersonnel] = useState<PersonnelRecord[]>([]);
   const finishPersonnelRef = useRef<PersonnelRecord[]>([]);
   useEffect(() => { finishPersonnelRef.current = finishPersonnel; }, [finishPersonnel]);
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>(() => loadLocalStaffDirectory());
+  const [staffDraft, setStaffDraft] = useState<StaffMember | null>(null);
+  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
+  const [staffContactOpenId, setStaffContactOpenId] = useState<string | null>(null);
+  const [staffDeleteTarget, setStaffDeleteTarget] = useState<StaffMember | null>(null);
+  const [staffDeletePassword, setStaffDeletePassword] = useState('');
+  const [staffDeleteError, setStaffDeleteError] = useState(false);
+  const [staffBusy, setStaffBusy] = useState(false);
+  const [staffError, setStaffError] = useState<string | null>(null);
+  const [personnelSyncError, setPersonnelSyncError] = useState<string | null>(null);
+  const [personnelEditorOpen, setPersonnelEditorOpen] = useState(false);
   const [editingPersonnelId, setEditingPersonnelId] = useState<number | null>(null);
   const [personnelExpandedId, setPersonnelExpandedId] = useState<number | null>(null);
   const [personnelDraft, setPersonnelDraft] = useState<PersonnelRecord[]>([]);
@@ -822,6 +846,90 @@ export function Admin() {
     earlyBirdBonusEnabled: selectedTournamentIsClassic,
   });
   const floorSessionId = Math.max(1, Math.round(gameState.resetAt || 0));
+  const personnelSaveSequenceRef = useRef(0);
+  const personnelSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const personnelLocalWritesRef = useRef(0);
+
+  const handlePersonnelChange = useCallback((records: PersonnelRecord[]) => {
+    const merged = mergePersonnelRecords(records);
+    setFinishPersonnel(merged);
+    finishPersonnelRef.current = merged;
+    const sequence = ++personnelSaveSequenceRef.current;
+    personnelLocalWritesRef.current += 1;
+    personnelSaveQueueRef.current = personnelSaveQueueRef.current
+      .catch(() => undefined)
+      .then(() => savePersonnelDraft(floorSessionId, merged))
+      .then(() => {
+        if (personnelSaveSequenceRef.current === sequence) setPersonnelSyncError(null);
+      })
+      .catch(error => {
+        if (personnelSaveSequenceRef.current === sequence) {
+          setPersonnelSyncError(error instanceof Error ? error.message : 'Не удалось сохранить выплаты персоналу.');
+        }
+      })
+      .finally(() => {
+        personnelLocalWritesRef.current = Math.max(0, personnelLocalWritesRef.current - 1);
+      });
+  }, [floorSessionId]);
+
+  useEffect(() => {
+    if (!authed) return;
+    let cancelled = false;
+    void fetchPersonnelDraft(floorSessionId)
+      .then(records => {
+        if (!cancelled) {
+          setFinishPersonnel(records);
+          finishPersonnelRef.current = records;
+          setPersonnelSyncError(null);
+        }
+      })
+      .catch(error => {
+        if (!cancelled) setPersonnelSyncError(error instanceof Error ? error.message : 'Не удалось загрузить выплаты персоналу.');
+      });
+    return () => { cancelled = true; };
+  }, [authed, floorSessionId]);
+
+  useEffect(() => {
+    if (!authed) return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const members = await fetchStaffDirectory();
+        if (!cancelled) {
+          setStaffMembers(members);
+          setStaffError(null);
+        }
+      } catch (error) {
+        if (!cancelled) setStaffError(error instanceof Error ? error.message : 'Не удалось загрузить сотрудников.');
+      }
+    };
+    void refresh();
+    const channel = supabase
+      .channel('staff-directory-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'staff' }, refresh)
+      .subscribe();
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(channel);
+    };
+  }, [authed]);
+
+  useEffect(() => {
+    if (!authed) return;
+    const channel = supabase
+      .channel(`personnel-draft-sync-${floorSessionId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_templates' }, payload => {
+        const row = (payload.new && Object.keys(payload.new).length > 0 ? payload.new : payload.old) as { id?: unknown };
+        if (!isPersonnelDraftRowId(row.id, floorSessionId)) return;
+        if (personnelLocalWritesRef.current > 0) return;
+        void fetchPersonnelDraft(floorSessionId).then(records => {
+          setFinishPersonnel(records);
+          finishPersonnelRef.current = records;
+        }).catch(() => {});
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [authed, floorSessionId]);
   const {
     notifications: floorNotifications,
     pendingCount: floorPendingCount,
@@ -933,7 +1041,7 @@ export function Admin() {
     return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'ru');
   });
   const levelsPlayed = gameState.currentLevelIndex + 1;
-  const archiveDetailsPayload: TournamentArchiveDetails | null = tournamentPlayers.length > 0
+  const archiveDetailsPayload: TournamentArchiveDetails | null = tournamentPlayers.length > 0 || finishPersonnel.length > 0
     ? {
         tournamentBotId: gameState.tournamentBotId,
         tournamentTitle: gameState.tournamentTitle,
@@ -964,7 +1072,7 @@ export function Admin() {
         })),
         summary: tournamentPlayersSummary,
         savedAt: new Date().toISOString(),
-        personnel: finishPersonnel.length > 0 ? finishPersonnel : undefined,
+        personnel: finishPersonnel.length > 0 ? mergePersonnelRecords(finishPersonnel) : undefined,
       }
     : null;
   const playersMissingFinalPlace = finishReviewPlayers.filter(player => (
@@ -1164,6 +1272,11 @@ export function Admin() {
     setFinishBusy(true);
     setResultsNotice(null);
     try {
+      const preparedPersonnel = await syncManualPersonnelToStaff(finishPersonnelRef.current);
+      setFinishPersonnel(preparedPersonnel);
+      finishPersonnelRef.current = preparedPersonnel;
+      await savePersonnelDraft(floorSessionId, preparedPersonnel);
+
       let dispatchedResults = false;
       let resentResults = false;
 
@@ -1227,7 +1340,7 @@ export function Admin() {
     // resetTournament fails and the admin retries (gameState may have partially reset by then).
     if (!pendingTournamentSaveRef.current) {
       const latestArchiveDetails = await getLatestTournamentArchiveDetails();
-      const personnelSnapshot = finishPersonnelRef.current;
+      const personnelSnapshot = mergePersonnelRecords(finishPersonnelRef.current);
       const baseDetails = latestArchiveDetails ?? archiveDetailsPayload;
       const detailsToSave = baseDetails && personnelSnapshot.length > 0
         ? { ...baseDetails, personnel: personnelSnapshot }
@@ -1251,6 +1364,8 @@ export function Admin() {
         pendingTournamentSaveRef.current.saved = true;
       }
 
+      const completedPersonnelSessionId = floorSessionId;
+      await personnelSaveQueueRef.current.catch(() => undefined);
       const resetOk = await resetTournament();
       if (!resetOk) {
         alert('Не удалось сохранить завершение турнира в Supabase. Не закрывайте страницу и попробуйте ещё раз.');
@@ -1260,6 +1375,7 @@ export function Admin() {
       // Flow completed — clear the pending save guard.
       pendingTournamentSaveRef.current = null;
       setFinishPersonnel([]);
+      await deletePersonnelDraft(completedPersonnelSessionId);
 
       // After resetTournament, sessionIdRef has updated (React ran effects during the DB write
       // await). Explicitly initialise an empty players slot for the new session so the Players
@@ -1486,7 +1602,10 @@ export function Admin() {
   useEffect(() => { archiveDetailsByIdRef.current = archiveDetailsById; }, [archiveDetailsById]);
 
   useEffect(() => {
-    if (activeTab !== 'archive' || !archiveAuthed || (archiveSubTab !== 'players' && archiveSubTab !== 'salary')) return;
+    const needsDetails = activeTab === 'archive' && archiveAuthed && (
+      archiveSubTab === 'players' || archiveSubTab === 'salary' || archiveSubTab === 'staff'
+    );
+    if (!needsDetails) return;
     if (tournaments.length === 0) return;
 
     const missingIds = tournaments
@@ -1775,7 +1894,7 @@ export function Admin() {
       const salaryRows: SalaryRow[] = [];
       for (const t of tournamentsToExport) {
         const details = detailsMap[t.id] ?? t.archive_details ?? null;
-        for (const p of details?.personnel ?? []) {
+        for (const p of mergePersonnelRecords(details?.personnel ?? [])) {
           salaryRows.push({
             'Дата игры': new Date(t.finished_at).toLocaleDateString('ru-RU'),
             'Название игры': t.title ?? 'Без названия',
@@ -2425,7 +2544,7 @@ export function Admin() {
     setActiveTab(tabId);
   };
 
-  const selectArchiveSubTab = (tabId: 'games' | 'players' | 'salary') => {
+  const selectArchiveSubTab = (tabId: 'games' | 'players' | 'salary' | 'staff') => {
     setArchiveSubTab(tabId);
   };
 
@@ -2554,6 +2673,148 @@ export function Admin() {
       cards: combo.cards.filter((_, i) => i !== cardIdx),
     });
   };
+
+  const persistStaffDraft = async () => {
+    if (!staffDraft?.name.trim()) return;
+    setStaffBusy(true);
+    setStaffError(null);
+    try {
+      const normalized = {
+        ...staffDraft,
+        name: staffDraft.name.trim(),
+        roleLabel: staffDraft.roleLabel.trim() || (
+          staffDraft.role === 'dealer' ? 'Дилер' : staffDraft.role === 'admin' ? 'Админ' : 'Другое'
+        ),
+        baseRate: Math.max(0, Math.round(staffDraft.baseRate || 0)),
+      };
+      await saveStaffMember(normalized);
+      setStaffMembers(await fetchStaffDirectory());
+      setStaffDraft(null);
+    } catch (error) {
+      setStaffError(error instanceof Error ? error.message : 'Не удалось сохранить сотрудника.');
+    } finally {
+      setStaffBusy(false);
+    }
+  };
+
+  const toggleStaffMemberVisibility = async (member: StaffMember) => {
+    setStaffBusy(true);
+    setStaffError(null);
+    try {
+      await saveStaffMember({ ...member, active: !member.active });
+      setStaffMembers(await fetchStaffDirectory());
+      if (staffDraft?.id === member.id) setStaffDraft(null);
+    } catch (error) {
+      setStaffError(error instanceof Error ? error.message : 'Не удалось изменить видимость сотрудника.');
+    } finally {
+      setStaffBusy(false);
+    }
+  };
+
+  const permanentlyDeleteStaffMember = async () => {
+    if (!staffDeleteTarget) return;
+    if (staffDeletePassword !== ARCHIVE_PASSWORD) {
+      setStaffDeleteError(true);
+      return;
+    }
+
+    const member = staffDeleteTarget;
+    setStaffBusy(true);
+    setStaffError(null);
+    try {
+      await deleteStaffMember(member.id);
+      setStaffMembers(current => current.filter(item => item.id !== member.id));
+      setSelectedStaffId(null);
+      setStaffContactOpenId(null);
+      setStaffDeleteTarget(null);
+      setStaffDeletePassword('');
+      setStaffDeleteError(false);
+      if (staffDraft?.id === member.id) setStaffDraft(null);
+    } catch (error) {
+      setStaffError(error instanceof Error ? error.message : 'Не удалось удалить сотрудника.');
+    } finally {
+      setStaffBusy(false);
+    }
+  };
+
+  const syncManualPersonnelToStaff = async (records: PersonnelRecord[]) => {
+    const nextRecords: PersonnelRecord[] = [];
+    const knownStaff = [...staffMembers];
+
+    for (const record of records) {
+      if (record.staffMemberId) {
+        nextRecords.push(record);
+        continue;
+      }
+
+      const name = record.name.trim();
+      const total = record.cashAmount + record.cardAmount;
+      if (!name && total === 0) continue;
+      if (!name) {
+        nextRecords.push(record);
+        continue;
+      }
+
+      const normalizedName = name.toLocaleLowerCase('ru');
+      const existing = knownStaff.find(member => member.name.trim().toLocaleLowerCase('ru') === normalizedName);
+      const member: StaffMember = existing
+        ? {
+            ...existing,
+            active: true,
+            baseRate: total > 0 ? total : existing.baseRate,
+          }
+        : {
+            ...createStaffMember(),
+            name,
+            role: record.role,
+            roleLabel: record.roleLabel,
+            baseRate: total,
+          };
+
+      await saveStaffMember(member);
+      if (!existing) knownStaff.push(member);
+      nextRecords.push({
+        ...record,
+        staffMemberId: member.id,
+        name: member.name,
+        role: member.role,
+        roleLabel: member.roleLabel,
+      });
+    }
+
+    setStaffMembers(await fetchStaffDirectory());
+    return nextRecords;
+  };
+
+  const finishPersonnelEditing = async () => {
+    setStaffBusy(true);
+    setStaffError(null);
+    try {
+      const nextRecords = await syncManualPersonnelToStaff(finishPersonnel);
+      handlePersonnelChange(nextRecords);
+      setPersonnelEditorOpen(false);
+    } catch (error) {
+      setPersonnelSyncError(error instanceof Error ? error.message : 'Не удалось добавить сотрудника в справочник.');
+    } finally {
+      setStaffBusy(false);
+    }
+  };
+
+  const staffArchiveCutoff = archivePeriod === 'all'
+    ? 0
+    : presenceNow - Number(archivePeriod) * 24 * 60 * 60 * 1000;
+  const staffArchiveTournaments = archivePeriod === 'all'
+    ? tournaments
+    : tournaments.filter(tournament => new Date(tournament.finished_at).getTime() >= staffArchiveCutoff);
+  const staffArchivePersonnel = staffArchiveTournaments.flatMap(tournament => {
+    const details = archiveDetailsById[tournament.id] ?? tournament.archive_details ?? null;
+    return mergePersonnelRecords(details?.personnel ?? []);
+  });
+  const staffArchiveTotals = personnelTotals(staffArchivePersonnel);
+  const staffArchiveLoadedCount = staffArchiveTournaments.filter(tournament =>
+    Object.prototype.hasOwnProperty.call(archiveDetailsById, tournament.id)
+  ).length;
+  const staffArchiveLoading = playerHistoryLoading || staffArchiveLoadedCount < staffArchiveTournaments.length;
 
   // ── Tabs ──────────────────────────────────────────────────────────────
   const tabs = [
@@ -3374,31 +3635,99 @@ export function Admin() {
         )}
 
         {activeTab === 'players' && (
-          <TournamentPlayersTab
-            groupedPlayers={groupedPlayers}
-            playerSyncState={playerSyncState}
-            playerBackups={playerBackups}
-            botSyncState={botSyncState}
-            tournamentBotId={gameState.tournamentBotId}
-            tournamentDate={selectedBotGame?.date ?? null}
-            earlyBirdBonusEnabled={selectedTournamentIsClassic}
-            isTournamentEnded={false}
-            preferMobileCards={tabletAdminLayout}
-            reviewPlayers={[]}
-            tableCount={gameState.tableCount}
-            onOpenControlTab={() => {}}
-            onRefreshFromBot={refreshFromBot}
-            onAddManualPlayer={addManualPlayer}
-            onRemovePlayer={removePlayer}
-            onUpdatePlayerField={updatePlayerField}
-            onSetPlayerArrival={setPlayerArrival}
-            onMarkPlayerOut={markPlayerOut}
-            onRestorePlayer={restorePlayer}
-            onRestorePlayersFromBackup={restorePlayersFromBackup}
-            onAssignSeat={async (playerId, tableNumber, seatNumber) => {
-              await assignPlayerSeat(playerId, tableNumber, seatNumber);
-            }}
-          />
+          <div className="flex flex-col gap-4">
+            <TournamentPlayersTab
+              groupedPlayers={groupedPlayers}
+              playerSyncState={playerSyncState}
+              playerBackups={playerBackups}
+              botSyncState={botSyncState}
+              tournamentBotId={gameState.tournamentBotId}
+              tournamentDate={selectedBotGame?.date ?? null}
+              earlyBirdBonusEnabled={selectedTournamentIsClassic}
+              isTournamentEnded={false}
+              preferMobileCards={tabletAdminLayout}
+              reviewPlayers={[]}
+              cashAdditionalContent={(
+                <div>
+                  <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Персонал</div>
+                      <div className="mt-1 text-xs text-[#555]">
+                        Выплаты сохраняются автоматически и синхронизируются между устройствами.
+                      </div>
+                    </div>
+                    <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:shrink-0 sm:justify-start">
+                      {finishPersonnel.length > 0 && (
+                        <div className="text-right">
+                          <div className="text-sm font-black tabular-nums text-white">
+                            {personnelTotals(finishPersonnel).total.toLocaleString('ru-RU')} ₽
+                          </div>
+                          <div className="text-[10px] text-[#555]">{finishPersonnel.length} чел.</div>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => personnelEditorOpen ? void finishPersonnelEditing() : setPersonnelEditorOpen(true)}
+                        disabled={staffBusy}
+                        className="admin-btn-secondary min-h-10 px-4 py-2 text-xs transition-transform active:scale-[0.96] disabled:opacity-40"
+                      >
+                        {staffBusy ? 'Сохранение...' : personnelEditorOpen ? 'Готово' : finishPersonnel.length > 0 ? 'Изменить' : '+ Добавить'}
+                      </button>
+                    </div>
+                  </div>
+                  {personnelSyncError && (
+                    <div className="mb-3 rounded-xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-xs text-red-300">
+                      {personnelSyncError}
+                    </div>
+                  )}
+                  {personnelEditorOpen ? (
+                    <PersonnelForm
+                      value={finishPersonnel}
+                      onChange={handlePersonnelChange}
+                      staffMembers={staffMembers}
+                    />
+                  ) : finishPersonnel.length > 0 ? (
+                    <div className="flex flex-col gap-2">
+                      {finishPersonnel.map(record => (
+                        <div key={record.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#111] px-3 py-2">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-bold text-white">{record.name || 'Без имени'}</div>
+                            <div className="text-[10px] text-[#555]">{formatPersonnelRole(record)}</div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <div className="text-sm font-black tabular-nums text-white">
+                              {(record.cashAmount + record.cardAmount).toLocaleString('ru-RU')} ₽
+                            </div>
+                            <div className="text-[10px] text-[#555]">
+                              нал {record.cashAmount.toLocaleString('ru-RU')} · карта {record.cardAmount.toLocaleString('ru-RU')}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl bg-[#111] px-3 py-3 text-xs text-[#555]">
+                      Выплаты персоналу не добавлены.
+                    </div>
+                  )}
+                </div>
+              )}
+              tableCount={gameState.tableCount}
+              onOpenControlTab={() => {}}
+              onRefreshFromBot={refreshFromBot}
+              onAddManualPlayer={addManualPlayer}
+              onRemovePlayer={removePlayer}
+              onUpdatePlayerField={updatePlayerField}
+              onSetPlayerArrival={setPlayerArrival}
+              onMarkPlayerOut={markPlayerOut}
+              onRestorePlayer={restorePlayer}
+              onRestorePlayersFromBackup={restorePlayersFromBackup}
+              onAssignSeat={async (playerId, tableNumber, seatNumber) => {
+                await assignPlayerSeat(playerId, tableNumber, seatNumber);
+              }}
+            />
+
+          </div>
         )}
 
         {/* ─── TABLES TAB ──────────────────────────────────────────────── */}
@@ -3702,8 +4031,8 @@ export function Admin() {
               <>
                 {/* Sub-tab switcher + period filter */}
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
-                  {(['games', 'players', 'salary'] as const).map(tab => (
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                  {(['games', 'players', 'staff'] as const).map(tab => (
                     <button
                       key={tab}
                       type="button"
@@ -3714,7 +4043,7 @@ export function Admin() {
                           : 'bg-[#111] border border-[#2D2D2D] text-[#888] hover:text-white hover:border-[#555]'
                       }`}
                     >
-                      {tab === 'games' ? 'Игры' : tab === 'players' ? 'Игроки' : 'Зарплаты'}
+                      {tab === 'games' ? 'Игры' : tab === 'players' ? 'Игроки' : 'Сотрудники'}
                     </button>
                   ))}
                   </div>
@@ -3932,7 +4261,7 @@ export function Admin() {
                                   </div>
 
                                   {(() => {
-                                    const currentPersonnel = archiveDetails.personnel ?? [];
+                                    const currentPersonnel = mergePersonnelRecords(archiveDetails.personnel ?? []);
                                     const revenue = archiveCashTotal + archiveCardTotal;
                                     const { cash: pCash, card: pCard, total: pTotal } = personnelTotals(currentPersonnel);
                                     const isExpanded = personnelExpandedId === t.id;
@@ -4355,7 +4684,7 @@ export function Admin() {
                   const rows: SalaryEntry[] = [];
                   for (const t of filteredTournaments) {
                     const details = archiveDetailsById[t.id] ?? t.archive_details ?? null;
-                    for (const p of details?.personnel ?? []) {
+                    for (const p of mergePersonnelRecords(details?.personnel ?? [])) {
                       rows.push({
                         tournamentId: t.id,
                         date: new Date(t.finished_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }),
@@ -4632,9 +4961,412 @@ export function Admin() {
           </div>
         )}
 
+        {/* ─── STAFF TAB ───────────────────────────────────────────────── */}
+        {activeTab === 'archive' && archiveAuthed && archiveSubTab === 'staff' && (
+          <div className="mt-4 flex flex-col gap-4">
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-xs text-[#555]">
+                  {staffArchiveLoading
+                    ? `Загрузка выплат... (${staffArchiveLoadedCount}/${staffArchiveTournaments.length})`
+                    : `${staffArchivePersonnel.length} выплат по ${staffArchiveTournaments.length} играм`}
+                </div>
+                {staffArchivePersonnel.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => void handleExportFinancialXlsx(staffArchiveTournaments)}
+                    disabled={financialExportBusy}
+                    className="admin-btn-secondary w-full min-h-10 px-4 py-2 text-xs disabled:opacity-40 sm:w-auto"
+                  >
+                    {financialExportBusy ? 'Экспорт...' : '📊 Скачать зарплатный отчёт'}
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 rounded-2xl border border-[#3D1A1A] bg-[#140909] p-3 sm:grid-cols-3">
+                <div className="text-center">
+                  <div className="text-[10px] uppercase tracking-widest text-[#888]">Нал всего</div>
+                  <div className="mt-1 text-sm font-black tabular-nums text-white">{staffArchiveTotals.cash.toLocaleString('ru-RU')} ₽</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-[10px] uppercase tracking-widest text-[#888]">Карта всего</div>
+                  <div className="mt-1 text-sm font-black tabular-nums text-white">{staffArchiveTotals.card.toLocaleString('ru-RU')} ₽</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-[10px] uppercase tracking-widest text-[#888]">Итого</div>
+                  <div className="mt-1 text-sm font-black tabular-nums text-[#C0392B]">{staffArchiveTotals.total.toLocaleString('ru-RU')} ₽</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-xs font-bold uppercase tracking-widest text-[#666]">Справочник сотрудников</div>
+              <button
+                type="button"
+                onClick={() => setStaffDraft(createStaffMember())}
+                className="admin-btn-primary min-h-10 w-full px-4 py-2 text-sm transition-transform active:scale-[0.96] sm:w-auto sm:shrink-0"
+              >
+                + Добавить
+              </button>
+            </div>
+
+            {staffError && (
+              <div className="rounded-xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-xs text-red-300">
+                {staffError}
+              </div>
+            )}
+
+            {staffDraft && (
+              <div className="flex flex-col gap-3 rounded-2xl border border-[#2D2D2D] bg-[#111] p-4">
+                <div className="text-xs font-bold uppercase tracking-widest text-[#888]">
+                  {staffMembers.some(member => member.id === staffDraft.id) ? 'Редактирование' : 'Новый сотрудник'}
+                </div>
+                <input
+                  value={staffDraft.name}
+                  onChange={event => setStaffDraft(current => current && ({ ...current, name: event.target.value }))}
+                  placeholder="Имя сотрудника"
+                  className="admin-input"
+                />
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <select
+                    value={staffDraft.role}
+                    onChange={event => {
+                      const role = event.target.value as StaffMember['role'];
+                      setStaffDraft(current => current && ({
+                        ...current,
+                        role,
+                        roleLabel: role === 'dealer' ? 'Дилер' : role === 'admin' ? 'Админ' : '',
+                      }));
+                    }}
+                    className="admin-input"
+                  >
+                    <option value="dealer">Дилер</option>
+                    <option value="admin">Админ</option>
+                    <option value="custom">Другое</option>
+                  </select>
+                  <input
+                    value={staffDraft.roleLabel}
+                    onChange={event => setStaffDraft(current => current && ({ ...current, roleLabel: event.target.value }))}
+                    placeholder="Название роли"
+                    className="admin-input"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={staffDraft.baseRate || ''}
+                    onChange={event => setStaffDraft(current => current && ({
+                      ...current,
+                      baseRate: Math.max(0, Math.round(Number(event.target.value) || 0)),
+                    }))}
+                    placeholder="Базовая ставка, ₽"
+                    className="admin-input tabular-nums"
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <input
+                    type="tel"
+                    value={staffDraft.phone}
+                    onChange={event => setStaffDraft(current => current && ({ ...current, phone: event.target.value }))}
+                    placeholder="Телефон"
+                    className="admin-input"
+                  />
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#666]">@</span>
+                    <input
+                      value={staffDraft.telegramUsername}
+                      onChange={event => setStaffDraft(current => current && ({
+                        ...current,
+                        telegramUsername: event.target.value.replace(/^@/, ''),
+                      }))}
+                      placeholder="telegram"
+                      className="admin-input pl-7"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setStaffDraft(null)} className="admin-btn-secondary min-h-10 px-4 py-2 text-sm">
+                    Отмена
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void persistStaffDraft()}
+                    disabled={staffBusy || !staffDraft.name.trim()}
+                    className="admin-btn-primary min-h-10 px-4 py-2 text-sm disabled:opacity-40"
+                  >
+                    {staffBusy ? 'Сохранение...' : 'Сохранить'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {staffMembers.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-[#2D2D2D] bg-[#111] px-4 py-10 text-center text-sm text-[#666]">
+                Справочник пока пуст.
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              {staffMembers.map(member => {
+                const isSelected = selectedStaffId === member.id;
+                const isContactOpen = staffContactOpenId === member.id;
+                const normalizedName = member.name.trim().toLocaleLowerCase('ru');
+                const history = staffArchiveTournaments.flatMap(tournament => {
+                  const details = archiveDetailsById[tournament.id] ?? tournament.archive_details ?? null;
+                  return mergePersonnelRecords(details?.personnel ?? [])
+                    .filter(record => record.staffMemberId === member.id || (
+                      !record.staffMemberId && record.name.trim().toLocaleLowerCase('ru') === normalizedName
+                    ))
+                    .map(record => ({ tournament, record }));
+                });
+                const totals = personnelTotals(history.map(entry => entry.record));
+
+                return (
+                  <div key={member.id} className={`overflow-hidden rounded-2xl border bg-[#111] ${isSelected ? 'border-[#C0392B]' : 'border-[#2D2D2D]'} ${member.active ? '' : 'opacity-60'}`}>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        setSelectedStaffId(isSelected ? null : member.id);
+                        if (isSelected) setStaffContactOpenId(null);
+                      }}
+                      onKeyDown={event => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        setSelectedStaffId(isSelected ? null : member.id);
+                        if (isSelected) setStaffContactOpenId(null);
+                      }}
+                      className="flex min-h-16 cursor-pointer items-center gap-1 px-2 py-2"
+                    >
+                      <div className="flex min-w-0 flex-1 items-center">
+                        <div className="min-w-0 px-2 py-1 text-left">
+                          <div className="truncate text-sm font-bold text-white">{member.name}</div>
+                          <div className="mt-0.5 text-xs text-[#666]">
+                            {member.roleLabel} · <span className="tabular-nums">{member.baseRate.toLocaleString('ru-RU')} ₽</span>
+                            {!member.active && ' · скрыт'}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label={`Контакты: ${member.name}`}
+                          title="Контактная информация"
+                          onClick={event => {
+                            event.stopPropagation();
+                            setSelectedStaffId(member.id);
+                            setStaffContactOpenId(isContactOpen ? null : member.id);
+                          }}
+                          className={`grid h-10 w-10 shrink-0 place-items-center rounded-full text-base transition-colors ${
+                            isContactOpen ? 'bg-[#C0392B] text-white' : 'text-[#666] hover:bg-[#1A1A1A] hover:text-white'
+                          }`}
+                        >
+                          ⓘ
+                        </button>
+                      </div>
+                      <div className="shrink-0 px-2 py-1 text-right">
+                        <div className="text-sm font-black tabular-nums text-white">{totals.total.toLocaleString('ru-RU')} ₽</div>
+                        <div className="text-[10px] text-[#555]">{history.length} игр · {isSelected ? '▲' : '▼'}</div>
+                      </div>
+                    </div>
+
+                    {isSelected && (
+                      <div className="border-t border-[#2D2D2D] px-4 py-4">
+                        {isContactOpen && (
+                        <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <div className="rounded-xl bg-[#0A0A0A] p-3">
+                            <div className="text-[10px] uppercase tracking-widest text-[#555]">Телефон</div>
+                            {member.phone
+                              ? <a href={`tel:${member.phone}`} className="mt-1 block text-sm text-white hover:text-[#C0392B]">{member.phone}</a>
+                              : <div className="mt-1 text-sm text-[#444]">Не указан</div>}
+                          </div>
+                          <div className="rounded-xl bg-[#0A0A0A] p-3">
+                            <div className="text-[10px] uppercase tracking-widest text-[#555]">Telegram</div>
+                            {member.telegramUsername
+                              ? <a href={`https://t.me/${member.telegramUsername}`} target="_blank" rel="noreferrer" className="mt-1 block text-sm text-white hover:text-[#C0392B]">@{member.telegramUsername}</a>
+                              : <div className="mt-1 text-sm text-[#444]">Не указан</div>}
+                          </div>
+                        </div>
+                        )}
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button type="button" onClick={() => setStaffDraft({ ...member })} className="admin-btn-secondary min-h-10 px-4 py-2 text-xs">
+                            Изменить
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void toggleStaffMemberVisibility(member)}
+                            disabled={staffBusy}
+                            className="min-h-10 px-3 text-xs text-[#888] hover:text-[#C0392B] disabled:opacity-40"
+                          >
+                            {member.active ? 'Скрыть' : 'Показать'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStaffDeleteTarget(member);
+                              setStaffDeletePassword('');
+                              setStaffDeleteError(false);
+                            }}
+                            disabled={staffBusy}
+                            className="ml-auto min-h-10 px-3 text-xs text-red-400 hover:text-red-300 disabled:opacity-40"
+                          >
+                            Удалить навсегда
+                          </button>
+                        </div>
+
+                        <div className="mt-4 text-[10px] uppercase tracking-widest text-[#666]">Архив игр и оплат</div>
+                        {playerHistoryLoading ? (
+                          <div className="mt-2 text-xs text-[#555]">Загрузка...</div>
+                        ) : history.length === 0 ? (
+                          <div className="mt-2 rounded-xl bg-[#0A0A0A] px-3 py-4 text-xs text-[#555]">Выплат пока нет.</div>
+                        ) : (
+                          <div className="mt-2 flex flex-col gap-2">
+                            {history.map(({ tournament, record }) => (
+                              <div key={`${tournament.id}-${record.id}`} className="flex flex-col gap-2 rounded-xl bg-[#0A0A0A] px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                  <div className="text-sm font-bold text-white">{tournament.title || 'Без названия'}</div>
+                                  <div className="mt-0.5 text-xs text-[#555]">{new Date(tournament.finished_at).toLocaleDateString('ru-RU')}</div>
+                                </div>
+                                <div className="text-left sm:text-right">
+                                  <div className="text-sm font-black tabular-nums text-white">{(record.cashAmount + record.cardAmount).toLocaleString('ru-RU')} ₽</div>
+                                  <div className="text-[10px] text-[#555]">
+                                    нал {record.cashAmount.toLocaleString('ru-RU')} · карта {record.cardAmount.toLocaleString('ru-RU')}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* ─── SETTINGS TAB ────────────────────────────────────────────── */}
         {activeTab === 'settings' && (
           <div className="flex flex-col gap-4">
+            {/* Staff directory is managed in Archive → Сотрудники. */}
+            <div className="hidden">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[#888] text-xs uppercase tracking-widest">Справочник сотрудников</div>
+                  <div className="mt-1 text-xs text-[#555]">Ставка подставляется при добавлении сотрудника в турнир.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStaffDraft(createStaffMember())}
+                  className="admin-btn-primary min-h-10 shrink-0 px-4 py-2 text-sm transition-transform active:scale-[0.96]"
+                >
+                  + Добавить
+                </button>
+              </div>
+
+              {staffError && (
+                <div className="mt-3 rounded-xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-xs text-red-300">
+                  {staffError}
+                </div>
+              )}
+
+              {staffDraft && (
+                <div className="mt-4 flex flex-col gap-3 rounded-2xl bg-[#0A0A0A] p-4">
+                  <input
+                    value={staffDraft.name}
+                    onChange={event => setStaffDraft(current => current && ({ ...current, name: event.target.value }))}
+                    placeholder="Имя сотрудника"
+                    className="admin-input"
+                  />
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <select
+                      value={staffDraft.role}
+                      onChange={event => {
+                        const role = event.target.value as StaffMember['role'];
+                        setStaffDraft(current => current && ({
+                          ...current,
+                          role,
+                          roleLabel: role === 'dealer' ? 'Дилер' : role === 'admin' ? 'Админ' : '',
+                        }));
+                      }}
+                      className="admin-input"
+                    >
+                      <option value="dealer">Дилер</option>
+                      <option value="admin">Админ</option>
+                      <option value="custom">Другое</option>
+                    </select>
+                    <input
+                      value={staffDraft.roleLabel}
+                      onChange={event => setStaffDraft(current => current && ({ ...current, roleLabel: event.target.value }))}
+                      placeholder="Название роли"
+                      className="admin-input"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={staffDraft.baseRate || ''}
+                      onChange={event => setStaffDraft(current => current && ({
+                        ...current,
+                        baseRate: Math.max(0, Math.round(Number(event.target.value) || 0)),
+                      }))}
+                      placeholder="Базовая ставка, ₽"
+                      className="admin-input tabular-nums"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setStaffDraft(null)} className="admin-btn-secondary min-h-10 px-4 py-2 text-sm">
+                      Отмена
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void persistStaffDraft()}
+                      disabled={staffBusy || !staffDraft.name.trim()}
+                      className="admin-btn-primary min-h-10 px-4 py-2 text-sm disabled:opacity-40"
+                    >
+                      {staffBusy ? 'Сохранение...' : 'Сохранить'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-col gap-2">
+                {staffMembers.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-[#2D2D2D] bg-[#0A0A0A] px-4 py-5 text-sm text-[#666]">
+                    Справочник пока пуст.
+                  </div>
+                )}
+                {staffMembers.map(member => (
+                  <div key={member.id} className={`flex items-center justify-between gap-3 rounded-xl bg-[#0A0A0A] px-4 py-3 ${member.active ? '' : 'opacity-45'}`}>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-bold text-white">{member.name}</div>
+                      <div className="mt-0.5 text-xs text-[#666]">
+                        {member.roleLabel} · <span className="tabular-nums">{member.baseRate.toLocaleString('ru-RU')} ₽</span>
+                        {!member.active && ' · скрыт'}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setStaffDraft({ ...member })}
+                          className="min-h-10 px-3 text-xs text-[#888] hover:text-white"
+                        >
+                          Изменить
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void toggleStaffMemberVisibility(member)}
+                          disabled={staffBusy}
+                          className="min-h-10 px-3 text-xs text-[#888] hover:text-[#C0392B] disabled:opacity-40"
+                        >
+                          {member.active ? 'Скрыть' : 'Показать'}
+                        </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Next game info */}
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
               <div className="text-[#888] text-xs uppercase tracking-widest mb-3">Следующая игра</div>
@@ -4750,6 +5482,73 @@ export function Admin() {
 
       </div>
 
+      {staffDeleteTarget && (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-6"
+          onClick={() => {
+            if (staffBusy) return;
+            setStaffDeleteTarget(null);
+            setStaffDeletePassword('');
+            setStaffDeleteError(false);
+          }}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-red-900/70 bg-[#111] shadow-2xl"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="border-b border-[#2D2D2D] px-5 py-4">
+              <div className="text-base font-black uppercase tracking-[0.12em] text-white">Удалить сотрудника</div>
+              <div className="mt-2 text-sm text-[#888]">
+                Сотрудник «{staffDeleteTarget.name}» будет безвозвратно удалён из справочника.
+                История выплат в завершённых турнирах останется в архиве.
+              </div>
+            </div>
+            <div className="flex flex-col gap-3 px-5 py-4">
+              <label className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Пароль архива</label>
+              <input
+                type="password"
+                autoFocus
+                value={staffDeletePassword}
+                onChange={event => {
+                  setStaffDeletePassword(event.target.value);
+                  setStaffDeleteError(false);
+                }}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') void permanentlyDeleteStaffMember();
+                }}
+                className="admin-input"
+                placeholder="Введите пароль"
+              />
+              {staffDeleteError && (
+                <div className="text-sm text-red-400">Неверный пароль архива.</div>
+              )}
+              <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStaffDeleteTarget(null);
+                    setStaffDeletePassword('');
+                    setStaffDeleteError(false);
+                  }}
+                  disabled={staffBusy}
+                  className="admin-btn-secondary min-h-10 px-4 py-2 text-sm disabled:opacity-40"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void permanentlyDeleteStaffMember()}
+                  disabled={staffBusy || !staffDeletePassword}
+                  className="admin-btn-danger min-h-10 px-4 py-2 text-sm disabled:opacity-40"
+                >
+                  {staffBusy ? 'Удаление...' : 'Удалить навсегда'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {priceConfirmOpen && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-3 sm:items-center sm:p-6"
@@ -4832,7 +5631,7 @@ export function Admin() {
                 {gameState.status === 'ended'
                   ? 'Проверьте результаты прямо в этом окне, внесите правки если нужно и отправьте итог в бот отсюда же.'
                   : finishStep === 'personnel'
-                    ? 'Внесите выплаты сотрудникам или нажмите «Внести позже» — данные можно добавить в архиве.'
+                    ? 'Проверьте выплаты, внесённые во время турнира. Если список пуст, добавьте сотрудника из справочника или внесите выплату вручную.'
                     : requiresBotResults
                       ? 'Проверьте результаты прямо в этом окне. После кнопки `Завершить и отправить в бот` турнир завершится только после успешной отправки.'
                       : 'Проверьте результаты прямо в этом окне и завершите турнир отсюда же.'}
@@ -4930,7 +5729,11 @@ export function Admin() {
               )}
 
               {gameState.status !== 'ended' && finishStep === 'personnel' && (
-                <PersonnelForm value={finishPersonnel} onChange={setFinishPersonnel} />
+                <PersonnelForm
+                  value={finishPersonnel}
+                  onChange={handlePersonnelChange}
+                  staffMembers={staffMembers}
+                />
               )}
             </div>
 
@@ -4990,7 +5793,7 @@ export function Admin() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => { finishPersonnelRef.current = []; void finishAndSubmitTournament(); }}
+                    onClick={() => { handlePersonnelChange([]); void finishAndSubmitTournament(); }}
                     disabled={!canFinishTournamentFromReview}
                     className="admin-btn-secondary px-4 py-3 text-sm disabled:opacity-40"
                   >
@@ -5085,7 +5888,7 @@ export function Admin() {
                     try {
                       const currentDetails = archiveDetailsById[tournamentId] ?? tournaments.find(t => t.id === tournamentId)?.archive_details ?? null;
                       if (currentDetails) {
-                        const updated = { ...currentDetails, personnel: newPersonnel };
+                        const updated = { ...currentDetails, personnel: mergePersonnelRecords(newPersonnel) };
                         await updateTournamentArchiveDetails(tournamentId, finishedAt, updated);
                         setArchiveDetailsById(prev => ({ ...prev, [tournamentId]: updated }));
                       }
