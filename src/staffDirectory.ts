@@ -147,8 +147,9 @@ export async function deleteStaffMember(id: string) {
   const current = loadLocalStaffDirectory();
   saveLocalStaffDirectory(current.filter(member => member.id !== id));
   if (!isSupabaseConfigured()) return;
-  const { error } = await supabase.from(SHARED_TABLE).delete().eq('id', id);
+  const { data, error } = await supabase.from(SHARED_TABLE).delete().eq('id', id).select('id');
   if (error) throw new Error('Не удалось удалить сотрудника.');
+  if (!data || data.length === 0) throw new Error('Не удалось удалить сотрудника: проверьте политики RLS таблицы staff в Supabase.');
 }
 
 export function mergePersonnelRecords(records: PersonnelRecord[]): PersonnelRecord[] {
