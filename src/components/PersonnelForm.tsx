@@ -51,7 +51,7 @@ export function PersonnelForm({ value, onChange, staffMembers }: PersonnelFormPr
     }
   };
 
-  const { cash: totalCash, card: totalCard, total: grandTotal } = personnelTotals(value);
+  const { total: grandTotal } = personnelTotals(value);
 
   return (
     <div className="flex flex-col gap-3">
@@ -121,37 +121,17 @@ export function PersonnelForm({ value, onChange, staffMembers }: PersonnelFormPr
               )}
             </div>}
 
-            <div className="personnel-money-grid grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <div>
-                <label className="text-[#555] text-[10px] uppercase tracking-widest block mb-1">Наличными ₽</label>
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={p.cashAmount === 0 ? '' : p.cashAmount}
-                  placeholder="0"
-                  onChange={e => update(p.id, { cashAmount: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
-                  className="admin-input w-full"
-                />
-              </div>
-              <div>
-                <label className="text-[#555] text-[10px] uppercase tracking-widest block mb-1">Картой ₽</label>
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={p.cardAmount === 0 ? '' : p.cardAmount}
-                  placeholder="0"
-                  onChange={e => update(p.id, { cardAmount: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
-                  className="admin-input w-full"
-                />
-              </div>
-              <div className="col-span-2 sm:col-span-1">
-                <label className="text-[#555] text-[10px] uppercase tracking-widest block mb-1">Итого ₽</label>
-                <div className="admin-input w-full text-white font-bold bg-[#111] flex items-center tabular-nums">
-                  {rowTotal.toLocaleString('ru-RU')}
-                </div>
-              </div>
+            <div>
+              <label className="text-[#555] text-[10px] uppercase tracking-widest block mb-1">Сумма ₽</label>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={rowTotal === 0 ? '' : rowTotal}
+                placeholder="0"
+                onChange={e => update(p.id, { cashAmount: Math.max(0, Math.round(Number(e.target.value) || 0)), cardAmount: 0 })}
+                className="admin-input w-full"
+              />
             </div>
           </div>
         );
@@ -183,19 +163,9 @@ export function PersonnelForm({ value, onChange, staffMembers }: PersonnelFormPr
       )}
 
       {value.length > 0 && (
-        <div className="personnel-summary-grid grid grid-cols-1 gap-2 rounded-xl border border-[#3D1A1A] bg-[#140909] p-3 sm:grid-cols-3">
-          <div className="text-center">
-            <div className="text-[#888] text-[10px] uppercase mb-1">Нал итого</div>
-            <div className="text-white font-black text-sm tabular-nums">{totalCash.toLocaleString('ru-RU')} ₽</div>
-          </div>
-          <div className="text-center">
-            <div className="text-[#888] text-[10px] uppercase mb-1">Карта итого</div>
-            <div className="text-white font-black text-sm tabular-nums">{totalCard.toLocaleString('ru-RU')} ₽</div>
-          </div>
-          <div className="text-center">
-            <div className="text-[#888] text-[10px] uppercase mb-1">Расходы</div>
-            <div className="text-[#C0392B] font-black text-sm tabular-nums">{grandTotal.toLocaleString('ru-RU')} ₽</div>
-          </div>
+        <div className="rounded-xl border border-[#3D1A1A] bg-[#140909] p-3 text-center">
+          <div className="text-[#888] text-[10px] uppercase mb-1">Итого расходы</div>
+          <div className="text-[#C0392B] font-black text-sm tabular-nums">{grandTotal.toLocaleString('ru-RU')} ₽</div>
         </div>
       )}
     </div>

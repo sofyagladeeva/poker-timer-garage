@@ -1889,7 +1889,7 @@ export function Admin() {
       // Sheet 2: Персонал
       type SalaryRow = {
         'Дата игры': string; 'Название игры': string; 'Имя сотрудника': string;
-        'Статус': string; 'Наличными ₽': number; 'Картой ₽': number; 'Итого ₽': number;
+        'Статус': string; 'Сумма ₽': number;
       };
       const salaryRows: SalaryRow[] = [];
       for (const t of tournamentsToExport) {
@@ -1900,9 +1900,7 @@ export function Admin() {
             'Название игры': t.title ?? 'Без названия',
             'Имя сотрудника': p.name,
             'Статус': formatPersonnelRole(p),
-            'Наличными ₽': p.cashAmount,
-            'Картой ₽': p.cardAmount,
-            'Итого ₽': p.cashAmount + p.cardAmount,
+            'Сумма ₽': p.cashAmount + p.cardAmount,
           });
         }
       }
@@ -1912,16 +1910,12 @@ export function Admin() {
       const totalRevenueCash = gamesRows.reduce((s, r) => s + r['Наличные ₽'], 0);
       const totalRevenueCard = gamesRows.reduce((s, r) => s + r['Карта ₽'], 0);
       const totalRevenue = totalRevenueCash + totalRevenueCard;
-      const totalPersonnelCash = salaryRows.reduce((s, r) => s + r['Наличными ₽'], 0);
-      const totalPersonnelCard = salaryRows.reduce((s, r) => s + r['Картой ₽'], 0);
-      const totalPersonnel = totalPersonnelCash + totalPersonnelCard;
+      const totalPersonnel = salaryRows.reduce((s, r) => s + r['Сумма ₽'], 0);
       const summaryRows = [
         { 'Показатель': 'Общий доход', 'Сумма ₽': totalRevenue },
         { 'Показатель': '  в т.ч. наличными', 'Сумма ₽': totalRevenueCash },
         { 'Показатель': '  в т.ч. картой', 'Сумма ₽': totalRevenueCard },
         { 'Показатель': 'Расходы на персонал', 'Сумма ₽': totalPersonnel },
-        { 'Показатель': '  в т.ч. наличными', 'Сумма ₽': totalPersonnelCash },
-        { 'Показатель': '  в т.ч. картой', 'Сумма ₽': totalPersonnelCard },
         { 'Показатель': 'Чистый доход', 'Сумма ₽': totalRevenue - totalPersonnel },
       ];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Финансовая сводка');
@@ -3707,7 +3701,7 @@ export function Admin() {
                               {(record.cashAmount + record.cardAmount).toLocaleString('ru-RU')} ₽
                             </div>
                             <div className="text-[10px] text-[#555]">
-                              нал {record.cashAmount.toLocaleString('ru-RU')} · карта {record.cardAmount.toLocaleString('ru-RU')}
+                              {formatPersonnelRole(record)}
                             </div>
                           </div>
                         </div>
@@ -4271,7 +4265,7 @@ export function Admin() {
                                   {(() => {
                                     const currentPersonnel = mergePersonnelRecords(archiveDetails.personnel ?? []);
                                     const revenue = archiveCashTotal + archiveCardTotal;
-                                    const { cash: pCash, card: pCard, total: pTotal } = personnelTotals(currentPersonnel);
+                                    const { total: pTotal } = personnelTotals(currentPersonnel);
                                     const isExpanded = personnelExpandedId === t.id;
                                     const isEditing = editingPersonnelId === t.id;
                                     return (
@@ -4289,11 +4283,6 @@ export function Admin() {
                                             <div className={`font-black text-lg mt-1 ${pTotal > 0 ? 'text-[#C0392B]' : 'text-[#444]'}`}>
                                               {pTotal > 0 ? `${pTotal.toLocaleString('ru-RU')} ₽` : '—'}
                                             </div>
-                                            {pTotal > 0 && (
-                                              <div className="text-[#555] text-[10px] mt-0.5">
-                                                нал {pCash.toLocaleString('ru-RU')} ₽ · карта {pCard.toLocaleString('ru-RU')} ₽
-                                              </div>
-                                            )}
                                           </button>
                                           {revenue > 0 && (
                                             <div className="bg-[#111] rounded-xl p-3">
@@ -4701,7 +4690,7 @@ export function Admin() {
                       });
                     }
                   }
-                  const { cash: totalCash, card: totalCard, total: grandTotal } = personnelTotals(rows.map(r => r.personnel));
+                  const { total: grandTotal } = personnelTotals(rows.map(r => r.personnel));
                   const loadedCount = filteredTournaments.filter(t => Object.prototype.hasOwnProperty.call(archiveDetailsById, t.id)).length;
                   const isLoading = playerHistoryLoading || loadedCount < filteredTournaments.length;
 
@@ -4737,19 +4726,9 @@ export function Admin() {
 
                       {rows.length > 0 && (
                         <>
-                          <div className="grid grid-cols-1 gap-2 rounded-xl border border-[#3D1A1A] bg-[#140909] p-3 sm:grid-cols-3">
-                            <div className="text-center">
-                              <div className="text-[#888] text-[10px] uppercase mb-1">Нал всего</div>
-                              <div className="text-white font-black text-sm">{totalCash.toLocaleString('ru-RU')} ₽</div>
-                            </div>
-                            <div className="text-center">
-                              <div className="text-[#888] text-[10px] uppercase mb-1">Карта всего</div>
-                              <div className="text-white font-black text-sm">{totalCard.toLocaleString('ru-RU')} ₽</div>
-                            </div>
-                            <div className="text-center">
-                              <div className="text-[#888] text-[10px] uppercase mb-1">Итого</div>
-                              <div className="text-[#C0392B] font-black text-sm">{grandTotal.toLocaleString('ru-RU')} ₽</div>
-                            </div>
+                          <div className="rounded-xl border border-[#3D1A1A] bg-[#140909] p-3 text-center">
+                            <div className="text-[#888] text-[10px] uppercase mb-1">Итого выплат</div>
+                            <div className="text-[#C0392B] font-black text-sm">{grandTotal.toLocaleString('ru-RU')} ₽</div>
                           </div>
 
                           <div className="flex flex-col gap-2">
@@ -4991,19 +4970,9 @@ export function Admin() {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 gap-2 rounded-2xl border border-[#3D1A1A] bg-[#140909] p-3 sm:grid-cols-3">
-                <div className="text-center">
-                  <div className="text-[10px] uppercase tracking-widest text-[#888]">Нал всего</div>
-                  <div className="mt-1 text-sm font-black tabular-nums text-white">{staffArchiveTotals.cash.toLocaleString('ru-RU')} ₽</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-[10px] uppercase tracking-widest text-[#888]">Карта всего</div>
-                  <div className="mt-1 text-sm font-black tabular-nums text-white">{staffArchiveTotals.card.toLocaleString('ru-RU')} ₽</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-[10px] uppercase tracking-widest text-[#888]">Итого</div>
-                  <div className="mt-1 text-sm font-black tabular-nums text-[#C0392B]">{staffArchiveTotals.total.toLocaleString('ru-RU')} ₽</div>
-                </div>
+              <div className="rounded-2xl border border-[#3D1A1A] bg-[#140909] p-3 text-center">
+                <div className="text-[10px] uppercase tracking-widest text-[#888]">Итого выплат</div>
+                <div className="mt-1 text-sm font-black tabular-nums text-[#C0392B]">{staffArchiveTotals.total.toLocaleString('ru-RU')} ₽</div>
               </div>
             </div>
 
