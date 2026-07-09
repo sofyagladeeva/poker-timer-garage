@@ -5192,9 +5192,6 @@ export function Admin() {
                                 </div>
                                 <div className="text-left sm:text-right">
                                   <div className="text-sm font-black tabular-nums text-white">{(record.cashAmount + record.cardAmount).toLocaleString('ru-RU')} ₽</div>
-                                  <div className="text-[10px] text-[#555]">
-                                    нал {record.cashAmount.toLocaleString('ru-RU')} · карта {record.cardAmount.toLocaleString('ru-RU')}
-                                  </div>
                                 </div>
                               </div>
                             ))}
