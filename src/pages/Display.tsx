@@ -101,7 +101,7 @@ function formatFallbackNextGameLines(raw: string) {
 
 const MEDAL_URLS = [medal1Url, medal2Url, medal3Url];
 const SIDEBAR_LEADERBOARD_ROTATION_MS = 20_000;
-const RIGHT_PANEL_ROTATION_MS = 20_000;
+
 
 function FullscreenButton() {
   const [isFs, setIsFs] = useState(false);
@@ -162,7 +162,6 @@ export function Display() {
   const nextGame = useNextGame(gameState.nextGameBotId ?? null);
   const { k, x, y } = useScale();
   const [sidebarLeaderboardMode, setSidebarLeaderboardMode] = useState<'rating' | 'bounty'>('rating');
-  const [rightPanelMode, setRightPanelMode] = useState<'points' | 'chips'>('points');
 
   useEffect(() => {
     document.documentElement.classList.add('tv-safe-display');
@@ -290,17 +289,6 @@ export function Display() {
   const activeChipLeaders = chipLeadersVisible && gameState.chipLeaders
     ? gameState.chipLeaders.entries
     : [];
-  const visibleRightPanelMode = activeChipLeaders.length > 0 ? rightPanelMode : 'points';
-
-  useEffect(() => {
-    if (activeChipLeaders.length === 0) return;
-
-    const interval = setInterval(() => {
-      setRightPanelMode(prev => (prev === 'points' ? 'chips' : 'points'));
-    }, RIGHT_PANEL_ROTATION_MS);
-
-    return () => clearInterval(interval);
-  }, [activeChipLeaders.length, gameState.currentLevelIndex]);
 
   const minutes = Math.floor(gameState.timeLeft / 60);
   const seconds = gameState.timeLeft % 60;
@@ -472,26 +460,50 @@ export function Display() {
             {/* Divider */}
             <div className="h-px bg-[#181818]" />
 
-            {/* Combinations — занимают оставшееся место */}
+            {/* Chip leaders (whole round) or combinations */}
             <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
-              {activeCombos.length > 0
-                ? <>
-                    <ColLabel>Играющие комбинации</ColLabel>
-                    {activeCombos.map(combo => (
-                      <div key={combo.id} className="bg-[#111] border border-[#1E1E1E] rounded-xl p-3">
-                        {/* Карты — фиксированный размер, пропорции покерной карты */}
-                        <div className="flex flex-nowrap gap-2 mb-3">
-                          {combo.cards.map((card, ci) => (
-                            <ComboCard key={ci} card={card} count={combo.cards.length} />
-                          ))}
+              {activeChipLeaders.length > 0 ? (
+                <>
+                  <ColLabel>Чип-лидеры</ColLabel>
+                  <div className="flex flex-col gap-2">
+                    {activeChipLeaders.map((leader, i) => (
+                      <div
+                        key={leader.id || leader.playerId || `${leader.name}-${i}`}
+                        className={`flex items-center gap-3 rounded-xl px-3 py-3 ${
+                          i === 0
+                            ? 'bg-[#160800] border border-[#E31E24]/25'
+                            : 'bg-[#111] border border-[#1A1A1A]'
+                        }`}
+                      >
+                        <img src={MEDAL_URLS[i]} style={{ width: 34, height: 34, objectFit: 'contain' }} alt="" />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-white font-black text-xl truncate">{leader.name}</div>
+                          <div className="text-[#555] text-xs uppercase tracking-[0.18em]">место {i + 1}</div>
                         </div>
-                        {/* Описание — одна строка */}
-                        <div className="text-[#999] text-sm leading-snug line-clamp-2">{combo.description}</div>
+                        <div className={`font-black tabular-nums ${i === 0 ? 'text-[#E31E24] text-3xl' : 'text-white text-2xl'}`}>
+                          {fmt(leader.stack)}
+                        </div>
                       </div>
                     ))}
-                  </>
-                : <div className="text-[#252525] text-sm">Нет активных комбинаций</div>
-              }
+                  </div>
+                </>
+              ) : activeCombos.length > 0 ? (
+                <>
+                  <ColLabel>Играющие комбинации</ColLabel>
+                  {activeCombos.map(combo => (
+                    <div key={combo.id} className="bg-[#111] border border-[#1E1E1E] rounded-xl p-3">
+                      <div className="flex flex-nowrap gap-2 mb-3">
+                        {combo.cards.map((card, ci) => (
+                          <ComboCard key={ci} card={card} count={combo.cards.length} />
+                        ))}
+                      </div>
+                      <div className="text-[#999] text-sm leading-snug line-clamp-2">{combo.description}</div>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <div className="text-[#252525] text-sm">Нет активных комбинаций</div>
+              )}
             </div>
           </div>
 
@@ -632,47 +644,20 @@ export function Display() {
           <div className="flex flex-col w-[24%] border-l border-[#181818] px-5 py-5 gap-4">
 
             {/* Prize rank points */}
-            {activeChipLeaders.length > 0 && visibleRightPanelMode === 'chips' ? (
-              <div>
-                <ColLabel>Чип-лидеры</ColLabel>
-                <div className="flex flex-col gap-2 mt-3">
-                  {activeChipLeaders.map((leader, i) => (
-                    <div
-                      key={leader.id || leader.playerId || `${leader.name}-${i}`}
-                      className={`flex items-center gap-3 rounded-xl px-3 py-3 ${
-                        i === 0
-                          ? 'bg-[#160800] border border-[#E31E24]/25'
-                          : 'bg-[#111] border border-[#1A1A1A]'
-                      }`}
-                    >
-                      <img src={MEDAL_URLS[i]} style={{ width: 34, height: 34, objectFit: 'contain' }} alt="" />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-white font-black text-xl truncate">{leader.name}</div>
-                        <div className="text-[#555] text-xs uppercase tracking-[0.18em]">место {i + 1}</div>
+            <div>
+              <ColLabel>Очки турнира{gameState.players > 0 ? ` · ${gameState.players} игроков` : ''}</ColLabel>
+              <div className="grid grid-cols-3 gap-2 mt-3">
+                {rankPoints.length > 0
+                  ? rankPoints.slice(0, 9).map((pts, i) => (
+                      <div key={i} className="bg-[#111] rounded-lg py-2 text-center">
+                        <div className="text-[#444] text-xs">{i + 1} место</div>
+                        <div className="text-[#E31E24] font-black text-xl leading-tight">{pts.toFixed(1)}</div>
                       </div>
-                      <div className={`font-black tabular-nums ${i === 0 ? 'text-[#E31E24] text-3xl' : 'text-white text-2xl'}`}>
-                        {fmt(leader.stack)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))
+                  : <span className="text-[#252525] text-sm col-span-3">Очки начисляются от 9 игроков</span>
+                }
               </div>
-            ) : (
-              <div>
-                <ColLabel>Очки турнира{gameState.players > 0 ? ` · ${gameState.players} игроков` : ''}</ColLabel>
-                <div className="grid grid-cols-3 gap-2 mt-3">
-                  {rankPoints.length > 0
-                    ? rankPoints.slice(0, 9).map((pts, i) => (
-                        <div key={i} className="bg-[#111] rounded-lg py-2 text-center">
-                          <div className="text-[#444] text-xs">{i + 1} место</div>
-                          <div className="text-[#E31E24] font-black text-xl leading-tight">{pts.toFixed(1)}</div>
-                        </div>
-                      ))
-                    : <span className="text-[#252525] text-sm col-span-3">Очки начисляются от 9 игроков</span>
-                  }
-                </div>
-              </div>
-            )}
+            </div>
 
             <div className="h-px bg-[#181818]" />
 
