@@ -4338,9 +4338,7 @@ export function Admin() {
                                                       <span className="text-[#555] ml-1.5">({formatPersonnelRole(p)})</span>
                                                     </div>
                                                     <div className="shrink-0 text-[#888] text-left sm:text-right">
-                                                      {p.cashAmount > 0 && <span className="mr-1">нал {p.cashAmount.toLocaleString('ru-RU')} ₽</span>}
-                                                      {p.cardAmount > 0 && <span>карта {p.cardAmount.toLocaleString('ru-RU')} ₽</span>}
-                                                      {p.cashAmount === 0 && p.cardAmount === 0 && <span className="text-[#444]">0 ₽</span>}
+                                                      {(p.cashAmount + p.cardAmount).toLocaleString('ru-RU')} ₽
                                                     </div>
                                                   </div>
                                                 ))}
@@ -4744,17 +4742,6 @@ export function Admin() {
                                     </div>
                                     <div className="text-left shrink-0 sm:text-right">
                                       <div className="text-white font-black text-sm">{total.toLocaleString('ru-RU')} ₽</div>
-                                      {p.cashAmount > 0 && p.cardAmount > 0 && (
-                                        <div className="text-[#555] text-[10px]">
-                                          нал {p.cashAmount.toLocaleString('ru-RU')} + карта {p.cardAmount.toLocaleString('ru-RU')}
-                                        </div>
-                                      )}
-                                      {p.cashAmount > 0 && p.cardAmount === 0 && (
-                                        <div className="text-[#555] text-[10px]">наличными</div>
-                                      )}
-                                      {p.cardAmount > 0 && p.cashAmount === 0 && (
-                                        <div className="text-[#555] text-[10px]">картой</div>
-                                      )}
                                     </div>
                                   </div>
                                   <div className="mt-2 text-[#444] text-[10px]">
