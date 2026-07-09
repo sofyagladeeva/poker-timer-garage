@@ -5811,7 +5811,7 @@ export function Admin() {
                         <>
                           <div className="text-green-400 text-[10px] uppercase mb-1">Добавлен</div>
                           <div className="text-white font-bold">{row.new!.name || '—'} <span className="text-[#666] font-normal">({formatPersonnelRole(row.new!)})</span></div>
-                          <div className="text-[#888] text-xs mt-0.5">нал {row.new!.cashAmount.toLocaleString('ru-RU')} ₽ · карта {row.new!.cardAmount.toLocaleString('ru-RU')} ₽</div>
+                          <div className="text-[#888] text-xs mt-0.5">{(row.new!.cashAmount + row.new!.cardAmount).toLocaleString('ru-RU')} ₽</div>
                         </>
                       )}
                       {row.type === 'removed' && (
@@ -5825,9 +5825,9 @@ export function Admin() {
                           <div className="text-[#888] text-[10px] uppercase mb-1">Изменён</div>
                           <div className="text-white font-bold">{row.new!.name || '—'} <span className="text-[#666] font-normal">({formatPersonnelRole(row.new!)})</span></div>
                           <div className="flex gap-2 mt-1 text-xs">
-                            <div className="text-[#555]">было: нал {row.old!.cashAmount.toLocaleString('ru-RU')} + карта {row.old!.cardAmount.toLocaleString('ru-RU')}</div>
+                            <div className="text-[#555]">было: {(row.old!.cashAmount + row.old!.cardAmount).toLocaleString('ru-RU')} ₽</div>
                             <div className="text-[#888]">→</div>
-                            <div className="text-white">нал {row.new!.cashAmount.toLocaleString('ru-RU')} + карта {row.new!.cardAmount.toLocaleString('ru-RU')}</div>
+                            <div className="text-white">{(row.new!.cashAmount + row.new!.cardAmount).toLocaleString('ru-RU')} ₽</div>
                           </div>
                         </>
                       )}
