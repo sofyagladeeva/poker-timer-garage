@@ -31,6 +31,7 @@ const INITIAL_SYNC_RETRY_COUNT = 2;
 const GAME_STATE_POLL_MS = 2_000;
 const AUX_SYNC_POLL_MS = 5_000;
 const DISPLAY_STALE_RELOAD_MS = 45_000;
+const DISPLAY_HARD_RELOAD_MS = 3 * 60_000;
 const DISPLAY_WATCHDOG_MS = 5_000;
 const AUTO_ADVANCE_SERVER_CHECK_MS = 350;
 const FOREGROUND_SYNC_TIMEOUT_MS = 5_000;
@@ -804,13 +805,38 @@ export function useGameState(readOnly = false) {
       const staleFor = Date.now() - lastServerSyncAt.current;
       if (staleFor < DISPLAY_STALE_RELOAD_MS) return;
 
+      if (staleFor >= DISPLAY_HARD_RELOAD_MS) {
+        console.warn(`Display sync stalled for ${staleFor}ms, forcing hard reload`);
+        window.location.reload();
+        return;
+      }
+
       console.warn(`Display sync stalled for ${staleFor}ms, forcing soft resync`);
       void syncGameStateFromServer('watchdog');
       void syncBlindLevelsFromServer();
       void syncCombinationsFromServer();
     }, DISPLAY_WATCHDOG_MS);
 
-    return () => clearInterval(watchdogInterval);
+    // rAF-based hard-reload guard: Smart TV browsers throttle setInterval but
+    // keep rAF running. If the main watchdog interval stalls, rAF will catch it.
+    let rafId: number;
+    const rafCheck = () => {
+      if (lastServerSyncAt.current > 0) {
+        const staleFor = Date.now() - lastServerSyncAt.current;
+        if (staleFor >= DISPLAY_HARD_RELOAD_MS) {
+          console.warn(`rAF watchdog: stalled ${staleFor}ms, reloading`);
+          window.location.reload();
+          return;
+        }
+      }
+      rafId = requestAnimationFrame(rafCheck);
+    };
+    rafId = requestAnimationFrame(rafCheck);
+
+    return () => {
+      clearInterval(watchdogInterval);
+      cancelAnimationFrame(rafId);
+    };
   }, [
     isSupabaseConfigured,
     readOnly,
