@@ -5,7 +5,7 @@ add column if not exists "tableCount" integer not null default 4;
 -- Уведомления флора (вызовы + выбывания от дилеров)
 create table if not exists public.floor_notifications (
   id uuid primary key default gen_random_uuid(),
-  session_id integer not null,
+  session_id bigint not null,
   type text not null check (type in ('floor_call', 'bustout')),
   table_number integer not null,
   player_id text,
