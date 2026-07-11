@@ -1272,10 +1272,17 @@ export function Admin() {
     setFinishBusy(true);
     setResultsNotice(null);
     try {
-      const preparedPersonnel = await syncManualPersonnelToStaff(finishPersonnelRef.current);
-      setFinishPersonnel(preparedPersonnel);
-      finishPersonnelRef.current = preparedPersonnel;
-      await savePersonnelDraft(floorSessionId, preparedPersonnel);
+      try {
+        const preparedPersonnel = await syncManualPersonnelToStaff(finishPersonnelRef.current);
+        setFinishPersonnel(preparedPersonnel);
+        finishPersonnelRef.current = preparedPersonnel;
+        await savePersonnelDraft(floorSessionId, preparedPersonnel);
+      } catch (personnelError) {
+        setResultsNotice({
+          tone: 'warning',
+          text: `Не удалось синхронизировать данные персонала: ${personnelError instanceof Error ? personnelError.message : 'Ошибка'}. Турнир всё равно будет завершён.`,
+        });
+      }
 
       let dispatchedResults = false;
       let resentResults = false;
@@ -5690,11 +5697,34 @@ export function Admin() {
               )}
 
               {gameState.status !== 'ended' && finishStep === 'personnel' && (
-                <PersonnelForm
-                  value={finishPersonnel}
-                  onChange={handlePersonnelChange}
-                  staffMembers={staffMembers}
-                />
+                <>
+                  {missingBotRosterForFinish && (
+                    <div className="mb-4 rounded-xl border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
+                      Перед завершением игры из бота нужен список игроков. Нажмите `Синхронизировать` или добавьте игроков вручную.
+                    </div>
+                  )}
+                  {playersMissingFinalPlace > 0 && (
+                    <div className="mb-4 rounded-xl border border-amber-900/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
+                      Без итогового места: {playersMissingFinalPlace}. Перед отправкой переведите оставшихся игроков в `Выбыл`.
+                    </div>
+                  )}
+                  {visibleResultsNotice && (
+                    <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
+                      visibleResultsNotice.tone === 'success'
+                        ? 'border-green-900/60 bg-green-950/30 text-green-200'
+                        : visibleResultsNotice.tone === 'warning'
+                          ? 'border-amber-900/60 bg-amber-950/30 text-amber-200'
+                          : 'border-red-900/60 bg-red-950/40 text-red-300'
+                    }`}>
+                      {visibleResultsNotice.text}
+                    </div>
+                  )}
+                  <PersonnelForm
+                    value={finishPersonnel}
+                    onChange={handlePersonnelChange}
+                    staffMembers={staffMembers}
+                  />
+                </>
               )}
             </div>
 
