@@ -8,7 +8,7 @@ import {
   stripUnsupportedChipLeaderCollectionColumns,
   stripUnsupportedChipLeaderColumns,
 } from '../gameStateSync';
-import { hasMissingAddonOpen, hasMissingBonusColumns, hasMissingChipLeaderCollectionActive, hasMissingChipLeaders, hasMissingNextGameBotId, hasMissingResetAt, hasMissingTableCount, normalizeGameState } from '../gameStateMath';
+import { hasMissingAddonOpen, hasMissingBonusColumns, hasMissingChipLeaderCollectionActive, hasMissingChipLeaders, hasMissingNextGameBotId, hasMissingResetAt, hasMissingTableCount, hasIntegerOverflow, normalizeGameState } from '../gameStateMath';
 import { buildAdvanceLevelPatch, buildAutoAdvanceAnchor } from '../levelAdvance';
 import type {
   GameState,
@@ -563,6 +563,17 @@ export function useGameState(readOnly = false) {
         const { addonOpen, ...noAddonOpen } = payload;
         void addonOpen;
         payload = noAddonOpen;
+        continue;
+      }
+
+      // integer overflow (22003): lastTickAt column is still integer in DB.
+      // Drop it from payload so the rest of the state still saves.
+      // Fix: run supabase/last_tick_at_bigint.sql in Supabase SQL editor.
+      if (hasIntegerOverflow(error)) {
+        console.error('game_state integer overflow — run supabase/last_tick_at_bigint.sql', error);
+        const { lastTickAt, ...noLastTickAt } = payload;
+        void lastTickAt;
+        payload = noLastTickAt;
         continue;
       }
 

@@ -185,6 +185,16 @@ export function hasMissingChipLeaderCollectionActive(error: unknown) {
   return message.includes('chipLeaderCollectionActive') || message.includes('chip_leader_collection_active');
 }
 
+export function hasIntegerOverflow(error: unknown) {
+  const message = typeof error === 'object' && error && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : '';
+  const code = typeof error === 'object' && error && 'code' in error
+    ? String((error as { code?: unknown }).code ?? '')
+    : '';
+  return code === '22003' || message.includes('out of range for type integer');
+}
+
 export function toLegacyGameState(state: GameState) {
   const { bonusCount, bonusStack, chipLeaders, chipLeaderCollectionActive, ...legacy } = state;
   void bonusCount;
