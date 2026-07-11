@@ -720,6 +720,7 @@ export function Admin() {
   const [displayClientsError, setDisplayClientsError] = useState<string | null>(null);
   const [displayClientsCollapsed, setDisplayClientsCollapsed] = useState(false);
   const [displayForceSyncBusy, setDisplayForceSyncBusy] = useState(false);
+  const [displayForceSyncResult, setDisplayForceSyncResult] = useState<'ok' | 'error' | null>(null);
   const [presenceNow, setPresenceNow] = useState(() => Date.now());
 
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([]);
@@ -2421,11 +2422,16 @@ export function Admin() {
     if (displayForceSyncBusy) return;
 
     setDisplayForceSyncBusy(true);
+    setDisplayForceSyncResult(null);
     try {
-      await forceSyncDisplays();
+      const ok = await forceSyncDisplays();
       setPresenceNow(Date.now());
+      setDisplayForceSyncResult(ok !== false ? 'ok' : 'error');
+    } catch {
+      setDisplayForceSyncResult('error');
     } finally {
       setDisplayForceSyncBusy(false);
+      setTimeout(() => setDisplayForceSyncResult(null), 3000);
     }
   };
 
@@ -3101,9 +3107,15 @@ export function Admin() {
                     type="button"
                     onClick={() => void handleForceSyncDisplays()}
                     disabled={displayForceSyncBusy}
-                    className="rounded-full border border-[#C0392B]/70 bg-[#1A0A0A] px-3 py-1 text-xs font-bold text-red-200 active:scale-95 transition-transform disabled:opacity-50"
+                    className={`rounded-full border px-3 py-1 text-xs font-bold active:scale-95 transition-all disabled:opacity-50 ${
+                      displayForceSyncResult === 'ok'
+                        ? 'border-green-700 bg-green-950 text-green-300'
+                        : displayForceSyncResult === 'error'
+                          ? 'border-red-700 bg-red-950 text-red-300'
+                          : 'border-[#C0392B]/70 bg-[#1A0A0A] text-red-200'
+                    }`}
                   >
-                    {displayForceSyncBusy ? 'Синхр...' : 'Синхронизировать'}
+                    {displayForceSyncBusy ? 'Синхр...' : displayForceSyncResult === 'ok' ? '✓ Отправлено' : displayForceSyncResult === 'error' ? '✕ Ошибка' : 'Синхронизировать'}
                   </button>
                   <button
                     type="button"

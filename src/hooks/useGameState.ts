@@ -1039,10 +1039,8 @@ export function useGameState(readOnly = false) {
       timeLeft: liveTimeLeft,
       lastTickAt: timerRunning ? now : current.lastTickAt,
     }, current);
-    const persistedPatch: Partial<GameState> = {
-      timeLeft: synced.timeLeft,
-      lastTickAt: synced.lastTickAt,
-    };
+    // Write full state so TVs with dead WebSocket pick up everything via polling.
+    const persistedPatch = synced;
 
     setGameState(synced);
     gameStateRef.current = synced;
