@@ -680,6 +680,7 @@ export function Admin() {
   const [activeTab, setActiveTab] = useState<AdminTab>('control');
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
   const [customGameOpen, setCustomGameOpen] = useState(false);
+  const [pendingGameSwitch, setPendingGameSwitch] = useState<{ title: string; botId: number | null; buyIn: number | null } | null>(null);
   const [customGameTitle, setCustomGameTitle] = useState('');
   const [nextGamePickerOpen, setNextGamePickerOpen] = useState(false);
   const [blindTemplates, setBlindTemplates] = useState<BlindTemplate[]>(() => loadBlindTemplates());
@@ -1457,6 +1458,13 @@ export function Admin() {
 
     if (gameState.status === 'ended') {
       await confirmStartNewTournament({ title, botId, buyIn });
+      setGamePickerOpen(false);
+      setCustomGameOpen(false);
+      return;
+    }
+
+    if (gameState.status === 'running' || gameState.status === 'paused' || gameState.status === 'break') {
+      setPendingGameSwitch({ title, botId, buyIn });
       setGamePickerOpen(false);
       setCustomGameOpen(false);
       return;
@@ -5937,6 +5945,54 @@ export function Admin() {
       >
         ↑
       </button>
+    )}
+
+    {pendingGameSwitch && (
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-3 sm:items-center sm:p-6">
+        <div className="w-full max-w-md rounded-3xl border border-[#2D2D2D] bg-[#111] shadow-2xl">
+          <div className="border-b border-[#2D2D2D] px-5 py-4">
+            <div className="text-white font-black text-lg">Сменить игру?</div>
+            <div className="mt-1 text-sm text-[#777]">
+              Сейчас идёт <span className="text-white font-bold">«{gameState.tournamentTitle || 'текущий турнир'}»</span>.
+              Вы выбрали <span className="text-white font-bold">«{pendingGameSwitch.title}»</span>.
+            </div>
+          </div>
+          <div className="px-5 py-4 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                const { title, botId, buyIn } = pendingGameSwitch;
+                setPendingGameSwitch(null);
+                await prepareTournamentPlayersContext(botId, title);
+                await updateGameState({ tournamentTitle: title, tournamentBotId: botId, tournamentBuyIn: buyIn }, true);
+              }}
+              className="w-full py-3 rounded-2xl border border-blue-700/60 bg-blue-950/30 text-blue-200 text-sm font-bold hover:bg-blue-950/50 transition-colors text-left px-4"
+            >
+              <div>Сменить игру, сохранить таймер</div>
+              <div className="text-blue-400/60 text-xs font-normal mt-0.5">Таймер продолжит работу, игроки останутся</div>
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                const { title, botId, buyIn } = pendingGameSwitch;
+                setPendingGameSwitch(null);
+                await confirmStartNewTournament({ title, botId, buyIn });
+              }}
+              className="w-full py-3 rounded-2xl border border-[#C0392B]/60 bg-[#C0392B]/10 text-[#FF6B6B] text-sm font-bold hover:bg-[#C0392B]/20 transition-colors text-left px-4"
+            >
+              <div>Сбросить и сменить</div>
+              <div className="text-[#FF6B6B]/60 text-xs font-normal mt-0.5">Текущий турнир завершится, данные сохранятся в архив</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingGameSwitch(null)}
+              className="w-full py-3 rounded-2xl border border-[#2D2D2D] text-[#666] text-sm font-bold hover:border-[#555] hover:text-[#888] transition-colors"
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      </div>
     )}
     </ErrorBoundary>
   );
