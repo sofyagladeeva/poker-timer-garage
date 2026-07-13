@@ -1463,7 +1463,7 @@ export function Admin() {
     }
 
     await prepareTournamentPlayersContext(botId, title);
-    await updateGameState({ tournamentTitle: title, tournamentBotId: botId, tournamentBuyIn: buyIn });
+    await updateGameState({ tournamentTitle: title, tournamentBotId: botId, tournamentBuyIn: buyIn }, true);
     setGamePickerOpen(false);
     setCustomGameOpen(false);
   };
