@@ -5,6 +5,7 @@ import type {
   LiveTournamentPlayer,
 } from '../types';
 import { findPlayerWithPlaceConflict, isEarlyBird } from '../hooks/useTournamentPlayers';
+import { matchesSearchQuery } from '../searchUtils';
 
 type Props = {
   groupedPlayers: {
@@ -51,6 +52,7 @@ type Props = {
   onRestorePlayersFromBackup: (backupId: string) => Promise<boolean>;
   tableCount?: number;
   onAssignSeat?: (playerId: string, tableNumber: number | null, seatNumber: number | null) => Promise<void>;
+  knownPlayers?: Array<{ name: string; username: string | null }>;
 };
 
 export function TournamentPlayersTab({
@@ -76,8 +78,11 @@ export function TournamentPlayersTab({
   onRestorePlayersFromBackup,
   tableCount = 4,
   onAssignSeat,
+  knownPlayers = [],
 }: Props) {
   const [manualPlayerName, setManualPlayerName] = useState('');
+  const [autocompleteOpen, setAutocompleteOpen] = useState(false);
+  const [autocompleteIndex, setAutocompleteIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewFilter, setViewFilter] = useState<'all' | 'active' | 'pending' | 'waitlist' | 'out' | 'unpaid' | 'cash' | 'card'>('all');
   const [placeConflictNotice, setPlaceConflictNotice] = useState<string | null>(null);
@@ -141,8 +146,8 @@ export function TournamentPlayersTab({
 
   const matchesSearch = (player: LiveTournamentPlayer) => {
     if (!normalizedQuery) return true;
-    if (player.name.toLowerCase().includes(normalizedQuery)) return true;
-    if (player.realName?.toLowerCase().includes(normalizedQuery)) return true;
+    if (matchesSearchQuery(player.name, normalizedQuery)) return true;
+    if (player.realName && matchesSearchQuery(player.realName, normalizedQuery)) return true;
     return false;
   };
 
@@ -178,9 +183,27 @@ export function TournamentPlayersTab({
     player.arrivalStatus !== 'absent' && player.status !== 'out'
   )).length;
 
-  const handleAddManualPlayer = async () => {
-    const ok = await onAddManualPlayer(manualPlayerName);
-    if (ok) setManualPlayerName('');
+  const rosterNames = new Set(rosterPlayers.map(p => p.name.toLowerCase()));
+  const autocompleteSuggestions = manualPlayerName.trim().length > 0
+    ? knownPlayers
+        .filter(p => !rosterNames.has(p.name.toLowerCase()) && matchesSearchQuery(p.name, manualPlayerName.trim()))
+        .slice(0, 7)
+    : [];
+  const typedMatchesExisting = knownPlayers.some(
+    p => p.name.toLowerCase() === manualPlayerName.trim().toLowerCase()
+  );
+
+  const handleAddManualPlayer = async (nameOverride?: string) => {
+    const name = nameOverride ?? manualPlayerName;
+    const ok = await onAddManualPlayer(name);
+    if (ok) {
+      setManualPlayerName('');
+      setAutocompleteOpen(false);
+    }
+  };
+
+  const handleAutocompleteSelect = (name: string) => {
+    void handleAddManualPlayer(name);
   };
 
   const handleRemovePlayer = async (player: LiveTournamentPlayer) => {
@@ -370,18 +393,70 @@ export function TournamentPlayersTab({
             Показано: {allPlayers.length} из {totalPlayers}. Список обновляется в фоне.
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              value={manualPlayerName}
-              onChange={event => setManualPlayerName(event.target.value)}
-              onKeyDown={event => {
-                if (event.key === 'Enter' && manualPlayerName.trim()) {
-                  void handleAddManualPlayer();
-                }
-              }}
-              placeholder="Никнейм"
-              className="admin-input !w-40 !py-2 !text-xs"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={manualPlayerName}
+                onChange={event => {
+                  setManualPlayerName(event.target.value);
+                  setAutocompleteOpen(true);
+                  setAutocompleteIndex(0);
+                }}
+                onFocus={() => setAutocompleteOpen(true)}
+                onBlur={() => setTimeout(() => setAutocompleteOpen(false), 150)}
+                onKeyDown={event => {
+                  const total = autocompleteSuggestions.length + (manualPlayerName.trim() && !typedMatchesExisting ? 1 : 0);
+                  if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    setAutocompleteIndex(i => Math.min(i + 1, total - 1));
+                  } else if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    setAutocompleteIndex(i => Math.max(i - 1, 0));
+                  } else if (event.key === 'Escape') {
+                    setAutocompleteOpen(false);
+                  } else if (event.key === 'Enter' && autocompleteOpen && total > 0) {
+                    event.preventDefault();
+                    const isNewPlayerItem = autocompleteIndex === autocompleteSuggestions.length;
+                    const name = isNewPlayerItem
+                      ? manualPlayerName.trim()
+                      : autocompleteSuggestions[autocompleteIndex]?.name ?? manualPlayerName.trim();
+                    void handleAddManualPlayer(name);
+                  } else if (event.key === 'Enter' && manualPlayerName.trim()) {
+                    void handleAddManualPlayer();
+                  }
+                }}
+                placeholder="Никнейм"
+                className="admin-input !w-44 !py-2 !text-xs"
+              />
+              {autocompleteOpen && manualPlayerName.trim() && (autocompleteSuggestions.length > 0 || !typedMatchesExisting) && (
+                <div className="absolute left-0 top-full mt-1 z-50 w-56 bg-[#111] border border-[#2D2D2D] rounded-xl overflow-hidden shadow-xl">
+                  {autocompleteSuggestions.map((p, i) => (
+                    <button
+                      key={p.name}
+                      type="button"
+                      onMouseDown={() => handleAutocompleteSelect(p.name)}
+                      className={`w-full text-left px-3 py-2 text-xs flex flex-col gap-0.5 transition-colors ${
+                        i === autocompleteIndex ? 'bg-[#1E1E1E] text-white' : 'text-[#ccc] hover:bg-[#1A1A1A]'
+                      }`}
+                    >
+                      <span className="font-semibold">{p.name}</span>
+                      {p.username && <span className="text-[#555] text-[10px]">@{p.username}</span>}
+                    </button>
+                  ))}
+                  {!typedMatchesExisting && (
+                    <button
+                      type="button"
+                      onMouseDown={() => void handleAddManualPlayer(manualPlayerName.trim())}
+                      className={`w-full text-left px-3 py-2 text-xs transition-colors border-t border-[#1D1D1D] ${
+                        autocompleteIndex === autocompleteSuggestions.length ? 'bg-[#1E1E1E] text-white' : 'text-[#888] hover:bg-[#1A1A1A]'
+                      }`}
+                    >
+                      + Новый игрок «{manualPlayerName.trim()}»
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => void handleAddManualPlayer()}

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { LiveTournamentPlayer } from '../types.ts';
+import { matchesSearchQuery } from '../searchUtils';
 
 function getProjectedOutPlace(players: LiveTournamentPlayer[], player: LiveTournamentPlayer) {
   if (player.arrivalStatus === 'absent') return null;
@@ -163,8 +164,8 @@ export function TablesTab({ tableCount, players, onUpdateTableCount, onAssignSea
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const searchResults = normalizedQuery
     ? activePlayers.filter(p =>
-        p.name.toLowerCase().includes(normalizedQuery) ||
-        p.realName?.toLowerCase().includes(normalizedQuery)
+        matchesSearchQuery(p.name, normalizedQuery) ||
+        (!!p.realName && matchesSearchQuery(p.realName, normalizedQuery))
       )
     : [];
 

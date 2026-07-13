@@ -45,6 +45,7 @@ import {
 } from '../tournamentResultsFlow';
 import { aggregatePlayerHistory, filterByPeriod } from '../playerHistory';
 import type { PeriodFilter, PlayerAggregate } from '../playerHistory';
+import { matchesSearchQuery } from '../searchUtils';
 import * as XLSX from 'xlsx';
 import { PokerCard } from '../components/PokerCard';
 import { TournamentPlayersTab } from '../components/TournamentPlayersTab';
@@ -734,6 +735,8 @@ export function Admin() {
   const [expandedPlayerKey, setExpandedPlayerKey] = useState<string | null>(null);
   const [playerContacts, setPlayerContacts] = useState<Record<string, { realName: string | null; phone: string | null; instagram: string | null }>>({});
   const [contactsLoaded, setContactsLoaded] = useState(false);
+  const [knownPlayersForSearch, setKnownPlayersForSearch] = useState<Array<{ name: string; username: string | null }>>([]);
+  const [knownPlayersLoaded, setKnownPlayersLoaded] = useState(false);
   const [archiveContactPlayer, setArchiveContactPlayer] = useState<PlayerAggregate | null>(null);
   const [contactEditMode, setContactEditMode] = useState(false);
   const [contactDraft, setContactDraft] = useState<{ realName: string; phone: string; instagram: string }>({ realName: '', phone: '', instagram: '' });
@@ -1665,6 +1668,23 @@ export function Admin() {
   }, [activeTab, archiveAuthed, archiveSubTab, tournaments, fetchTournamentArchiveDetailsBatch]);
 
   useEffect(() => {
+    if (activeTab !== 'players' || knownPlayersLoaded) return;
+    let cancelled = false;
+    const load = async () => {
+      const ts = await fetchTournaments();
+      if (cancelled) return;
+      const ids = ts.map(t => t.id);
+      const detailsById = ids.length > 0 ? await fetchTournamentArchiveDetailsBatch(ids) : {};
+      if (cancelled) return;
+      const aggs = aggregatePlayerHistory(ts, detailsById);
+      setKnownPlayersForSearch(aggs.map(a => ({ name: a.currentName, username: a.currentUsername })));
+      setKnownPlayersLoaded(true);
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [activeTab, knownPlayersLoaded, fetchTournaments, fetchTournamentArchiveDetailsBatch]);
+
+  useEffect(() => {
     if (activeTab !== 'archive' || !archiveAuthed || archiveSubTab !== 'players' || contactsLoaded) return;
     let cancelled = false;
     const load = async () => {
@@ -1749,8 +1769,8 @@ export function Admin() {
     const filtered = allAggs
       .filter(a =>
         !query ||
-        a.currentName.toLowerCase().includes(query) ||
-        (a.currentUsername ?? '').toLowerCase().includes(query)
+        matchesSearchQuery(a.currentName, query) ||
+        matchesSearchQuery(a.currentUsername ?? '', query)
       )
       .map(agg => {
         const entries = filterByPeriod(
@@ -3768,6 +3788,7 @@ export function Admin() {
               onAssignSeat={async (playerId, tableNumber, seatNumber) => {
                 await assignPlayerSeat(playerId, tableNumber, seatNumber);
               }}
+              knownPlayers={knownPlayersForSearch}
             />
 
           </div>
@@ -4458,8 +4479,8 @@ export function Admin() {
                   const aggsWithStats = allAggs
                     .filter(a =>
                       !query ||
-                      a.currentName.toLowerCase().includes(query) ||
-                      (a.currentUsername ?? '').toLowerCase().includes(query)
+                      matchesSearchQuery(a.currentName, query) ||
+                      matchesSearchQuery(a.currentUsername ?? '', query)
                     )
                     .map(agg => {
                       const entries = filterByPeriod(
@@ -5727,6 +5748,7 @@ export function Admin() {
                       onAssignSeat={async (playerId, tableNumber, seatNumber) => {
                         await assignPlayerSeat(playerId, tableNumber, seatNumber);
                       }}
+                      knownPlayers={knownPlayersForSearch}
                     />
                   </div>
                 </>
