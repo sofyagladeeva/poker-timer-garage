@@ -55,4 +55,6 @@ export const DEFAULT_GAME_STATE = {
   resetAt: 0,
   tableCount: 4,
   addonOpen: false,
+  extraAddonCount: 0,
+  extraBonusCount: 0,
 };

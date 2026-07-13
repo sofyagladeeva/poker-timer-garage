@@ -2093,17 +2093,19 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     const hasPlayers = players.length > 0;
     if (!hasPlayers) return;
 
+    const totalAddonCount = summary.addons + (gameState.extraAddonCount ?? 0);
+    const totalBonusCount = summary.bonuses + (gameState.extraBonusCount ?? 0);
     const nextCounters = {
       players: summary.entrants,
       outs: summary.bustouts,
       rebuys: summary.rebuys,
-      addonCount: summary.addons,
-      bonusCount: summary.bonuses,
+      addonCount: totalAddonCount,
+      bonusCount: totalBonusCount,
       totalStack: calcTotalStack({
         players: summary.entrants,
         rebuys: summary.rebuys,
-        addonCount: summary.addons,
-        bonusCount: summary.bonuses,
+        addonCount: totalAddonCount,
+        bonusCount: totalBonusCount,
         startStack: gameState.startStack,
         addonStack: gameState.addonStack,
         bonusStack: gameState.bonusStack,
@@ -2127,6 +2129,8 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     gameState.addonStack,
     gameState.bonusCount,
     gameState.bonusStack,
+    gameState.extraAddonCount,
+    gameState.extraBonusCount,
     gameState.outs,
     gameState.players,
     gameState.rebuys,

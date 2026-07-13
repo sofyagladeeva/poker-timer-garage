@@ -120,6 +120,8 @@ export function normalizeGameState(raw: unknown, fallback: GameState): GameState
     resetAt: toWholeNumber(source.resetAt, fallback.resetAt ?? 0),
     tableCount: Math.max(1, toWholeNumber(source.tableCount ?? source.table_count, fallback.tableCount ?? 4)),
     addonOpen: toBoolean(source.addonOpen ?? source.addon_open, fallback.addonOpen ?? false),
+    extraAddonCount: toWholeNumber(source.extraAddonCount ?? source.extra_addon_count, fallback.extraAddonCount ?? 0),
+    extraBonusCount: toWholeNumber(source.extraBonusCount ?? source.extra_bonus_count, fallback.extraBonusCount ?? 0),
   };
 
   const explicitTotal = source.totalStack ?? source.total_stack;

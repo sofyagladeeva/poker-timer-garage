@@ -98,6 +98,8 @@ export interface GameState {
   resetAt: number; // unix ms timestamp of last resetTournament() — used to detect stale admin devices
   tableCount: number; // количество открытых столов для дилерских планшетов
   addonOpen: boolean; // активирован ли приём аддонов
+  extraAddonCount: number; // аддоны вне игроков, добавленные вручную из «Управления»
+  extraBonusCount: number; // бонусы вне игроков, добавленные вручную из «Управления»
 }
 
 export type LiveTournamentPlayerSource = 'bot' | 'manual';

@@ -2436,7 +2436,7 @@ export function Admin() {
   };
 
   const updateStackState = (
-    patch: Partial<Pick<GameState, 'players' | 'rebuys' | 'addonCount' | 'bonusCount' | 'startStack' | 'addonStack' | 'bonusStack'>>
+    patch: Partial<Pick<GameState, 'players' | 'rebuys' | 'addonCount' | 'bonusCount' | 'startStack' | 'addonStack' | 'bonusStack' | 'extraAddonCount' | 'extraBonusCount'>>
   ) => {
     const nextState = { ...gameStateSnapshotRef.current, ...patch };
     updateGameState({ ...patch, totalStack: calcTotalStack(nextState) });
@@ -3394,7 +3394,7 @@ export function Admin() {
               <div className="text-[#888] text-xs uppercase tracking-widest">Участники и стеки</div>
               {managedPlayerCountsActive && (
                 <div className="rounded-xl border border-blue-900/40 bg-blue-950/20 px-3 py-2 text-blue-200 text-xs">
-                  Игроки, ауты, rebuy, addon и бонусы сейчас считаются по вкладке `Игроки`. Здесь вручную остаются только размеры стеков.
+                  Игроки, ауты и ребаи считаются по вкладке «Игроки». Аддоны и бонусы можно добавлять здесь сверх тех, что привязаны к игрокам.
                 </div>
               )}
 
@@ -3457,19 +3457,33 @@ export function Admin() {
                   onAdd={() => updateStackState({ rebuys: (gameState.rebuys ?? 0) + 1 })}
                   onRemove={() => updateStackState({ rebuys: Math.max(0, (gameState.rebuys ?? 0) - 1) })}
                 />
-                <CounterBlock
+                <ExtraCounterBlock
                   label="Аддоны"
-                  value={gameState.addonCount ?? 0}
-                  disabled={managedPlayerCountsActive}
-                  onAdd={() => updateStackState({ addonCount: (gameState.addonCount ?? 0) + 1 })}
-                  onRemove={() => updateStackState({ addonCount: Math.max(0, (gameState.addonCount ?? 0) - 1) })}
+                  total={gameState.addonCount ?? 0}
+                  locked={managedPlayerCountsActive ? (gameState.addonCount ?? 0) - (gameState.extraAddonCount ?? 0) : 0}
+                  extra={gameState.extraAddonCount ?? 0}
+                  onAdd={() => updateStackState({ extraAddonCount: (gameState.extraAddonCount ?? 0) + 1, addonCount: (gameState.addonCount ?? 0) + 1 })}
+                  onRemove={() => {
+                    const extra = gameState.extraAddonCount ?? 0;
+                    if (extra <= 0) return;
+                    updateStackState({ extraAddonCount: extra - 1, addonCount: (gameState.addonCount ?? 0) - 1 });
+                  }}
                 />
-                <CounterBlock
+                <ExtraBonusBlock
                   label="Бонусы"
-                  value={gameState.bonusCount ?? 0}
-                  disabled={managedPlayerCountsActive}
-                  onAdd={() => updateStackState({ bonusCount: (gameState.bonusCount ?? 0) + 1 })}
-                  onRemove={() => updateStackState({ bonusCount: Math.max(0, (gameState.bonusCount ?? 0) - 1) })}
+                  total={gameState.bonusCount ?? 0}
+                  locked={managedPlayerCountsActive ? (gameState.bonusCount ?? 0) - (gameState.extraBonusCount ?? 0) : 0}
+                  extra={gameState.extraBonusCount ?? 0}
+                  onAdd={() => updateStackState({ extraBonusCount: (gameState.extraBonusCount ?? 0) + 1, bonusCount: (gameState.bonusCount ?? 0) + 1 })}
+                  onRemove={() => {
+                    const extra = gameState.extraBonusCount ?? 0;
+                    if (extra <= 0) return;
+                    updateStackState({ extraBonusCount: extra - 1, bonusCount: (gameState.bonusCount ?? 0) - 1 });
+                  }}
+                  onSetExtra={value => {
+                    const locked = managedPlayerCountsActive ? (gameState.bonusCount ?? 0) - (gameState.extraBonusCount ?? 0) : 0;
+                    updateStackState({ extraBonusCount: value, bonusCount: locked + value });
+                  }}
                 />
               </div>
 
@@ -6151,6 +6165,87 @@ const CounterBlock = React.memo(function CounterBlock({
           +1
         </button>
       </div>
+    </div>
+  );
+})
+
+const ExtraCounterBlock = React.memo(function ExtraCounterBlock({
+  label, total, locked, extra, onAdd, onRemove,
+}: {
+  label: string; total: number; locked: number; extra: number;
+  onAdd: () => void; onRemove: () => void;
+}) {
+  const canRemove = extra > 0;
+  return (
+    <div className="bg-[#0A0A0A] rounded-xl px-2 py-3 flex flex-col items-center gap-2">
+      <div className="text-center">
+        <div className="text-[#666] text-[10px] uppercase tracking-widest leading-tight">{label}</div>
+        {locked > 0 && <div className="text-[#444] text-[9px] leading-tight">{locked} у игроков</div>}
+      </div>
+      <div className="text-white font-black text-3xl leading-none">{total}</div>
+      <div className="flex gap-1 w-full">
+        <button onClick={onRemove} disabled={!canRemove}
+          className="flex-1 py-3 rounded-lg bg-[#2D2D2D] text-[#888] hover:bg-[#3D3D3D] font-bold text-lg transition-colors disabled:opacity-30 disabled:hover:bg-[#2D2D2D]">−</button>
+        <button onClick={onAdd}
+          className="flex-1 py-3 rounded-lg bg-[#C0392B] text-white hover:bg-[#E31E24] font-bold text-base transition-colors">+1</button>
+      </div>
+    </div>
+  );
+})
+
+const ExtraBonusBlock = React.memo(function ExtraBonusBlock({
+  label, total, locked, extra, onAdd, onRemove, onSetExtra,
+}: {
+  label: string; total: number; locked: number; extra: number;
+  onAdd: () => void; onRemove: () => void; onSetExtra: (value: number) => void;
+}) {
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const canRemove = extra > 0;
+
+  const openEdit = () => { setDraft(String(extra)); setEditing(true); };
+  const confirmEdit = () => {
+    const v = Math.max(0, parseInt(draft, 10) || 0);
+    onSetExtra(v);
+    setEditing(false);
+  };
+
+  return (
+    <div className="bg-[#0A0A0A] rounded-xl px-2 py-3 flex flex-col items-center gap-2">
+      <div className="text-center">
+        <div className="text-[#666] text-[10px] uppercase tracking-widest leading-tight">{label}</div>
+        {locked > 0 && <div className="text-[#444] text-[9px] leading-tight">{locked} у игроков</div>}
+      </div>
+      {editing ? (
+        <div className="flex flex-col items-center gap-1.5 w-full">
+          <div className="text-[#555] text-[9px]">свободных бонусов</div>
+          <input
+            type="number" min="0" inputMode="numeric" autoFocus
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') confirmEdit(); if (e.key === 'Escape') setEditing(false); }}
+            className="w-full text-center bg-[#1A1A1A] border border-[#C0392B]/60 rounded-lg px-2 py-1 text-white font-black text-xl focus:outline-none"
+          />
+          <div className="text-[#444] text-[9px]">итого: {locked + (parseInt(draft, 10) || 0)}</div>
+          <div className="flex gap-1 w-full">
+            <button onClick={() => setEditing(false)} className="flex-1 py-1.5 rounded-lg bg-[#2D2D2D] text-[#888] text-xs font-bold">Отмена</button>
+            <button onClick={confirmEdit} className="flex-1 py-1.5 rounded-lg bg-[#C0392B] text-white text-xs font-bold">Сохранить</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <button onClick={openEdit} title="Нажмите чтобы задать число"
+            className="text-white font-black text-3xl leading-none hover:text-[#C0392B] transition-colors cursor-pointer">
+            {total}
+          </button>
+          <div className="flex gap-1 w-full">
+            <button onClick={onRemove} disabled={!canRemove}
+              className="flex-1 py-3 rounded-lg bg-[#2D2D2D] text-[#888] hover:bg-[#3D3D3D] font-bold text-lg transition-colors disabled:opacity-30 disabled:hover:bg-[#2D2D2D]">−</button>
+            <button onClick={onAdd}
+              className="flex-1 py-3 rounded-lg bg-[#C0392B] text-white hover:bg-[#E31E24] font-bold text-base transition-colors">+1</button>
+          </div>
+        </>
+      )}
     </div>
   );
 })
