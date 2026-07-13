@@ -1727,6 +1727,17 @@ export function Admin() {
     return () => { cancelled = true; };
   }, [activeTab, knownPlayersLoaded, fetchTournaments, fetchTournamentArchiveDetailsBatch]);
 
+  const knownPlayersWithBot = useMemo(() => {
+    if (!botPlayerList || botPlayerList.length === 0) return knownPlayersForSearch;
+
+    const archiveNameSet = new Set(knownPlayersForSearch.map(p => p.name.toLowerCase()));
+    const botOnly = botPlayerList
+      .filter(p => !archiveNameSet.has(p.name.toLowerCase()))
+      .map(p => ({ name: p.name, username: p.username }));
+
+    return [...knownPlayersForSearch, ...botOnly];
+  }, [knownPlayersForSearch, botPlayerList]);
+
   useEffect(() => {
     if (activeTab !== 'archive' || !archiveAuthed || archiveSubTab !== 'players' || contactsLoaded) return;
     let cancelled = false;
@@ -1824,7 +1835,10 @@ export function Admin() {
   }, []);
 
   useEffect(() => {
-    if (activeTab !== 'archive' || !archiveAuthed || archiveSubTab !== 'players') return;
+    const shouldLoad =
+      activeTab === 'players' ||
+      (activeTab === 'archive' && archiveAuthed && archiveSubTab === 'players');
+    if (!shouldLoad) return;
     if (botPlayerListFetchedRef.current) return;
     botPlayerListFetchedRef.current = true;
 
@@ -3878,7 +3892,7 @@ export function Admin() {
               onAssignSeat={async (playerId, tableNumber, seatNumber) => {
                 await assignPlayerSeat(playerId, tableNumber, seatNumber);
               }}
-              knownPlayers={knownPlayersForSearch}
+              knownPlayers={knownPlayersWithBot}
             />
 
           </div>
@@ -5894,7 +5908,7 @@ export function Admin() {
                       onAssignSeat={async (playerId, tableNumber, seatNumber) => {
                         await assignPlayerSeat(playerId, tableNumber, seatNumber);
                       }}
-                      knownPlayers={knownPlayersForSearch}
+                      knownPlayers={knownPlayersWithBot}
                     />
                   </div>
                 </>
