@@ -4244,7 +4244,7 @@ export function Admin() {
                                     </div>
                                     <div className="bg-[#111] rounded-xl p-3">
                                       <div className="text-[#666] text-[10px] uppercase">Оплачено</div>
-                                      <div className="text-white font-black text-lg mt-1">{archiveDetails.summary.totalDue} ₽</div>
+                                      <div className="text-white font-black text-lg mt-1">{archiveCashTotal + archiveCardTotal} ₽</div>
                                     </div>
                                     <div className="bg-[#111] rounded-xl p-3">
                                       <div className="text-[#666] text-[10px] uppercase">Сохранено</div>
