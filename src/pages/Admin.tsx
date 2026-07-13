@@ -43,8 +43,10 @@ import {
   getTournamentResultsButtonLabel,
   shouldBlockNewTournamentForPendingBotResults,
 } from '../tournamentResultsFlow';
-import { aggregatePlayerHistory, filterByPeriod } from '../playerHistory';
-import type { PeriodFilter, PlayerAggregate } from '../playerHistory';
+import { aggregatePlayerHistory, filterByPeriod, mergeWithBotPlayerList } from '../playerHistory';
+import type { MergedPlayerAggregate, PeriodFilter, PlayerAggregate } from '../playerHistory';
+import { fetchBotPlayerList } from '../tournamentBotApi';
+import type { BotPlayerListItem } from '../tournamentBotApi';
 import { matchesSearchQuery } from '../searchUtils';
 import * as XLSX from 'xlsx';
 import { PokerCard } from '../components/PokerCard';
@@ -132,6 +134,36 @@ const SHARED_LIBRARY_RETRY_COUNT = 2;
 const ADMIN_AUTH_STORAGE_KEY = 'admin_authed';
 const ARCHIVE_AUTH_STORAGE_KEY = 'archive_authed';
 const DISPLAY_CLIENTS_REFRESH_MS = 3_000;
+const BOT_PLAYER_LIST_CACHE_KEY = 'poker_bot_player_list_cache';
+const BOT_PLAYER_LIST_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+type BotPlayerListCache = { players: BotPlayerListItem[]; cachedAt: string };
+
+function loadBotPlayerListCache(): BotPlayerListCache | null {
+  try {
+    const raw = localStorage.getItem(BOT_PLAYER_LIST_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<BotPlayerListCache>;
+    if (!Array.isArray(parsed?.players) || typeof parsed?.cachedAt !== 'string') return null;
+    return { players: parsed.players, cachedAt: parsed.cachedAt };
+  } catch {
+    return null;
+  }
+}
+
+function saveBotPlayerListCache(players: BotPlayerListItem[]): string {
+  const cachedAt = new Date().toISOString();
+  try {
+    localStorage.setItem(BOT_PLAYER_LIST_CACHE_KEY, JSON.stringify({ players, cachedAt }));
+  } catch {
+    // ignore storage quota errors
+  }
+  return cachedAt;
+}
+
+function isBotPlayerListCacheStale(cachedAt: string): boolean {
+  return Date.now() - new Date(cachedAt).getTime() > BOT_PLAYER_LIST_CACHE_TTL_MS;
+}
 
 type BotGameSummary = {
   id: number;
@@ -744,6 +776,17 @@ export function Admin() {
   const [archiveOpenId, setArchiveOpenId] = useState<number | null>(null);
   const [archiveDetailsLoadingId, setArchiveDetailsLoadingId] = useState<number | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
+  const [botPlayerList, setBotPlayerList] = useState<BotPlayerListItem[] | null>(() => {
+    const cache = loadBotPlayerListCache();
+    return cache && !isBotPlayerListCacheStale(cache.cachedAt) ? cache.players : null;
+  });
+  const [botPlayerListLoading, setBotPlayerListLoading] = useState(false);
+  const [botPlayerListError, setBotPlayerListError] = useState<string | null>(null);
+  const [botPlayerListCachedAt, setBotPlayerListCachedAt] = useState<string | null>(() => {
+    const cache = loadBotPlayerListCache();
+    return cache && !isBotPlayerListCacheStale(cache.cachedAt) ? cache.cachedAt : null;
+  });
+  const botPlayerListFetchedRef = useRef(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [finishReviewOpen, setFinishReviewOpen] = useState(false);
   const [finishStep, setFinishStep] = useState<'review' | 'personnel'>('review');
@@ -1760,6 +1803,53 @@ export function Admin() {
     await supabase.from('blind_templates').upsert({ id, name: `player_contact:${playerKey}`, levels: contact });
     setPlayerContacts(prev => ({ ...prev, [playerKey]: contact }));
   };
+
+  const fetchBotPlayerListFromApi = useCallback(async () => {
+    setBotPlayerListLoading(true);
+    setBotPlayerListError(null);
+    const result = await fetchBotPlayerList();
+    setBotPlayerListLoading(false);
+    if (result.ok) {
+      setBotPlayerList(result.players);
+      const cachedAt = saveBotPlayerListCache(result.players);
+      setBotPlayerListCachedAt(cachedAt);
+    } else {
+      setBotPlayerListError(result.error);
+      const cache = loadBotPlayerListCache();
+      if (cache) {
+        setBotPlayerList(cache.players);
+        setBotPlayerListCachedAt(cache.cachedAt);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'archive' || !archiveAuthed || archiveSubTab !== 'players') return;
+    if (botPlayerListFetchedRef.current) return;
+    botPlayerListFetchedRef.current = true;
+
+    const cache = loadBotPlayerListCache();
+    if (cache && !isBotPlayerListCacheStale(cache.cachedAt)) return;
+
+    let cancelled = false;
+    const doFetch = async () => {
+      const result = await fetchBotPlayerList();
+      if (cancelled) return;
+      if (result.ok) {
+        setBotPlayerList(result.players);
+        setBotPlayerListCachedAt(saveBotPlayerListCache(result.players));
+      } else {
+        setBotPlayerListError(result.error);
+        const staleCache = loadBotPlayerListCache();
+        if (staleCache) {
+          setBotPlayerList(staleCache.players);
+          setBotPlayerListCachedAt(staleCache.cachedAt);
+        }
+      }
+    };
+    void doFetch();
+    return () => { cancelled = true; };
+  }, [activeTab, archiveAuthed, archiveSubTab]);
 
   const handleExportXlsx = () => {
     const allAggs = aggregatePlayerHistory(tournaments, archiveDetailsById);
@@ -4471,12 +4561,15 @@ export function Admin() {
                 {/* ── PLAYERS sub-tab ───────────────────────────────────── */}
                 {archiveSubTab === 'players' && (() => {
                   const allAggs = aggregatePlayerHistory(tournaments, archiveDetailsById);
+                  const mergedAggs = mergeWithBotPlayerList(allAggs, botPlayerList ?? []);
+                  const aggsWithHistory = mergedAggs.filter((a): a is MergedPlayerAggregate => !a.botOnly);
+                  const botOnlyAggs = mergedAggs.filter((a): a is MergedPlayerAggregate => a.botOnly);
                   const loadedArchiveDetailsCount = tournaments.reduce((count, tournament) => (
                     archiveDetailsById[tournament.id]?.players?.length ? count + 1 : count
                   ), 0);
                   const query = playerHistorySearch.trim().toLowerCase();
 
-                  const aggsWithStats = allAggs
+                  const aggsWithStats = aggsWithHistory
                     .filter(a =>
                       !query ||
                       matchesSearchQuery(a.currentName, query) ||
@@ -4511,6 +4604,14 @@ export function Admin() {
                       if (playerHistorySort === 'avg_desc') return b.avgSpend - a.avgSpend;
                       return b.entries.length - a.entries.length || a.agg.currentName.localeCompare(b.agg.currentName, 'ru');
                     });
+
+                  const botOnlyFiltered = botOnlyAggs
+                    .filter(a =>
+                      !query ||
+                      matchesSearchQuery(a.currentName, query) ||
+                      matchesSearchQuery(a.currentUsername ?? '', query)
+                    )
+                    .sort((a, b) => a.currentName.localeCompare(b.currentName, 'ru'));
 
                   const sortOptions: { key: 'games' | 'spend_desc' | 'spend_asc' | 'rebuys' | 'discount' | 'avg_desc'; label: string }[] = [
                     { key: 'games', label: 'Игры' },
@@ -4563,13 +4664,31 @@ export function Admin() {
                             </button>
                           )}
                         </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => { void fetchBotPlayerListFromApi(); }}
+                            disabled={botPlayerListLoading}
+                            className="admin-btn-secondary px-3 py-1.5 text-xs shrink-0 disabled:opacity-50"
+                          >
+                            {botPlayerListLoading ? 'Загрузка...' : '↺ Обновить базу игроков'}
+                          </button>
+                          {botPlayerListCachedAt && !botPlayerListLoading && (
+                            <span className="text-[#444] text-[11px]">
+                              база из бота: {new Date(botPlayerListCachedAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
+                          {botPlayerListError && !botPlayerListLoading && (
+                            <span className="text-[#C0392B] text-[11px]">{botPlayerListError}</span>
+                          )}
+                        </div>
                       </div>
 
                       {(archiveLoading || playerHistoryLoading) && (
                         <div className="text-[#444] text-sm text-center py-8">Загрузка...</div>
                       )}
 
-                      {!archiveLoading && !playerHistoryLoading && aggsWithStats.length === 0 && (
+                      {!archiveLoading && !playerHistoryLoading && aggsWithStats.length === 0 && botOnlyFiltered.length === 0 && (
                         <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-8 text-center">
                           <div className="text-[#555] text-sm">
                             {allAggs.length === 0 ? 'Нет данных — у турниров нет сохранённых списков игроков' : 'Никто не найден'}
@@ -4728,6 +4847,33 @@ export function Admin() {
                           </div>
                         );
                       })}
+
+                      {botOnlyFiltered.length > 0 && (
+                        <div className="flex flex-col gap-1.5 mt-2">
+                          <div className="text-[#444] text-[10px] uppercase tracking-wider px-1 mt-1">
+                            Зарегистрированы в боте, ни разу не играли · {botOnlyFiltered.length}
+                          </div>
+                          {botOnlyFiltered.map(agg => (
+                            <div key={agg.key} className="bg-[#111] border border-[#2D2D2D] rounded-xl px-4 py-2.5 flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-white text-sm font-bold truncate">{agg.currentName}</div>
+                                {agg.currentUsername && (
+                                  <div className="text-[#555] text-xs mt-0.5">@{agg.currentUsername.replace(/^@/, '')}</div>
+                                )}
+                                {agg.botRegisteredAt && (
+                                  <div className="text-[#444] text-[10px] mt-0.5">
+                                    Зарег. {new Date(agg.botRegisteredAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="shrink-0 text-right">
+                                <div className="text-[#555] font-black text-sm">0</div>
+                                <div className="text-[#333] text-[10px] uppercase">игр</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })()}

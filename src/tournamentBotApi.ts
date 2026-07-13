@@ -37,6 +37,107 @@ export interface ImportedTournamentPlayer {
   instagram: string | null;
 }
 
+export interface BotPlayerListItem {
+  telegramId: number;
+  name: string;
+  username: string | null;
+  realName: string | null;
+  phone: string | null;
+  instagram: string | null;
+  registeredAt: string | null;
+  gamesCount: number | null;
+}
+
+const PLAYERS_LIST_URL = `${BOT_API}/api/admin/players`;
+
+function normalizeBotPlayerListItem(raw: unknown, index: number): BotPlayerListItem | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const source = raw as Record<string, unknown>;
+
+  const telegramId = toNullableNumber(source.telegram_id);
+  if (telegramId === null) return null;
+
+  const directName = toNullableString(source.name) ||
+    toNullableString(source.full_name) ||
+    toNullableString(source.display_name);
+  const firstName = toNullableString(source.first_name);
+  const lastName = toNullableString(source.last_name);
+  const compositeName = [firstName, lastName].filter(Boolean).join(' ').trim() || null;
+  const username = toNullableString(source.username);
+  const name = directName || compositeName || (username ? `@${username}` : `Игрок ${index + 1}`);
+
+  const rawRegisteredAt = toNullableString(source.registered_at) ?? toNullableString(source.registeredAt);
+  const registeredAt = rawRegisteredAt && !rawRegisteredAt.includes('Z') && !rawRegisteredAt.includes('+')
+    ? rawRegisteredAt + 'Z'
+    : rawRegisteredAt;
+
+  return {
+    telegramId,
+    name,
+    username,
+    realName: toNullableString(source.real_name) ?? toNullableString(source.realName),
+    phone: toNullableString(source.phone),
+    instagram: toNullableString(source.instagram),
+    registeredAt,
+    gamesCount: toNullableNumber(source.games_count) ?? toNullableNumber(source.gamesCount),
+  };
+}
+
+export async function fetchBotPlayerList(params?: { limit?: number; offset?: number }) {
+  const qs: string[] = [];
+  if (params?.limit != null) qs.push(`limit=${encodeURIComponent(params.limit)}`);
+  if (params?.offset != null) qs.push(`offset=${encodeURIComponent(params.offset)}`);
+  const url = qs.length > 0 ? `${PLAYERS_LIST_URL}?${qs.join('&')}` : PLAYERS_LIST_URL;
+
+  try {
+    const response = await fetch(url, {
+      headers: BOT_ADMIN_TOKEN ? { 'X-Admin-Token': BOT_ADMIN_TOKEN } : {},
+    });
+
+    if (!response.ok) {
+      return {
+        ok: false as const,
+        error: `Бот не отдал список игроков (HTTP ${response.status}).`,
+        unsupported: response.status === 404 || response.status === 405,
+        players: [] as BotPlayerListItem[],
+        total: 0,
+      };
+    }
+
+    const raw = await response.json() as unknown;
+    let rawItems: unknown[];
+    let total = 0;
+
+    if (Array.isArray(raw)) {
+      rawItems = raw;
+      total = raw.length;
+    } else if (raw && typeof raw === 'object') {
+      const source = raw as Record<string, unknown>;
+      rawItems = Array.isArray(source.players) ? source.players as unknown[]
+        : Array.isArray(source.data) ? source.data as unknown[]
+        : Array.isArray(source.items) ? source.items as unknown[]
+        : [];
+      total = toNullableNumber(source.total) ?? rawItems.length;
+    } else {
+      rawItems = [];
+    }
+
+    const players = rawItems
+      .map((item, i) => normalizeBotPlayerListItem(item, i))
+      .filter((item): item is BotPlayerListItem => item !== null);
+
+    return { ok: true as const, players, total };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : 'Не удалось загрузить список игроков из бота.',
+      unsupported: false,
+      players: [] as BotPlayerListItem[],
+      total: 0,
+    };
+  }
+}
+
 type BotTournamentPlayerMutationPayload = {
   name: string;
   username?: string | null;

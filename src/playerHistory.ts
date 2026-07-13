@@ -1,4 +1,5 @@
 import type { TournamentRecord, TournamentArchivePlayerRecord, TournamentArchiveDetails } from './types';
+import type { BotPlayerListItem } from './tournamentBotApi.ts';
 
 export interface PlayerTournamentEntry {
   tournamentId: number;
@@ -140,4 +141,55 @@ export function filterByPeriod(tournaments: PlayerTournamentEntry[], period: Per
   if (period === 'all') return tournaments;
   const cutoff = Date.now() - Number(period) * 24 * 60 * 60 * 1000;
   return tournaments.filter(e => new Date(e.finishedAt).getTime() >= cutoff);
+}
+
+export interface MergedPlayerAggregate extends PlayerAggregate {
+  botVerified: boolean;
+  botOnly: boolean;
+  botRegisteredAt: string | null;
+}
+
+export function mergeWithBotPlayerList(
+  aggregates: PlayerAggregate[],
+  botPlayers: BotPlayerListItem[]
+): MergedPlayerAggregate[] {
+  const byTelegramId = new Map<number, MergedPlayerAggregate>();
+
+  const merged: MergedPlayerAggregate[] = aggregates.map(agg => {
+    const m: MergedPlayerAggregate = { ...agg, botVerified: false, botOnly: false, botRegisteredAt: null };
+    if (agg.telegramId !== null) byTelegramId.set(agg.telegramId, m);
+    return m;
+  });
+
+  for (const botPlayer of botPlayers) {
+    const existing = byTelegramId.get(botPlayer.telegramId);
+    if (existing) {
+      existing.currentName = botPlayer.name;
+      existing.currentUsername = botPlayer.username;
+      existing.botVerified = true;
+      existing.botRegisteredAt = botPlayer.registeredAt;
+    } else {
+      const newAgg: MergedPlayerAggregate = {
+        key: `tg:${botPlayer.telegramId}`,
+        telegramId: botPlayer.telegramId,
+        currentName: botPlayer.name,
+        currentUsername: botPlayer.username,
+        tournaments: [],
+        tournamentCount: 0,
+        bestPlace: null,
+        totalCash: 0,
+        totalCard: 0,
+        totalRebuys: 0,
+        totalAddons: 0,
+        totalBounty: 0,
+        botVerified: true,
+        botOnly: true,
+        botRegisteredAt: botPlayer.registeredAt,
+      };
+      merged.push(newAgg);
+      byTelegramId.set(botPlayer.telegramId, newAgg);
+    }
+  }
+
+  return merged;
 }
