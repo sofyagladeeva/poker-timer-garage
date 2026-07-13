@@ -2325,6 +2325,8 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
           bounty: options?.bounty != null ? Math.max(0, Math.round(options.bounty)) : player.bounty,
           place: player.place ?? Math.max(1, entrants - bustoutOrder + 1),
           bustoutOrder,
+          tableNumber: null,
+          seatNumber: null,
           updatedAt: nowIso(),
         }, sessionId, tournamentBotId);
       });
@@ -2382,6 +2384,8 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
           place: null,
           placeOverride: false,
           bustoutOrder: null,
+          tableNumber: null,
+          seatNumber: null,
           sortOrder: player.arrivalStatus === 'absent' ? player.sortOrder : nextSortOrder,
           updatedAt: nowIso(),
         }, sessionId, tournamentBotId);

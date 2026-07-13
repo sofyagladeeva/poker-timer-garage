@@ -3760,6 +3760,8 @@ export function Admin() {
             onAssignSeat={async (playerId, tableNumber, seatNumber) => {
               await assignPlayerSeat(playerId, tableNumber, seatNumber);
             }}
+            onUpdatePlayerField={updatePlayerField}
+            onMarkPlayerOut={markPlayerOut}
           />
         )}
 

@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import type { LiveTournamentPlayer } from '../types.ts';
 
+function getProjectedOutPlace(players: LiveTournamentPlayer[], player: LiveTournamentPlayer) {
+  if (player.arrivalStatus === 'absent') return null;
+  if (player.status === 'out') return player.place;
+  const entrants = players.filter(item => item.arrivalStatus !== 'absent').length;
+  const maxOutOrder = players.reduce((max, item) => Math.max(max, item.bustoutOrder ?? 0), 0);
+  return Math.max(1, entrants - (maxOutOrder + 1) + 1);
+}
+
 const SEATS_PER_TABLE = 9;
 
 // Позиции боксов вокруг овального стола (в % от контейнера 100% × 220px)
@@ -22,6 +30,8 @@ type Props = {
   players: LiveTournamentPlayer[];
   onUpdateTableCount: (count: number) => void;
   onAssignSeat: (playerId: string, tableNumber: number | null, seatNumber: number | null) => Promise<void>;
+  onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<boolean>;
+  onMarkPlayerOut: (playerId: string, options?: { bounty?: number }) => Promise<void>;
 };
 
 function occupancyStyle(count: number, idealMin: number): {
@@ -33,7 +43,7 @@ function occupancyStyle(count: number, idealMin: number): {
   return { badge: 'text-orange-400', border: 'border-orange-700/60', bar: 'bg-orange-500' };
 }
 
-export function TablesTab({ tableCount, players, onUpdateTableCount, onAssignSeat }: Props) {
+export function TablesTab({ tableCount, players, onUpdateTableCount, onAssignSeat, onUpdatePlayerField, onMarkPlayerOut }: Props) {
   const [movingPlayer, setMovingPlayer] = useState<LiveTournamentPlayer | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [merging, setMerging] = useState(false);
@@ -319,6 +329,8 @@ export function TablesTab({ tableCount, players, onUpdateTableCount, onAssignSea
             movingPlayer={movingPlayer}
             onSetMovingPlayer={setMovingPlayer}
             onAssignSeat={onAssignSeat}
+            onUpdatePlayerField={onUpdatePlayerField}
+            onMarkPlayerOut={onMarkPlayerOut}
           />
         ))}
       </div>
@@ -334,6 +346,8 @@ function TableCard({
   movingPlayer,
   onSetMovingPlayer,
   onAssignSeat,
+  onUpdatePlayerField,
+  onMarkPlayerOut,
 }: {
   tableNumber: number;
   players: LiveTournamentPlayer[];
@@ -342,8 +356,14 @@ function TableCard({
   movingPlayer: LiveTournamentPlayer | null;
   onSetMovingPlayer: (p: LiveTournamentPlayer | null) => void;
   onAssignSeat: (playerId: string, tableNumber: number | null, seatNumber: number | null) => Promise<void>;
+  onUpdatePlayerField: (playerId: string, patch: Partial<LiveTournamentPlayer>) => Promise<boolean>;
+  onMarkPlayerOut: (playerId: string, options?: { bounty?: number }) => Promise<void>;
 }) {
   const [assigningSeat, setAssigningSeat] = useState<number | null>(null);
+  const [actionPlayer, setActionPlayer] = useState<LiveTournamentPlayer | null>(null);
+  const [outDialogPlayer, setOutDialogPlayer] = useState<LiveTournamentPlayer | null>(null);
+  const [outDialogBountyDraft, setOutDialogBountyDraft] = useState('0');
+  const [outDialogBusy, setOutDialogBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -384,8 +404,12 @@ function TableCard({
   };
 
   const handleClickOccupied = (player: LiveTournamentPlayer) => {
+    if (movingPlayer) {
+      onSetMovingPlayer(movingPlayer.id === player.id ? null : player);
+      return;
+    }
     setAssigningSeat(null);
-    onSetMovingPlayer(movingPlayer?.id === player.id ? null : player);
+    setActionPlayer(player);
   };
 
   const handleClickEmpty = async (seatNumber: number) => {
@@ -492,6 +516,113 @@ function TableCard({
             className="shrink-0 px-3 py-1.5 rounded-xl border border-[#C0392B]/70 bg-[#C0392B]/20 text-[#FF6B6B] text-xs font-bold hover:bg-[#C0392B]/30 transition-colors disabled:opacity-50">
             {busy ? '...' : 'Убрать с места'}
           </button>
+        </div>
+      )}
+
+      {actionPlayer !== null && !movingPlayer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4" onClick={() => setActionPlayer(null)}>
+          <div className="w-full max-w-sm bg-[#111] border border-[#2D2D2D] rounded-3xl shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="border-b border-[#2D2D2D] px-5 py-4 flex items-center justify-between">
+              <div>
+                <div className="text-white font-black text-base">{actionPlayer.name}</div>
+                <div className="text-[#555] text-xs mt-0.5">Стол {actionPlayer.tableNumber}, бокс {actionPlayer.seatNumber}</div>
+              </div>
+              <button type="button" onClick={() => setActionPlayer(null)} className="text-[#555] hover:text-[#888] text-lg leading-none">✕</button>
+            </div>
+            <div className="p-4 flex flex-col gap-3">
+              <div className="flex gap-3">
+                <div className="flex-1 bg-[#0A0A0A] border border-[#2D2D2D] rounded-2xl p-3">
+                  <div className="text-[#666] text-[10px] uppercase mb-2">Rebuy</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <button type="button" disabled={busy || actionPlayer.rebuyCount <= 0}
+                      onClick={() => { const p = actionPlayer; void onUpdatePlayerField(p.id, { rebuyCount: Math.max(0, p.rebuyCount - 1) }).then(() => setActionPlayer(prev => prev ? { ...prev, rebuyCount: Math.max(0, prev.rebuyCount - 1) } : null)); }}
+                      className="w-8 h-8 rounded-lg bg-[#2D2D2D] text-white font-bold disabled:opacity-30">−</button>
+                    <div className="text-white font-black text-lg w-6 text-center">{actionPlayer.rebuyCount}</div>
+                    <button type="button" disabled={busy}
+                      onClick={() => { const p = actionPlayer; void onUpdatePlayerField(p.id, { rebuyCount: p.rebuyCount + 1 }).then(() => setActionPlayer(prev => prev ? { ...prev, rebuyCount: prev.rebuyCount + 1 } : null)); }}
+                      className="w-8 h-8 rounded-lg bg-[#C0392B] text-white font-bold disabled:opacity-30">+</button>
+                  </div>
+                </div>
+                <div className="flex-1 bg-[#0A0A0A] border border-[#2D2D2D] rounded-2xl p-3">
+                  <div className="text-[#666] text-[10px] uppercase mb-2">Addon</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <button type="button" disabled={busy || actionPlayer.addonCount <= 0}
+                      onClick={() => { const p = actionPlayer; void onUpdatePlayerField(p.id, { addonCount: Math.max(0, p.addonCount - 1) }).then(() => setActionPlayer(prev => prev ? { ...prev, addonCount: Math.max(0, prev.addonCount - 1) } : null)); }}
+                      className="w-8 h-8 rounded-lg bg-[#2D2D2D] text-white font-bold disabled:opacity-30">−</button>
+                    <div className="text-white font-black text-lg w-6 text-center">{actionPlayer.addonCount}</div>
+                    <button type="button" disabled={busy}
+                      onClick={() => { const p = actionPlayer; void onUpdatePlayerField(p.id, { addonCount: p.addonCount + 1 }).then(() => setActionPlayer(prev => prev ? { ...prev, addonCount: prev.addonCount + 1 } : null)); }}
+                      className="w-8 h-8 rounded-lg bg-[#C0392B] text-white font-bold disabled:opacity-30">+</button>
+                  </div>
+                </div>
+              </div>
+              <button type="button" disabled={busy}
+                onClick={() => { onSetMovingPlayer(actionPlayer); setActionPlayer(null); }}
+                className="w-full py-2.5 rounded-2xl border border-[#3D3D3D] text-[#888] text-sm font-bold hover:border-[#555] hover:text-white transition-colors disabled:opacity-50">
+                Пересадить
+              </button>
+              <button type="button"
+                onClick={() => { setOutDialogPlayer(actionPlayer); setOutDialogBountyDraft(String(actionPlayer.bounty || 0)); setActionPlayer(null); }}
+                className="w-full py-2.5 rounded-2xl border border-[#C0392B]/70 bg-[#C0392B]/10 text-[#FF6B6B] text-sm font-bold hover:bg-[#C0392B]/20 transition-colors">
+                Выбыл
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {outDialogPlayer && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-3 sm:items-center sm:p-6" onClick={() => { if (!outDialogBusy) { setOutDialogPlayer(null); setOutDialogBountyDraft('0'); } }}>
+          <div className="w-full max-w-md rounded-3xl border border-[#2D2D2D] bg-[#111] shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="border-b border-[#2D2D2D] px-5 py-4">
+              <div className="text-white font-black text-lg">Подтвердить выбытие</div>
+              <div className="mt-1 text-sm text-[#777] break-words">{outDialogPlayer.name}</div>
+            </div>
+            <div className="px-5 py-4 flex flex-col gap-4">
+              <div className="rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-[#666]">Место игрока</div>
+                <div className="mt-2 text-3xl font-black text-white">
+                  {(() => { const p = getProjectedOutPlace(players, outDialogPlayer); return p ? `#${p}` : '—'; })()}
+                </div>
+              </div>
+              <label className="block">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-[#666] mb-2">Bounty игрока</div>
+                <input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  value={outDialogBountyDraft}
+                  onChange={e => setOutDialogBountyDraft(e.target.value)}
+                  className="admin-input !py-3 !px-4 !text-base text-center"
+                  placeholder="0"
+                />
+              </label>
+              <div className="text-xs text-[#666]">Если bounty нет, оставьте 0. После подтверждения игрок получит это место и перейдёт в список выбывших.</div>
+            </div>
+            <div className="border-t border-[#2D2D2D] px-5 py-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" disabled={outDialogBusy}
+                onClick={() => { setOutDialogPlayer(null); setOutDialogBountyDraft('0'); }}
+                className="admin-btn-secondary px-4 py-3 text-sm">
+                Отмена
+              </button>
+              <button type="button" disabled={outDialogBusy}
+                onClick={async () => {
+                  if (!outDialogPlayer) return;
+                  const bounty = Math.max(0, Number(outDialogBountyDraft) || 0);
+                  setOutDialogBusy(true);
+                  try {
+                    await onMarkPlayerOut(outDialogPlayer.id, { bounty });
+                    setOutDialogPlayer(null);
+                    setOutDialogBountyDraft('0');
+                  } finally {
+                    setOutDialogBusy(false);
+                  }
+                }}
+                className="admin-btn-danger px-4 py-3 text-sm">
+                {outDialogBusy ? 'Сохранение...' : 'Подтвердить выбытие'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
