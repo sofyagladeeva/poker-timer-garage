@@ -1031,8 +1031,8 @@ function matchesGameStateCounters(players: LiveTournamentPlayer[], gameState: Ga
     summary.entrants === gameState.players &&
     summary.bustouts === gameState.outs &&
     summary.rebuys === gameState.rebuys &&
-    summary.addons === gameState.addonCount &&
-    summary.bonuses === gameState.bonusCount
+    summary.addons + (gameState.extraAddonCount ?? 0) === gameState.addonCount &&
+    summary.bonuses + (gameState.extraBonusCount ?? 0) === gameState.bonusCount
   );
 }
 
@@ -2467,6 +2467,45 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     return true;
   }, [sharedEnabled]);
 
+  // Migrates current players to the storage context for a new game without wiping them.
+  // Use for "switch game, keep timer" — unlike prepareTournamentPlayersContext, this
+  // preserves the existing player list rather than replacing it with an empty one.
+  const migratePlayersToNewContext = useCallback(async (
+    nextTournamentBotId: number | null,
+    nextTournamentTitle: string
+  ) => {
+    const currentPlayers = playersRef.current;
+    if (currentPlayers.length === 0) return true;
+
+    const context = buildPlayersSnapshotContext(
+      sessionIdRef.current,
+      nextTournamentBotId,
+      nextTournamentTitle
+    );
+    const updatedAt = nowIso();
+    const payload = buildStoredPlayersPayload(
+      currentPlayers,
+      context.sessionId,
+      context.tournamentBotId,
+      context.tournamentTitle,
+      updatedAt,
+      resultsSubmissionRef.current,
+      (snapshotRevisionRef.current ?? 0) + 1
+    );
+
+    saveLocal(context.storageKey, payload);
+    saveLocal(context.emergencyStorageKey, payload);
+
+    if (!sharedEnabled) return true;
+
+    const { error } = await supabase.from(SHARED_PLAYERS_TABLE).upsert({
+      id: context.sharedStorageId,
+      name: buildSharedPlayersName(updatedAt),
+      levels: payload,
+    });
+    return !error;
+  }, [sharedEnabled]);
+
   const getLatestTournamentArchiveDetails = useCallback(async (): Promise<TournamentArchiveDetails | null> => {
     const latestSnapshot = await syncLatestSharedPlayersSnapshot();
     const latestPlayers = latestSnapshot.players.length > 0 ? latestSnapshot.players : playersRef.current;
@@ -2596,6 +2635,7 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     restorePlayersFromBackup,
     getLatestTournamentArchiveDetails,
     prepareTournamentPlayersContext,
+    migratePlayersToNewContext,
     exportTournamentResults,
   };
 }

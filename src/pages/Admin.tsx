@@ -886,6 +886,7 @@ export function Admin() {
     restorePlayersFromBackup,
     getLatestTournamentArchiveDetails,
     prepareTournamentPlayersContext,
+    migratePlayersToNewContext,
     exportTournamentResults,
   } = useTournamentPlayers({
     gameState,
@@ -1493,7 +1494,11 @@ export function Admin() {
 
     const sameSelection = gameState.tournamentTitle === title && gameState.tournamentBotId === botId;
     if (sameSelection) {
-      await prepareTournamentPlayersContext(botId, title);
+      // Only re-init player context if the tournament is idle (no active players).
+      // During an active tournament, re-selecting the same game must NOT wipe players.
+      if (gameState.status === 'idle') {
+        await prepareTournamentPlayersContext(botId, title);
+      }
       if (botId != null) {
         void refreshFromBot(true);
       }
@@ -6145,7 +6150,7 @@ export function Admin() {
               onClick={async () => {
                 const { title, botId, buyIn } = pendingGameSwitch;
                 setPendingGameSwitch(null);
-                await prepareTournamentPlayersContext(botId, title);
+                await migratePlayersToNewContext(botId, title);
                 await updateGameState({ tournamentTitle: title, tournamentBotId: botId, tournamentBuyIn: buyIn }, true);
               }}
               className="w-full py-3 rounded-2xl border border-blue-700/60 bg-blue-950/30 text-blue-200 text-sm font-bold hover:bg-blue-950/50 transition-colors text-left px-4"
