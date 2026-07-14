@@ -34,8 +34,9 @@ const SHARED_PLAYERS_TABLE = 'blind_templates';
 const BOT_ROSTER_POLL_MS = 15_000;
 const TOURNAMENT_UNIT_PRICE = 1000;
 const PROMO_DISCOUNT_FACTOR = 0.5;
-const SHARED_PLAYERS_BACKUP_KEEP_COUNT = 4;
-const SHARED_PLAYERS_BACKUP_FETCH_COUNT = 16;
+const SHARED_PLAYERS_BACKUP_KEEP_COUNT = 10;
+const SHARED_PLAYERS_BACKUP_FETCH_COUNT = 20;
+const PERIODIC_BACKUP_INTERVAL_MS = 3 * 60 * 1000;
 
 type UpdateGameState = (patch: Partial<GameState>, immediate?: boolean) => Promise<boolean | undefined>;
 
@@ -2089,6 +2090,26 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     };
   }, [playerSyncState.loading, refreshFromBot, sharedEnabled, tournamentBotId]);
 
+  // Periodic backup: every 5 minutes regardless of player mutations,
+  // so a disaster mid-tournament always has a recent recovery point.
+  useEffect(() => {
+    if (!sharedEnabled) return;
+
+    const interval = setInterval(() => {
+      const currentPlayers = playersRef.current;
+      if (currentPlayers.length === 0) return;
+      void persistSharedPlayersBackup(
+        currentPlayers,
+        resultsSubmissionRef.current,
+        nowIso(),
+        getNextSnapshotRevision(snapshotRevisionRef.current),
+        getCurrentSnapshotContext()
+      );
+    }, PERIODIC_BACKUP_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [sharedEnabled, persistSharedPlayersBackup, getCurrentSnapshotContext]);
+
   useEffect(() => {
     const hasPlayers = players.length > 0;
     if (!hasPlayers) return;
@@ -2459,10 +2480,8 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     });
     if (error) return false;
 
-    await supabase
-      .from(SHARED_PLAYERS_TABLE)
-      .delete()
-      .like('id', `${context.sharedBackupPrefix}:%`);
+    // Backups are pruned naturally by persistSharedPlayersBackup when new ones
+    // are created — never delete them here to avoid destroying recovery data.
 
     return true;
   }, [sharedEnabled]);
