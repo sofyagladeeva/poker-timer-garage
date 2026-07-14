@@ -1531,6 +1531,8 @@ export function Admin() {
     if (gameState.tournamentBotId == null) return;
     if (botGames.length === 0) return;
     if (tournamentPlayers.length === 0) return;
+    // Never auto-sanitize roster during an active tournament — data would be lost.
+    if (gameState.status === 'running' || gameState.status === 'paused' || gameState.status === 'break') return;
 
     const selectedGame = botGames.find(game => game.id === gameState.tournamentBotId);
     if (!selectedGame) return;
