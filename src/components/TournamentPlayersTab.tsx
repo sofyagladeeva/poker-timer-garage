@@ -96,12 +96,25 @@ export function TournamentPlayersTab({
   const [seatModalBusy, setSeatModalBusy] = useState(false);
   const [outDialogBusy, setOutDialogBusy] = useState(false);
   const [contactPlayer, setContactPlayer] = useState<LiveTournamentPlayer | null>(null);
+  const [returnBountyNotice, setReturnBountyNotice] = useState<{ playerName: string; bounty: number } | null>(null);
 
   const handleRequestActivate = (player: LiveTournamentPlayer) => {
     if (onAssignSeat && tableCount > 0) {
       setSeatModalPlayer(player);
     } else {
       void onSetPlayerArrival(player.id, 'paid');
+    }
+  };
+
+  const handleRestorePlayer = async (playerId: string) => {
+    const player = rosterPlayers.find(item => item.id === playerId) ?? null;
+    await onRestorePlayer(playerId);
+
+    if (player && player.bounty > 0) {
+      setReturnBountyNotice({
+        playerName: player.name,
+        bounty: player.bounty,
+      });
     }
   };
 
@@ -686,7 +699,7 @@ export function TournamentPlayersTab({
                     onSetPlayerArrival={onSetPlayerArrival}
                     onRequestActivate={handleRequestActivate}
                     onOpenOutDialog={openOutDialog}
-                    onRestorePlayer={onRestorePlayer}
+                    onRestorePlayer={handleRestorePlayer}
                     onRemovePlayer={handleRemovePlayer}
                     onShowContact={setContactPlayer}
                   />
@@ -708,7 +721,7 @@ export function TournamentPlayersTab({
                       onSetPlayerArrival={onSetPlayerArrival}
                       onRequestActivate={handleRequestActivate}
                       onOpenOutDialog={openOutDialog}
-                      onRestorePlayer={onRestorePlayer}
+                      onRestorePlayer={handleRestorePlayer}
                       onRemovePlayer={handleRemovePlayer}
                       onShowContact={setContactPlayer}
                     />
@@ -742,7 +755,7 @@ export function TournamentPlayersTab({
                           onUpdatePlayerField={onUpdatePlayerField}
                           onSetPlayerArrival={onSetPlayerArrival}
                           onOpenOutDialog={openOutDialog}
-                          onRestorePlayer={onRestorePlayer}
+                          onRestorePlayer={handleRestorePlayer}
                           onRemovePlayer={handleRemovePlayer}
                           onShowContact={setContactPlayer}
                           onRequestActivate={handleRequestActivate}
@@ -901,6 +914,42 @@ export function TournamentPlayersTab({
                   </div>
                 </div>
               ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+      {returnBountyNotice && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-3 sm:items-center sm:p-6"
+          onClick={() => setReturnBountyNotice(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl border border-amber-700/70 bg-[#111] shadow-2xl"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="border-b border-[#2D2D2D] px-5 py-4">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-amber-300">Bounty</div>
+              <div className="mt-2 text-xl font-black text-white">Игрок снова в игре</div>
+              <div className="mt-1 break-words text-sm text-[#888]">{returnBountyNotice.playerName}</div>
+            </div>
+            <div className="px-5 py-5">
+              <div className="rounded-2xl border border-amber-700/50 bg-amber-950/30 px-4 py-4">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-amber-300">Выдайте игроку</div>
+                <div className="mt-2 text-4xl font-black text-white">{returnBountyNotice.bounty}</div>
+                <div className="mt-1 text-sm text-amber-100">bounty шт.</div>
+              </div>
+              <div className="mt-3 text-xs text-[#777]">
+                Это напоминание появляется, потому что при прошлом вылете у игрока было bounty больше нуля.
+              </div>
+            </div>
+            <div className="border-t border-[#2D2D2D] px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setReturnBountyNotice(null)}
+                className="admin-btn-primary w-full py-3 text-sm"
+              >
+                Понятно
+              </button>
             </div>
           </div>
         </div>
