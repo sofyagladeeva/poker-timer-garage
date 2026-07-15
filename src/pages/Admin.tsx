@@ -2787,11 +2787,6 @@ export function Admin() {
     );
     if (!confirmed) return;
 
-    const currentSelection = {
-      title: gameState.tournamentTitle,
-      botId: gameState.tournamentBotId,
-      buyIn: gameState.tournamentBuyIn,
-    };
     const completedPersonnelSessionId = floorSessionId;
 
     await resetTournamentPlayers();
@@ -2804,19 +2799,7 @@ export function Admin() {
     setFinishPersonnel([]);
     finishPersonnelRef.current = [];
     await deletePersonnelDraft(completedPersonnelSessionId);
-    await prepareTournamentPlayersContext(currentSelection.botId, currentSelection.title);
-
-    if (currentSelection.title) {
-      const selectionOk = await updateGameState({
-        tournamentTitle: currentSelection.title,
-        tournamentBotId: currentSelection.botId,
-        tournamentBuyIn: currentSelection.buyIn,
-      }, true);
-
-      if (selectionOk === false) {
-        alert('Турнир сброшен, но выбранную игру не удалось вернуть сразу. Выберите её на Главной ещё раз.');
-      }
-    }
+    await prepareTournamentPlayersContext(null, '');
 
     setResultsNotice(null);
     setFinishReviewOpen(false);
