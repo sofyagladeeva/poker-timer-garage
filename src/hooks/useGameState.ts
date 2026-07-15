@@ -398,8 +398,8 @@ export function useGameState(readOnly = false) {
     markServerSync();
   }, [markServerSync]);
 
-  const syncGameStateFromServer = useCallback(async (source = 'sync') => {
-    if (!isSupabaseConfigured || skipGameStateRealtime.current) return false;
+  const syncGameStateFromServer = useCallback(async (source = 'sync', force = false) => {
+    if (!isSupabaseConfigured || (!force && skipGameStateRealtime.current)) return false;
     const { data, error } = await supabase.from('game_state').select('*').single();
     if (error) {
       console.error(`game_state sync failed (${source})`, error);
@@ -408,7 +408,7 @@ export function useGameState(readOnly = false) {
       }
       return false;
     }
-    if (!data || skipGameStateRealtime.current) {
+    if (!data || (!force && skipGameStateRealtime.current)) {
       if (!data && !serverLoaded.current) {
         setSyncError('Supabase не вернул текущее состояние турнира.');
       }
@@ -442,12 +442,12 @@ export function useGameState(readOnly = false) {
     return true;
   }, [applyCombinationsSync, isSupabaseConfigured]);
 
-  const queueForegroundSync = useCallback((source = 'visibility') => {
+  const queueForegroundSync = useCallback((source = 'visibility', forceGameStateSync = false) => {
     if (!isSupabaseConfigured) return Promise.resolve(true);
     if (foregroundSyncPromise.current) return foregroundSyncPromise.current;
 
     const syncPromise = (async () => {
-      const gameStateSynced = await syncGameStateFromServer(source);
+      const gameStateSynced = await syncGameStateFromServer(source, forceGameStateSync);
       await Promise.allSettled([
         syncBlindLevelsFromServer(),
         syncCombinationsFromServer(),
@@ -1442,7 +1442,7 @@ export function useGameState(readOnly = false) {
     setSyncReady(false);
 
     try {
-      return await queueForegroundSync('manual-retry');
+      return await queueForegroundSync('manual-retry', true);
     } catch (error) {
       setSyncError(getErrorMessage(error, 'Повторная синхронизация с Supabase завершилась ошибкой.'));
       return false;
