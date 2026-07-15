@@ -3124,13 +3124,16 @@ export function Admin() {
   const activeContentTab = hasActiveTournament || activeTab === 'home' || activeTab === 'archive'
     ? activeTab
     : 'home';
+  const tournamentModeActive = entryMode === 'tournament';
 
   // ── Tabs ──────────────────────────────────────────────────────────────
   const tabs = [
     { id: 'home', label: '⌂ Главная' },
     ...(hasActiveTournament ? [
-      { id: 'control', label: '▶ Управление' },
       { id: 'players', label: '👥 Игроки' },
+    ] : []),
+    ...(hasActiveTournament && tournamentModeActive ? [
+      { id: 'control', label: '▶ Управление' },
       { id: 'tables',  label: '🪑 Столы' },
       { id: 'notifications', label: floorPendingCount > 0 ? `🔔 Уведомления (${floorPendingCount})` : '🔔 Уведомления' },
       { id: 'blinds',  label: '💰 Блайнды' },
@@ -3259,6 +3262,10 @@ export function Admin() {
                         : 'Финал'}
                     </div>
                   </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 text-sm text-[#777]">
+                  «Посмотреть игроков» откроет список без входа в управление. Чтобы менять настройки турнира, таймер, блайнды и комбо, нажмите «Продолжить ведение» — перед этим админка заново синхронизируется с сервером.
                 </div>
 
                 <div className="mt-5 flex flex-col gap-2 sm:flex-row">
