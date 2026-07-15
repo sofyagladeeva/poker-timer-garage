@@ -154,10 +154,12 @@ export function Display() {
   const {
     players: ratingPlayers,
     loading: ratingLoading,
+    refetch: refetchRating,
   } = useBotRating();
   const {
     players: bountyPlayers,
     loading: bountyLoading,
+    refetch: refetchBounty,
   } = useBotBounty();
   const nextGame = useNextGame(gameState.nextGameBotId ?? null);
   const { k, x, y } = useScale();
@@ -206,6 +208,16 @@ export function Display() {
     }
     prevLevelRef.current = gameState.currentLevelIndex;
   }, [gameState.currentLevelIndex]);
+
+  // Свежие данные из бота при открытии экрана рейтинга
+  const prevShowRatingRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (gameState.showRating && !prevShowRatingRef.current) {
+      refetchRating();
+      refetchBounty();
+    }
+    prevShowRatingRef.current = gameState.showRating;
+  }, [gameState.showRating, refetchRating, refetchBounty]);
 
   useEffect(() => {
     const interval = setInterval(() => {
