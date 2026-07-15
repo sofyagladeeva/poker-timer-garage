@@ -890,6 +890,7 @@ export function Admin() {
     restorePlayer,
     assignPlayerSeat,
     restorePlayersFromBackup,
+    resetTournamentPlayers,
     getLatestTournamentArchiveDetails,
     prepareTournamentPlayersContext,
     migratePlayersToNewContext,
@@ -2780,6 +2781,50 @@ export function Admin() {
     updateGameState({ chipLeaders: null, chipLeaderCollectionActive: false }, true);
   };
 
+  const handleResetTournamentWithoutArchive = async () => {
+    const confirmed = confirm(
+      'Вы уверены, что хотите сбросить турнир?\n\nВсе введённые результаты, игроки, ребаи, аддоны, бонусы, места, оплаты и чип-лидеры будут потеряны. Турнир не будет сохранён в архив.'
+    );
+    if (!confirmed) return;
+
+    const currentSelection = {
+      title: gameState.tournamentTitle,
+      botId: gameState.tournamentBotId,
+      buyIn: gameState.tournamentBuyIn,
+    };
+    const completedPersonnelSessionId = floorSessionId;
+
+    await resetTournamentPlayers();
+    const resetOk = await resetTournament();
+    if (!resetOk) {
+      alert('Не удалось сбросить турнир. Не закрывайте страницу и попробуйте ещё раз.');
+      return;
+    }
+
+    setFinishPersonnel([]);
+    finishPersonnelRef.current = [];
+    await deletePersonnelDraft(completedPersonnelSessionId);
+    await prepareTournamentPlayersContext(currentSelection.botId, currentSelection.title);
+
+    if (currentSelection.title) {
+      const selectionOk = await updateGameState({
+        tournamentTitle: currentSelection.title,
+        tournamentBotId: currentSelection.botId,
+        tournamentBuyIn: currentSelection.buyIn,
+      }, true);
+
+      if (selectionOk === false) {
+        alert('Турнир сброшен, но выбранную игру не удалось вернуть сразу. Выберите её на Главной ещё раз.');
+      }
+    }
+
+    setResultsNotice(null);
+    setFinishReviewOpen(false);
+    setPersonnelEditorOpen(false);
+    setEntryMode('home');
+    setActiveTab('home');
+  };
+
   const selectTab = (tabId: AdminTab) => {
     if (!hasActiveTournament && tabId !== 'home' && tabId !== 'archive') {
       setActiveTab('home');
@@ -3740,13 +3785,10 @@ export function Admin() {
                   <button onClick={prevLevel} className="admin-btn-secondary py-4 text-base">← Уровень</button>
                   <button onClick={nextLevel} className="admin-btn-secondary py-4 text-base">Уровень →</button>
                   <button
-                    onClick={() => {
-                      const lvl = blindLevels[gameState.currentLevelIndex];
-                      if (lvl) updateGameState({ timeLeft: lvl.duration });
-                    }}
-                    className="admin-btn-secondary py-4 text-sm"
+                    onClick={() => void handleResetTournamentWithoutArchive()}
+                    className="admin-btn-danger py-4 text-sm"
                   >
-                    ↺ Сбросить время
+                    ↺ Сбросить турнир
                   </button>
                   <button
                     onClick={() => { setFinishReviewOpen(true); setFinishStep('review'); }}

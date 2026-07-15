@@ -1678,6 +1678,13 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     return normalized;
   }, [applyPlayersSnapshot, getCurrentSnapshotContext, persistSharedPlayersSnapshot]);
 
+  const resetTournamentPlayers = useCallback(async () => {
+    const emptyResultsSubmission = { sentAt: null, signature: null } satisfies TournamentResultsSubmissionState;
+    await commitPlayersSnapshot([], emptyResultsSubmission);
+    await loadSharedPlayersBackups();
+    return true;
+  }, [commitPlayersSnapshot, loadSharedPlayersBackups]);
+
   useEffect(() => {
     gameStateRef.current = gameState;
   }, [gameState]);
@@ -2652,6 +2659,7 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     restorePlayer,
     assignPlayerSeat,
     restorePlayersFromBackup,
+    resetTournamentPlayers,
     getLatestTournamentArchiveDetails,
     prepareTournamentPlayersContext,
     migratePlayersToNewContext,
