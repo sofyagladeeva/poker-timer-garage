@@ -134,6 +134,7 @@ const SHARED_LIBRARY_RETRY_COUNT = 2;
 const ADMIN_AUTH_STORAGE_KEY = 'admin_authed';
 const ARCHIVE_AUTH_STORAGE_KEY = 'archive_authed';
 const DISPLAY_CLIENTS_REFRESH_MS = 3_000;
+const ADMIN_WAKE_GUARD_MS = 60_000;
 const BOT_PLAYER_LIST_CACHE_KEY = 'poker_bot_player_list_cache';
 const BOT_PLAYER_LIST_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -191,7 +192,8 @@ type TournamentResultsDispatchOutcome = {
   financeSkipped: boolean;
 };
 
-type AdminTab = 'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings' | 'tables' | 'notifications';
+type AdminTab = 'home' | 'control' | 'players' | 'blinds' | 'combos' | 'archive' | 'settings' | 'tables' | 'notifications';
+type AdminEntryMode = 'home' | 'tournament';
 
 type ChipLeaderDraftRow = {
   id: string;
@@ -710,7 +712,10 @@ export function Admin() {
   const [pwError, setPwError] = useState(false);
   const [archivePwInput, setArchivePwInput] = useState('');
   const [archivePwError, setArchivePwError] = useState(false);
-  const [activeTab, setActiveTab] = useState<AdminTab>('control');
+  const [activeTab, setActiveTab] = useState<AdminTab>('home');
+  const [entryMode, setEntryMode] = useState<AdminEntryMode>('home');
+  const [entrySyncBusy, setEntrySyncBusy] = useState(false);
+  const [entrySyncError, setEntrySyncError] = useState<string | null>(null);
   const [gamePickerOpen, setGamePickerOpen] = useState(false);
   const [customGameOpen, setCustomGameOpen] = useState(false);
   const [pendingGameSwitch, setPendingGameSwitch] = useState<{ title: string; botId: number | null; buyIn: number | null } | null>(null);
@@ -740,6 +745,7 @@ export function Admin() {
   const [dropLine, setDropLine] = useState<number | null>(null);
   const rowEls = useRef<(HTMLDivElement | null)[]>([]);
   const dragging = useRef(false);
+  const adminHiddenAtRef = useRef<number | null>(null);
   const blindTemplatesRef = useRef(blindTemplates);
   const backgroundLibraryRef = useRef(backgroundLibrary);
 
@@ -1574,6 +1580,7 @@ export function Admin() {
     gameState.players,
     gameState.resetAt,
     gameState.rebuys,
+    gameState.status,
     gameState.totalStack,
     gameState.tournamentBotId,
     gameState.tournamentTitle,
@@ -1615,9 +1622,53 @@ export function Admin() {
     backgroundLibraryRef.current = backgroundLibrary;
   }, [backgroundLibrary]);
 
+  useEffect(() => {
+    if (!authed) return;
+
+    const returnToHomeAfterWake = () => {
+      if (entryMode !== 'tournament') return;
+      setEntryMode('home');
+      setActiveTab('home');
+      setEntrySyncError(null);
+    };
+
+    const handleVisible = () => {
+      const hiddenAt = adminHiddenAtRef.current;
+      adminHiddenAtRef.current = null;
+      if (hiddenAt && Date.now() - hiddenAt >= ADMIN_WAKE_GUARD_MS) {
+        returnToHomeAfterWake();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        adminHiddenAtRef.current = Date.now();
+        return;
+      }
+
+      if (document.visibilityState === 'visible') {
+        handleVisible();
+      }
+    };
+
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        returnToHomeAfterWake();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pageshow', handlePageShow);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pageshow', handlePageShow);
+    };
+  }, [authed, entryMode]);
+
   // ── Пробел = play/pause ────────────────────────────────────────────────
   useEffect(() => {
-    if (!authed || !syncReady) return;
+    if (!authed || !syncReady || entryMode !== 'tournament') return;
     const handler = (e: KeyboardEvent) => {
       if (e.code === 'Space' && (e.target as HTMLElement).tagName !== 'INPUT') {
         e.preventDefault();
@@ -1627,7 +1678,7 @@ export function Admin() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [authed, syncReady, gameState.status, startTimer, pauseTimer]);
+  }, [authed, syncReady, entryMode, gameState.status, startTimer, pauseTimer]);
 
   // ── Auth ──────────────────────────────────────────────────────────────
   const handleLogin = () => {
@@ -2473,6 +2524,42 @@ export function Admin() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState.currentLevelIndex, blindLevels, selectedTournamentIsClassic]);
 
+  const enterTournamentMode = async () => {
+    setEntrySyncBusy(true);
+    setEntrySyncError(null);
+
+    try {
+      const synced = await retrySync();
+      if (!synced) {
+        setEntrySyncError(syncError ?? 'Не удалось получить свежее состояние турнира.');
+        return false;
+      }
+
+      setActiveTab('control');
+      setEntryMode('tournament');
+      return true;
+    } finally {
+      setEntrySyncBusy(false);
+    }
+  };
+
+  const displayHref = `${window.location.origin}${import.meta.env.BASE_URL}#/`;
+  const startBotGameFromHome = async (game: BotGameSummary) => {
+    const canEnter = await enterTournamentMode();
+    if (!canEnter) return;
+    await handleSelectTournament(game.title, game.id);
+  };
+  const startCustomGameFromHome = async () => {
+    const title = customGameTitle.trim();
+    if (!title) return;
+
+    const canEnter = await enterTournamentMode();
+    if (!canEnter) return;
+
+    await handleSelectTournament(title, null);
+    setCustomGameTitle('');
+  };
+
   if (!authed) {
     return (
       <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center px-4">
@@ -2543,6 +2630,16 @@ export function Admin() {
   const anteStartLevel = regularBlindLevels.find(level => level.ante > 0)?.level ?? 0;
   const currentKnockoutLabel = getKnockoutLabel(currentLevel);
   const nextKnockout = getNextKnockoutInfo(blindLevels, gameState.currentLevelIndex, gameState.timeLeft);
+  const hasActiveTournament = !!gameState.tournamentTitle || gameState.status !== 'idle';
+  const homeStatusLabel = gameState.status === 'running' || gameState.status === 'break'
+    ? 'идёт'
+    : gameState.status === 'paused'
+      ? 'пауза'
+      : 'не запущен';
+  const homePlayersInGame = tournamentPlayersSummary.active || Math.max(0, (gameState.players ?? 0) - (gameState.outs ?? 0));
+  const upcomingBotGames = [...botGames]
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .slice(0, 6);
   const nextKnockoutTime = nextKnockout && !nextKnockout.startsNow
     ? formatApproxTimeFromNow(nextKnockout.secondsUntil)
     : null;
@@ -2684,6 +2781,16 @@ export function Admin() {
   };
 
   const selectTab = (tabId: AdminTab) => {
+    if (!hasActiveTournament && tabId !== 'home' && tabId !== 'archive') {
+      setActiveTab('home');
+      return;
+    }
+
+    if (tabId === 'control' && entryMode !== 'tournament') {
+      void enterTournamentMode();
+      return;
+    }
+
     if (tabId === 'archive' && archiveAuthed) {
       setArchiveLoading(true);
     }
@@ -2969,24 +3076,29 @@ export function Admin() {
     Object.prototype.hasOwnProperty.call(archiveDetailsById, tournament.id)
   ).length;
   const staffArchiveLoading = playerHistoryLoading || staffArchiveLoadedCount < staffArchiveTournaments.length;
+  const activeContentTab = hasActiveTournament || activeTab === 'home' || activeTab === 'archive'
+    ? activeTab
+    : 'home';
 
   // ── Tabs ──────────────────────────────────────────────────────────────
   const tabs = [
-    { id: 'control', label: '▶ Управление' },
-    { id: 'players', label: '👥 Игроки' },
-    { id: 'tables',  label: '🪑 Столы' },
-    { id: 'notifications', label: floorPendingCount > 0 ? `🔔 Уведомления (${floorPendingCount})` : '🔔 Уведомления' },
-    { id: 'blinds',  label: '💰 Блайнды' },
-    { id: 'combos',  label: '🃏 Комбо' },
+    { id: 'home', label: '⌂ Главная' },
+    ...(hasActiveTournament ? [
+      { id: 'control', label: '▶ Управление' },
+      { id: 'players', label: '👥 Игроки' },
+      { id: 'tables',  label: '🪑 Столы' },
+      { id: 'notifications', label: floorPendingCount > 0 ? `🔔 Уведомления (${floorPendingCount})` : '🔔 Уведомления' },
+      { id: 'blinds',  label: '💰 Блайнды' },
+      { id: 'combos',  label: '🃏 Комбо' },
+      { id: 'settings',label: '⚙️ Настройки' },
+    ] : []),
     { id: 'archive', label: '📋 Архив' },
-    { id: 'settings',label: '⚙️ Настройки' },
-  ] as const;
-  const displayHref = `${window.location.origin}${import.meta.env.BASE_URL}#/`;
+  ] as Array<{ id: AdminTab; label: string }>;
 
   return (
     <ErrorBoundary>
     <div className={`admin-shell min-h-screen bg-[#0A0A0A] text-white ${tabletAdminLayout ? 'admin-tablet-shell' : ''}`}>
-      {activeFloorPopupNotification && (
+      {hasActiveTournament && activeFloorPopupNotification && (
         <FloorNotificationPopup
           key={activeFloorPopupNotification.id}
           notification={activeFloorPopupNotification}
@@ -3037,7 +3149,7 @@ export function Admin() {
             key={tab.id}
             onClick={() => selectTab(tab.id)}
             className={`admin-tab-trigger px-3 py-2 text-xs sm:text-sm rounded-t-lg transition-colors whitespace-nowrap flex-shrink-0 ${
-              activeTab === tab.id
+              activeContentTab === tab.id
                 ? 'bg-[#1A1A1A] text-white border border-b-0 border-[#2D2D2D]'
                 : 'text-[#666] hover:text-white'
             }`}
@@ -3048,9 +3160,152 @@ export function Admin() {
       </div>
 
       <div className="w-full max-w-5xl mx-auto p-3 sm:p-6">
+        {/* ─── HOME TAB ────────────────────────────────────────────────── */}
+        {activeContentTab === 'home' && (
+          <div className="flex flex-col gap-4">
+            {(entrySyncError || syncError) && (
+              <div className="rounded-xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-red-300 text-xs">
+                {entrySyncError ?? syncError}
+              </div>
+            )}
+
+            {hasActiveTournament ? (
+              <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 sm:p-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Активный турнир</div>
+                    <div className="mt-1 truncate text-2xl font-black text-white">
+                      {gameState.tournamentTitle || 'Без названия'}
+                    </div>
+                  </div>
+                  <div className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${
+                    homeStatusLabel === 'идёт'
+                      ? 'bg-emerald-950/50 text-emerald-300 border border-emerald-900/60'
+                      : homeStatusLabel === 'пауза'
+                        ? 'bg-amber-950/50 text-amber-300 border border-amber-900/60'
+                        : 'bg-[#0A0A0A] text-[#777] border border-[#2D2D2D]'
+                  }`}>
+                    {homeStatusLabel}
+                  </div>
+                </div>
+
+                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3">
+                    <div className="text-[#555] text-[10px] uppercase tracking-[0.12em]">Уровень</div>
+                    <div className="mt-1 text-lg font-black text-white">
+                      {currentLevel
+                        ? currentLevel.isBreak
+                          ? currentLevel.breakLabel || 'Перерыв'
+                          : `${currentLevel.sb} / ${currentLevel.bb}${currentLevel.ante ? ` / ${currentLevel.ante}` : ''}`
+                        : 'Не задан'}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3">
+                    <div className="text-[#555] text-[10px] uppercase tracking-[0.12em]">Игроков в игре</div>
+                    <div className="mt-1 text-lg font-black text-white">{homePlayersInGame}</div>
+                  </div>
+                  <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3">
+                    <div className="text-[#555] text-[10px] uppercase tracking-[0.12em]">Следующий уровень</div>
+                    <div className="mt-1 text-lg font-black text-white">
+                      {blindLevels[gameState.currentLevelIndex + 1]
+                        ? blindLevels[gameState.currentLevelIndex + 1].isBreak
+                          ? blindLevels[gameState.currentLevelIndex + 1].breakLabel || 'Перерыв'
+                          : `${blindLevels[gameState.currentLevelIndex + 1].sb} / ${blindLevels[gameState.currentLevelIndex + 1].bb}`
+                        : 'Финал'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('players')}
+                    className="admin-btn-secondary flex-1 py-3 text-sm"
+                  >
+                    Посмотреть игроков
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { void enterTournamentMode(); }}
+                    disabled={entrySyncBusy}
+                    className="admin-btn-primary flex-1 py-3 text-sm disabled:opacity-50"
+                  >
+                    {entrySyncBusy ? 'Синхронизация...' : 'Продолжить ведение'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 sm:p-5">
+                <div className="flex flex-col gap-1">
+                  <div className="text-white font-black text-xl">Ближайшие игры</div>
+                  <div className="text-[#666] text-sm">Выберите игру, чтобы начать ведение после fresh sync.</div>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3">
+                  <div className="text-sm font-bold text-white">Новая игра</div>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      type="text"
+                      value={customGameTitle}
+                      onChange={e => setCustomGameTitle(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          void startCustomGameFromHome();
+                        }
+                      }}
+                      placeholder="Название игры"
+                      className="admin-input flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { void startCustomGameFromHome(); }}
+                      disabled={!customGameTitle.trim() || entrySyncBusy}
+                      className="admin-btn-primary px-4 py-3 text-sm disabled:opacity-50"
+                    >
+                      {entrySyncBusy ? 'Синхр...' : 'Начать ведение'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-col gap-2">
+                  {upcomingBotGames.length === 0 ? (
+                    <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-5 text-center text-sm text-[#666]">
+                      Игры из бота пока не загрузились.
+                    </div>
+                  ) : (
+                    upcomingBotGames.map(game => {
+                      const date = new Date(game.date);
+                      const dateStr = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ' · ' + date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+                      return (
+                        <div key={game.id} className="flex flex-col gap-3 rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-bold uppercase text-white">{game.title}</div>
+                            <div className="mt-0.5 text-xs text-[#555]">{dateStr}</div>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 sm:justify-end">
+                            <div className="text-sm font-bold text-[#888]">{game.confirmed} / {game.max_players}</div>
+                            <button
+                              type="button"
+                              onClick={() => { void startBotGameFromHome(game); }}
+                              disabled={entrySyncBusy}
+                              className="admin-btn-primary px-4 py-2 text-xs disabled:opacity-50"
+                            >
+                              {entrySyncBusy ? 'Синхр...' : 'Начать ведение'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ─── CONTROL TAB ─────────────────────────────────────────────── */}
-        {activeTab === 'control' && (
+        {activeContentTab === 'control' && (
           <div className="flex flex-col gap-4">
 
             {/* ── Выбор / создание игры ──────────────────────────────── */}
@@ -3808,7 +4063,7 @@ export function Admin() {
           </div>
         )}
 
-        {activeTab === 'players' && (
+        {activeContentTab === 'players' && (
           <div className="flex flex-col gap-4">
             <TournamentPlayersTab
               groupedPlayers={groupedPlayers}
@@ -3906,7 +4161,7 @@ export function Admin() {
         )}
 
         {/* ─── TABLES TAB ──────────────────────────────────────────────── */}
-        {activeTab === 'tables' && (
+        {activeContentTab === 'tables' && (
           <TablesTab
             tableCount={gameState.tableCount}
             players={tournamentPlayers}
@@ -3920,7 +4175,7 @@ export function Admin() {
         )}
 
         {/* ─── NOTIFICATIONS TAB ───────────────────────────────────────── */}
-        {activeTab === 'notifications' && (
+        {activeContentTab === 'notifications' && (
           <NotificationsTab
             notifications={floorNotifications}
             onConfirm={handleConfirmNotification}
@@ -3929,7 +4184,7 @@ export function Admin() {
         )}
 
         {/* ─── BLINDS TAB ──────────────────────────────────────────────── */}
-        {activeTab === 'blinds' && (
+        {activeContentTab === 'blinds' && (
           <div className="flex flex-col gap-3">
             <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -4127,7 +4382,7 @@ export function Admin() {
         )}
 
         {/* ─── COMBOS TAB ──────────────────────────────────────────────── */}
-        {activeTab === 'combos' && (
+        {activeContentTab === 'combos' && (
           <div className="flex flex-col gap-4">
             <button onClick={addCombo} className="admin-btn-primary px-4 py-3 text-sm">+ Добавить комбинацию</button>
 
@@ -4173,7 +4428,7 @@ export function Admin() {
         )}
 
         {/* ─── ARCHIVE TAB ─────────────────────────────────────────────── */}
-        {activeTab === 'archive' && (
+        {activeContentTab === 'archive' && (
           <div className="flex flex-col gap-3">
             <div className="text-[#555] text-xs uppercase tracking-widest mb-1">
               История завершённых турниров
@@ -5167,7 +5422,7 @@ export function Admin() {
         )}
 
         {/* ─── STAFF TAB ───────────────────────────────────────────────── */}
-        {activeTab === 'archive' && archiveAuthed && archiveSubTab === 'staff' && (
+        {activeContentTab === 'archive' && archiveAuthed && archiveSubTab === 'staff' && (
           <div className="mt-4 flex flex-col gap-4">
             <div className="flex flex-col gap-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -5438,7 +5693,7 @@ export function Admin() {
         )}
 
         {/* ─── SETTINGS TAB ────────────────────────────────────────────── */}
-        {activeTab === 'settings' && (
+        {activeContentTab === 'settings' && (
           <div className="flex flex-col gap-4">
             {/* Staff directory is managed in Archive → Сотрудники. */}
             <div className="hidden">

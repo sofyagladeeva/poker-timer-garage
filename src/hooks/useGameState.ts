@@ -1013,9 +1013,39 @@ export function useGameState(readOnly = false) {
     return applyGameStatePatch(patch, immediate);
   }, [applyGameStatePatch, isSupabaseConfigured, queueForegroundSync]);
 
-  const startTimer = useCallback(() => {
-    updateGameState({ status: 'running', lastTickAt: getAuthoritativeNow() }, true);
-  }, [getAuthoritativeNow, updateGameState]);
+  const challengeGameGeneration = useCallback(async (source: string) => {
+    if (!isSupabaseConfigured) return true;
+
+    const { data, error } = await supabase.from('game_state').select('*').single();
+    if (error || !data) {
+      const message = error
+        ? getErrorMessage(error, 'Не удалось проверить актуальность турнира перед действием.')
+        : 'Supabase не вернул текущее состояние турнира перед действием.';
+      console.error(`Game generation challenge failed (${source})`, error);
+      setSyncError(message);
+      return false;
+    }
+
+    const serverState = data as Record<string, unknown>;
+    const serverResetAt = typeof serverState.resetAt === 'number' ? serverState.resetAt : 0;
+    const localResetAt = gameStateRef.current.resetAt;
+    if (serverResetAt !== localResetAt) {
+      applyAuthoritativeGameState(serverState, `generation-challenge-${source}`);
+      setSyncError('Обнаружена более новая игра. Состояние синхронизировано, действие не применено.');
+      return false;
+    }
+
+    return true;
+  }, [applyAuthoritativeGameState, isSupabaseConfigured]);
+
+  const startTimer = useCallback(async () => {
+    if (gameStateRef.current.status === 'idle') {
+      const isCurrentGeneration = await challengeGameGeneration('start');
+      if (!isCurrentGeneration) return false;
+    }
+
+    return updateGameState({ status: 'running', lastTickAt: getAuthoritativeNow() }, true);
+  }, [challengeGameGeneration, getAuthoritativeNow, updateGameState]);
 
   const pauseTimer = useCallback(() => {
     // Capture the actual live time before pausing
@@ -1203,7 +1233,10 @@ export function useGameState(readOnly = false) {
     }, true);
   }, [updateGameState]);
 
-  const resetTournament = useCallback(() => {
+  const resetTournament = useCallback(async () => {
+    const isCurrentGeneration = await challengeGameGeneration('reset');
+    if (!isCurrentGeneration) return false;
+
     const bl = blindLevelsRef.current;
     const first = bl[0];
     const now = getAuthoritativeNow();
@@ -1219,7 +1252,7 @@ export function useGameState(readOnly = false) {
       lastTickAt: now,
       resetAt: now,
     }, true);
-  }, [getAuthoritativeNow, updateGameState]);
+  }, [challengeGameGeneration, getAuthoritativeNow, updateGameState]);
 
   const updateBlindLevels = useCallback(async (levels: BlindLevel[]) => {
     const ordered = normalizeBlindLevels(levels);
