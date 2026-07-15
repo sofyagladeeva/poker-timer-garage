@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDealerTable } from '../hooks/useDealerTable.ts';
 import type { LiveTournamentPlayer } from '../types.ts';
@@ -51,6 +51,7 @@ export function Dealer() {
   const [floorCalled, setFloorCalled] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [bustBountyDraft, setBustBountyDraft] = useState('0');
+  const [fullscreenActive, setFullscreenActive] = useState(false);
   const requiredChipLeaderStacks = Math.min(3, tablePlayers.length);
   const filledChipLeaderStacks = tablePlayers.filter(player => (
     Math.max(0, parseInt(chipLeaderDraft[player.id] ?? '0', 10) || 0) > 0
@@ -116,6 +117,28 @@ export function Dealer() {
     }
   };
 
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setFullscreenActive(Boolean(document.fullscreenElement));
+    };
+
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+
+      await document.documentElement.requestFullscreen();
+    } catch (error) {
+      console.error('Dealer fullscreen toggle failed', error);
+    }
+  };
+
   const handleChipLeaderSubmit = async () => {
     const stacks = tablePlayers.reduce<Record<string, number>>((acc, player) => {
       acc[player.id] = Math.max(0, parseInt(chipLeaderDraft[player.id] ?? '0', 10) || 0);
@@ -151,6 +174,13 @@ export function Dealer() {
           style={{ gridColumn: 2, gridRow: '2 / 4' }}
         >
           <div className="text-white font-bold text-sm landscape:text-xs whitespace-nowrap">Стол {tableNumber}</div>
+          <button
+            type="button"
+            onClick={() => void toggleFullscreen()}
+            className="px-3 py-1.5 rounded-full border border-[#2D2D2D] bg-[#111] text-[#AAA] font-bold text-[10px] active:scale-95 transition-transform"
+          >
+            {fullscreenActive ? 'Выйти' : 'На весь экран'}
+          </button>
           <button
             type="button"
             onClick={() => void handleCallFloor()}

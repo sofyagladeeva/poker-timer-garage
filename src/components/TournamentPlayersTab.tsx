@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type {
   LiveTournamentArrivalStatus,
@@ -135,6 +135,14 @@ export function TournamentPlayersTab({
     ...groupedPlayers.waitlist,
     ...groupedPlayers.out,
   ];
+  const waitlistQueuePlayers = useMemo(
+    () => [...groupedPlayers.waitlist].sort(compareWaitlistQueue),
+    [groupedPlayers.waitlist]
+  );
+  const waitlistPositionById = useMemo(
+    () => new Map(waitlistQueuePlayers.map((player, index) => [player.id, index + 1])),
+    [waitlistQueuePlayers]
+  );
   const arrivedPlayers = rosterPlayers.filter(p => p.arrivalStatus !== 'absent');
   const payTotalDue = arrivedPlayers.reduce((s, p) => s + p.paymentDue, 0);
   const payCash = arrivedPlayers.reduce((s, p) => s + p.cashPaid, 0);
@@ -265,12 +273,12 @@ export function TournamentPlayersTab({
     : viewFilter === 'pending'
       ? filterPlayers(groupedPlayers.pending)
       : viewFilter === 'waitlist'
-        ? filterPlayers(groupedPlayers.waitlist)
+        ? filterPlayers(waitlistQueuePlayers)
         : viewFilter === 'out'
           ? filterPlayers(groupedPlayers.out)
           : [
               ...filterPlayers(groupedPlayers.active),
-              ...filterPlayers(groupedPlayers.waitlist),
+              ...filterPlayers(waitlistQueuePlayers),
               ...filterPlayers(groupedPlayers.out),
               ...filterPlayers(groupedPlayers.pending),
             ];
@@ -669,6 +677,7 @@ export function TournamentPlayersTab({
                   <MobilePlayerCard
                     key={player.id}
                     player={player}
+                    waitlistPosition={waitlistPositionById.get(player.id) ?? null}
                     tournamentDate={tournamentDate}
                     earlyBirdBonusEnabled={earlyBirdBonusEnabled}
                     rosterPlayers={rosterPlayers}
@@ -690,6 +699,7 @@ export function TournamentPlayersTab({
                     <MobilePlayerCard
                       key={player.id}
                       player={player}
+                      waitlistPosition={waitlistPositionById.get(player.id) ?? null}
                       tournamentDate={tournamentDate}
                       earlyBirdBonusEnabled={earlyBirdBonusEnabled}
                       rosterPlayers={rosterPlayers}
@@ -724,6 +734,7 @@ export function TournamentPlayersTab({
                         <PlayerRow
                           key={player.id}
                           player={player}
+                          waitlistPosition={waitlistPositionById.get(player.id) ?? null}
                           tournamentDate={tournamentDate}
                           earlyBirdBonusEnabled={earlyBirdBonusEnabled}
                           rosterPlayers={rosterPlayers}
@@ -1010,8 +1021,18 @@ function getProjectedOutPlace(players: LiveTournamentPlayer[], player: LiveTourn
   return Math.max(1, entrants - (maxOutOrder + 1) + 1);
 }
 
+function compareWaitlistQueue(a: LiveTournamentPlayer, b: LiveTournamentPlayer) {
+  const queuedAtA = a.registeredAt ?? a.createdAt;
+  const queuedAtB = b.registeredAt ?? b.createdAt;
+  return queuedAtA.localeCompare(queuedAtB)
+    || a.sortOrder - b.sortOrder
+    || a.createdAt.localeCompare(b.createdAt)
+    || a.name.localeCompare(b.name, 'ru');
+}
+
 function MobilePlayerCard({
   player,
+  waitlistPosition,
   tournamentDate,
   earlyBirdBonusEnabled,
   rosterPlayers,
@@ -1025,6 +1046,7 @@ function MobilePlayerCard({
   onShowContact,
 }: {
   player: LiveTournamentPlayer;
+  waitlistPosition: number | null;
   tournamentDate?: string | null;
   earlyBirdBonusEnabled: boolean;
   rosterPlayers: LiveTournamentPlayer[];
@@ -1110,7 +1132,7 @@ function MobilePlayerCard({
             </div>
             {isWaitlist && (
               <div className="inline-flex items-center rounded-full border border-amber-600/70 bg-amber-950/50 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-amber-300">
-                Waitlist
+                {waitlistPosition ? `Очередь #${waitlistPosition}` : 'Waitlist'}
               </div>
             )}
             {isEarlyBirdPlayer && (
@@ -1356,6 +1378,7 @@ function MobilePlayerCard({
 
 function PlayerRow({
   player,
+  waitlistPosition,
   tournamentDate,
   earlyBirdBonusEnabled,
   rosterPlayers,
@@ -1369,6 +1392,7 @@ function PlayerRow({
   onRequestActivate,
 }: {
   player: LiveTournamentPlayer;
+  waitlistPosition: number | null;
   tournamentDate?: string | null;
   earlyBirdBonusEnabled: boolean;
   rosterPlayers: LiveTournamentPlayer[];
@@ -1454,7 +1478,7 @@ function PlayerRow({
             </div>
             {isWaitlist && (
               <div className="inline-flex w-fit items-center rounded-full border border-amber-600/70 bg-amber-950/50 px-1.5 py-0.5 text-[8px] sm:px-2 sm:text-[9px] uppercase tracking-[0.12em] sm:tracking-[0.14em] text-amber-300">
-                Waitlist
+                {waitlistPosition ? `Очередь #${waitlistPosition}` : 'Waitlist'}
               </div>
             )}
             {isEarlyBirdPlayer && (
