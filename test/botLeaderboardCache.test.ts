@@ -36,6 +36,13 @@ test('leaderboard cache round-trips and ignores broken payloads', () => {
   saveCachedLeaderboard(key, players, storage);
   assert.deepEqual(loadCachedLeaderboard(key, storage), players);
 
+  const saved = JSON.parse(storage.getItem(key) ?? '{}') as { cachedAt?: string; players?: unknown };
+  assert.equal(typeof saved.cachedAt, 'string');
+  assert.deepEqual(saved.players, players);
+
+  const legacyStorage = createStorage({ [key]: JSON.stringify(players) });
+  assert.deepEqual(loadCachedLeaderboard(key, legacyStorage), players);
+
   const brokenStorage = createStorage({ [key]: '{bad json' });
   assert.deepEqual(loadCachedLeaderboard(key, brokenStorage), []);
 });

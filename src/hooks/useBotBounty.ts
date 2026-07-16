@@ -41,6 +41,11 @@ function toNullableString(value: unknown) {
   return typeof value === 'string' ? value : null;
 }
 
+function withCacheBuster(url: string) {
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}_=${Date.now()}`;
+}
+
 export function normalizeBotBountyPlayers(data: unknown) {
   if (!Array.isArray(data)) return null;
 
@@ -93,7 +98,7 @@ export function useBotBounty(): UseBotBountyResult {
     let cancelled = false;
     const cacheKey = buildLeaderboardCacheKey(BOT_BOUNTY_CACHE_PREFIX, month);
 
-    fetch(`${BOT_API}/api/rating/bounty?month=${month}`)
+    fetch(withCacheBuster(`${BOT_API}/api/rating/bounty?month=${month}`), { cache: 'no-store' })
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -119,6 +124,23 @@ export function useBotBounty(): UseBotBountyResult {
   useEffect(() => {
     const interval = setInterval(refetch, 2 * 60 * 1000);
     return () => clearInterval(interval);
+  }, [refetch]);
+
+  useEffect(() => {
+    const refetchWhenActive = () => {
+      if (document.visibilityState === 'hidden') return;
+      refetch();
+    };
+
+    document.addEventListener('visibilitychange', refetchWhenActive);
+    window.addEventListener('focus', refetchWhenActive);
+    window.addEventListener('online', refetchWhenActive);
+
+    return () => {
+      document.removeEventListener('visibilitychange', refetchWhenActive);
+      window.removeEventListener('focus', refetchWhenActive);
+      window.removeEventListener('online', refetchWhenActive);
+    };
   }, [refetch]);
 
   return { players, loading, error, month, setMonth, refetch };

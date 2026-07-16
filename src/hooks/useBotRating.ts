@@ -43,6 +43,11 @@ function toStringOrEmpty(value: unknown) {
   return typeof value === 'string' ? value : '';
 }
 
+function withCacheBuster(url: string) {
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}_=${Date.now()}`;
+}
+
 export function normalizeBotRatingPlayers(data: unknown) {
   if (!Array.isArray(data)) return null;
 
@@ -103,7 +108,7 @@ export function useBotRating(): UseBotRatingResult {
       ? `${BOT_API}/api/rating/rank?month=all`
       : `${BOT_API}/api/rating/rank?month=${month}`;
 
-    fetch(url)
+    fetch(withCacheBuster(url), { cache: 'no-store' })
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -130,6 +135,23 @@ export function useBotRating(): UseBotRatingResult {
   useEffect(() => {
     const interval = setInterval(refetch, 2 * 60 * 1000);
     return () => clearInterval(interval);
+  }, [refetch]);
+
+  useEffect(() => {
+    const refetchWhenActive = () => {
+      if (document.visibilityState === 'hidden') return;
+      refetch();
+    };
+
+    document.addEventListener('visibilitychange', refetchWhenActive);
+    window.addEventListener('focus', refetchWhenActive);
+    window.addEventListener('online', refetchWhenActive);
+
+    return () => {
+      document.removeEventListener('visibilitychange', refetchWhenActive);
+      window.removeEventListener('focus', refetchWhenActive);
+      window.removeEventListener('online', refetchWhenActive);
+    };
   }, [refetch]);
 
   return { players, loading, error, month, setMonth, refetch };
