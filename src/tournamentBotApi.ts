@@ -12,6 +12,7 @@ const ENV = (import.meta as ImportMeta & {
     VITE_BOT_TOURNAMENT_PLAYER_REMOVE_URL_TEMPLATE?: string;
     VITE_BOT_TOURNAMENT_RESULTS_URL_TEMPLATE?: string;
     VITE_BOT_TOURNAMENT_FINANCE_URL_TEMPLATE?: string;
+    VITE_BOT_PLAYER_NOTIFY_URL_TEMPLATE?: string;
     VITE_BOT_ADMIN_TOKEN?: string;
   };
 }).env;
@@ -22,6 +23,7 @@ const ADD_PLAYER_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_PLAYER_ADD_URL_TEMPLATE
 const REMOVE_PLAYER_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_PLAYER_REMOVE_URL_TEMPLATE || `${BOT_API}/api/admin/games/{id}/players/remove`;
 const RESULTS_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_RESULTS_URL_TEMPLATE || `${BOT_API}/api/games/{id}/results`;
 const FINANCE_URL_TEMPLATE = ENV?.VITE_BOT_TOURNAMENT_FINANCE_URL_TEMPLATE || `${BOT_API}/api/games/{id}/finance`;
+const NOTIFY_PLAYER_URL_TEMPLATE = ENV?.VITE_BOT_PLAYER_NOTIFY_URL_TEMPLATE || `${BOT_API}/api/admin/players/{telegram_id}/notify`;
 const BOT_ADMIN_TOKEN = ENV?.VITE_BOT_ADMIN_TOKEN || '';
 
 export interface ImportedTournamentPlayer {
@@ -639,5 +641,31 @@ export async function submitBotTournamentFinance(payload: TournamentFinancePaylo
       unsupported: false as const,
       error: error instanceof Error ? error.message : 'Не удалось отправить финансовый отчёт турнира.',
     };
+  }
+}
+
+export async function sendPlayerNotification(
+  telegramId: number,
+  message: string
+): Promise<{ ok: boolean; skipped: boolean; error: string | null }> {
+  const url = NOTIFY_PLAYER_URL_TEMPLATE.replace('{telegram_id}', String(telegramId));
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(BOT_ADMIN_TOKEN ? { 'X-Admin-Token': BOT_ADMIN_TOKEN } : {}),
+      },
+      body: JSON.stringify({ message }),
+    });
+    if (response.status === 404 || response.status === 405) {
+      return { ok: true, skipped: true, error: null };
+    }
+    if (!response.ok) {
+      return { ok: false, skipped: false, error: `Бот не принял уведомление (HTTP ${response.status}).` };
+    }
+    return { ok: true, skipped: false, error: null };
+  } catch (error) {
+    return { ok: false, skipped: false, error: error instanceof Error ? error.message : 'Не удалось отправить уведомление.' };
   }
 }

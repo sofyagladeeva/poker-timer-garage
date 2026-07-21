@@ -329,7 +329,9 @@ export function calcPaymentDue(
   addonCount: number,
   tournamentBuyIn: number | null = null,
   rebuyCost: number | null = null,
-  addonCost: number | null = null
+  addonCost: number | null = null,
+  freeRebuyCount: number = 0,
+  freeAddonCount: number = 0
 ) {
   if (arrivalStatus === 'absent') return 0;
 
@@ -338,8 +340,9 @@ export function calcPaymentDue(
   const rebuyPrice = rebuyCost !== null ? rebuyCost : TOURNAMENT_UNIT_PRICE;
   const addonPrice = addonCost !== null ? addonCost : TOURNAMENT_UNIT_PRICE;
 
-  const rCount = clampWhole(rebuyCount);
-  const aCount = clampWhole(addonCount);
+  // Gifted rebuys/addons reduce the paid count; clamped to zero to prevent negative values.
+  const rCount = Math.max(0, clampWhole(rebuyCount) - clampWhole(freeRebuyCount));
+  const aCount = Math.max(0, clampWhole(addonCount) - clampWhole(freeAddonCount));
 
   if (arrivalStatus === 'freePromo') {
     return Math.round((rCount * rebuyPrice + aCount * addonPrice) * PROMO_DISCOUNT_FACTOR);
@@ -403,6 +406,8 @@ function normalizePlayer(
   const rebuyCount = clampWhole(raw.rebuyCount);
   const addonCount = clampWhole(raw.addonCount);
   const bonusCount = clampWhole(raw.bonusCount);
+  const freeRebuyCount = Math.min(clampWhole(raw.freeRebuyCount), rebuyCount);
+  const freeAddonCount = Math.min(clampWhole(raw.freeAddonCount), addonCount);
 
   return {
     id: raw.id || createId(),
@@ -424,6 +429,8 @@ function normalizePlayer(
     bonusCount,
     bounty: clampWhole(raw.bounty),
     bonusRcPoints: clampWhole(raw.bonusRcPoints),
+    freeRebuyCount,
+    freeAddonCount,
     ...(() => {
       let cashPaid = clampWhole(raw.cashPaid);
       let cardPaid = clampWhole(raw.cardPaid);
@@ -437,7 +444,7 @@ function normalizePlayer(
     })(),
     paymentDue: (raw.paymentDueOverride === true && arrivalStatus !== 'absent')
       ? clampWhole(raw.paymentDue)
-      : calcPaymentDue(arrivalStatus, rebuyCount, addonCount, tournamentBuyIn, rebuyCost, addonCost),
+      : calcPaymentDue(arrivalStatus, rebuyCount, addonCount, tournamentBuyIn, rebuyCost, addonCost, freeRebuyCount, freeAddonCount),
     paymentDueOverride: raw.paymentDueOverride === true && arrivalStatus !== 'absent',
     place: raw.place == null ? null : clampWhole(raw.place),
     placeOverride: raw.placeOverride === true,
@@ -613,6 +620,8 @@ function playersEqual(a: LiveTournamentPlayer | undefined, b: LiveTournamentPlay
     a.arrivalStatus === b.arrivalStatus &&
     a.rebuyCount === b.rebuyCount &&
     a.addonCount === b.addonCount &&
+    a.freeRebuyCount === b.freeRebuyCount &&
+    a.freeAddonCount === b.freeAddonCount &&
     a.bonusCount === b.bonusCount &&
     a.bounty === b.bounty &&
     a.bonusRcPoints === b.bonusRcPoints &&

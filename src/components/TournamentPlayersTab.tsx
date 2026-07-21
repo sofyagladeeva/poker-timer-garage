@@ -3,7 +3,12 @@ import type { ReactNode } from 'react';
 import type {
   LiveTournamentArrivalStatus,
   LiveTournamentPlayer,
+  PlayerGift,
+  PlayerGiftType,
+  PlayerGiftValidCondition,
+  PlayerProfile,
 } from '../types';
+import { isGiftValidNow } from '../playerGifts';
 import { findPlayerWithPlaceConflict, isEarlyBird } from '../hooks/useTournamentPlayers';
 import { matchesSearchQuery } from '../searchUtils';
 
@@ -35,6 +40,7 @@ type Props = {
     disabled: boolean;
   };
   tournamentBotId: number | null;
+  tournamentTitle?: string | null;
   tournamentDate?: string | null;
   earlyBirdBonusEnabled?: boolean;
   isTournamentEnded: boolean;
@@ -53,6 +59,15 @@ type Props = {
   tableCount?: number;
   onAssignSeat?: (playerId: string, tableNumber: number | null, seatNumber: number | null) => Promise<void>;
   knownPlayers?: Array<{ name: string; username: string | null }>;
+  profilesByTelegramId?: Map<number, PlayerProfile>;
+  activeGifts?: Map<number, PlayerGift[]>;
+  usedGiftIdsThisSession?: Set<string>;
+  isClassicTournament?: boolean;
+  currentSessionId?: number | null;
+  onRedeemGift?: (gift: PlayerGift, player: LiveTournamentPlayer) => Promise<void>;
+  onUnredeemGift?: (gift: PlayerGift) => void;
+  onCreateGift?: (player: LiveTournamentPlayer, type: PlayerGiftType, comment: string | null, validCondition: PlayerGiftValidCondition, validUntil: string | null, validTournamentTitle: string | null) => Promise<void>;
+  botGames?: Array<{ id: number; title: string; date: string }>;
 };
 
 export function TournamentPlayersTab({
@@ -61,6 +76,7 @@ export function TournamentPlayersTab({
   playerBackups,
   botSyncState,
   tournamentBotId,
+  tournamentTitle,
   tournamentDate,
   earlyBirdBonusEnabled = true,
   isTournamentEnded,
@@ -79,7 +95,19 @@ export function TournamentPlayersTab({
   tableCount = 4,
   onAssignSeat,
   knownPlayers = [],
+  profilesByTelegramId,
+  activeGifts,
+  usedGiftIdsThisSession,
+  isClassicTournament = false,
+  currentSessionId,
+  onRedeemGift,
+  onUnredeemGift,
+  onCreateGift,
+  botGames = [],
 }: Props) {
+  const isGiftApplicable = (gift: PlayerGift) =>
+    gift.type === 'custom' || isClassicTournament;
+
   const [manualPlayerName, setManualPlayerName] = useState('');
   const [autocompleteOpen, setAutocompleteOpen] = useState(false);
   const [autocompleteIndex, setAutocompleteIndex] = useState(0);
@@ -97,12 +125,34 @@ export function TournamentPlayersTab({
   const [outDialogBusy, setOutDialogBusy] = useState(false);
   const [contactPlayer, setContactPlayer] = useState<LiveTournamentPlayer | null>(null);
   const [returnBountyNotice, setReturnBountyNotice] = useState<{ playerName: string; bounty: number } | null>(null);
+  const [giftArrivalNotice, setGiftArrivalNotice] = useState<{ player: LiveTournamentPlayer; gifts: PlayerGift[] } | null>(null);
+  const [giftDialogPlayer, setGiftDialogPlayer] = useState<LiveTournamentPlayer | null>(null);
+  const [giftDialogType, setGiftDialogType] = useState<PlayerGiftType>('free_entry');
+  const [giftDialogValidity, setGiftDialogValidity] = useState<PlayerGiftValidCondition>('next_tournament');
+  const [giftDialogDate, setGiftDialogDate] = useState('');
+  const [giftDialogTournamentTitle, setGiftDialogTournamentTitle] = useState('');
+  const [giftDialogComment, setGiftDialogComment] = useState('');
+  const [giftDialogBusy, setGiftDialogBusy] = useState(false);
+
+  const getProfileArrivalStatus = (player: LiveTournamentPlayer): LiveTournamentArrivalStatus => {
+    const status = (player.telegramId != null ? profilesByTelegramId?.get(player.telegramId)?.defaultArrivalStatus : undefined) ?? 'paid';
+    if (status === 'admin') return 'admin';
+    if (!isClassicTournament && (status === 'free' || status === 'promo' || status === 'freePromo')) return 'paid';
+    return status;
+  };
+
+  const getValidGiftsForPlayer = (player: LiveTournamentPlayer): PlayerGift[] => {
+    if (player.telegramId == null || !activeGifts) return [];
+    return (activeGifts.get(player.telegramId) ?? []).filter(g => isGiftValidNow(g, tournamentBotId, tournamentTitle, currentSessionId));
+  };
 
   const handleRequestActivate = (player: LiveTournamentPlayer) => {
     if (onAssignSeat && tableCount > 0) {
       setSeatModalPlayer(player);
     } else {
-      void onSetPlayerArrival(player.id, 'paid');
+      void onSetPlayerArrival(player.id, getProfileArrivalStatus(player));
+      const gifts = getValidGiftsForPlayer(player);
+      if (gifts.length > 0) setGiftArrivalNotice({ player, gifts });
     }
   };
 
@@ -121,10 +171,13 @@ export function TournamentPlayersTab({
   const handleSeatConfirm = async (tableNumber: number, seatNumber: number) => {
     if (!seatModalPlayer) return;
     setSeatModalBusy(true);
+    const activatingPlayer = seatModalPlayer;
     try {
-      await onSetPlayerArrival(seatModalPlayer.id, 'paid');
-      await onAssignSeat?.(seatModalPlayer.id, tableNumber, seatNumber);
+      await onSetPlayerArrival(activatingPlayer.id, getProfileArrivalStatus(activatingPlayer));
+      await onAssignSeat?.(activatingPlayer.id, tableNumber, seatNumber);
       setSeatModalPlayer(null);
+      const gifts = getValidGiftsForPlayer(activatingPlayer);
+      if (gifts.length > 0) setGiftArrivalNotice({ player: activatingPlayer, gifts });
     } finally {
       setSeatModalBusy(false);
     }
@@ -133,13 +186,35 @@ export function TournamentPlayersTab({
   const handleSeatSkip = async () => {
     if (!seatModalPlayer) return;
     setSeatModalBusy(true);
+    const activatingPlayer = seatModalPlayer;
     try {
-      await onSetPlayerArrival(seatModalPlayer.id, 'paid');
+      await onSetPlayerArrival(activatingPlayer.id, getProfileArrivalStatus(activatingPlayer));
       setSeatModalPlayer(null);
+      const gifts = getValidGiftsForPlayer(activatingPlayer);
+      if (gifts.length > 0) setGiftArrivalNotice({ player: activatingPlayer, gifts });
     } finally {
       setSeatModalBusy(false);
     }
   };
+
+  const handleCreateGiftSubmit = async () => {
+    if (!giftDialogPlayer || !onCreateGift) return;
+    setGiftDialogBusy(true);
+    try {
+      const validUntil = giftDialogValidity === 'until_date' ? (giftDialogDate || null) : null;
+      const validTournamentTitle = giftDialogValidity === 'specific_tournament' ? (giftDialogTournamentTitle || null) : null;
+      await onCreateGift(giftDialogPlayer, giftDialogType, giftDialogComment.trim() || null, giftDialogValidity, validUntil, validTournamentTitle);
+      setGiftDialogPlayer(null);
+      setGiftDialogComment('');
+      setGiftDialogType('free_entry');
+      setGiftDialogValidity('next_tournament');
+      setGiftDialogDate('');
+      setGiftDialogTournamentTitle('');
+    } finally {
+      setGiftDialogBusy(false);
+    }
+  };
+
   const totalPlayers = groupedPlayers.active.length + groupedPlayers.pending.length + groupedPlayers.waitlist.length + groupedPlayers.out.length;
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const rosterPlayers = [
@@ -686,29 +761,13 @@ export function TournamentPlayersTab({
           <div className={preferMobileCards ? '' : 'overflow-x-hidden sm:max-h-[72vh] sm:overflow-y-auto'}>
             {preferMobileCards ? (
               <div className="flex flex-col gap-3">
-                {allPlayers.map(player => (
-                  <MobilePlayerCard
-                    key={player.id}
-                    player={player}
-                    waitlistPosition={waitlistPositionById.get(player.id) ?? null}
-                    tournamentDate={tournamentDate}
-                    earlyBirdBonusEnabled={earlyBirdBonusEnabled}
-                    rosterPlayers={rosterPlayers}
-                    onPlaceConflict={setPlaceConflictNotice}
-                    onUpdatePlayerField={onUpdatePlayerField}
-                    onSetPlayerArrival={onSetPlayerArrival}
-                    onRequestActivate={handleRequestActivate}
-                    onOpenOutDialog={openOutDialog}
-                    onRestorePlayer={handleRestorePlayer}
-                    onRemovePlayer={handleRemovePlayer}
-                    onShowContact={setContactPlayer}
-                  />
-                ))}
-              </div>
-            ) : (
-              <>
-                <div className="flex flex-col gap-3 sm:hidden">
-                  {allPlayers.map(player => (
+                {allPlayers.map(player => {
+                  const playerGifts = player.telegramId != null
+                    ? (activeGifts?.get(player.telegramId) ?? []).filter(g => g.status === 'redeemed' || g.status === 'active')
+                    : [];
+                  const availableGifts = playerGifts.filter(g => g.status === 'active' && !usedGiftIdsThisSession?.has(g.id) && isGiftApplicable(g) && isGiftValidNow(g, tournamentBotId, tournamentTitle, currentSessionId));
+                  const availableGiftIds = new Set(availableGifts.map(g => g.id));
+                  return (
                     <MobilePlayerCard
                       key={player.id}
                       player={player}
@@ -724,8 +783,54 @@ export function TournamentPlayersTab({
                       onRestorePlayer={handleRestorePlayer}
                       onRemovePlayer={handleRemovePlayer}
                       onShowContact={setContactPlayer}
+
+                      playerGifts={playerGifts}
+                      usedGiftIdsThisSession={usedGiftIdsThisSession}
+                      availableGiftIds={availableGiftIds}
+                      onApplyGift={onRedeemGift && availableGifts.length > 0 ? () => setGiftArrivalNotice({ player, gifts: availableGifts }) : undefined}
+                      onAutoApplyGift={onRedeemGift ? (gift) => void onRedeemGift(gift, player) : undefined}
+                      onUnredeemGift={onUnredeemGift}
+                      onOpenGiftDialog={onCreateGift && player.telegramId != null ? () => setGiftDialogPlayer(player) : undefined}
                     />
-                  ))}
+                  );
+                })}
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col gap-3 sm:hidden">
+                  {allPlayers.map(player => {
+                    const playerGifts = player.telegramId != null
+                      ? (activeGifts?.get(player.telegramId) ?? []).filter(g => g.status === 'redeemed' || g.status === 'active')
+                      : [];
+                    const availableGifts = playerGifts.filter(g => g.status === 'active' && !usedGiftIdsThisSession?.has(g.id) && isGiftApplicable(g) && isGiftValidNow(g, tournamentBotId, tournamentTitle, currentSessionId));
+                    const availableGiftIds = new Set(availableGifts.map(g => g.id));
+                    return (
+                      <MobilePlayerCard
+                        key={player.id}
+                        player={player}
+                        waitlistPosition={waitlistPositionById.get(player.id) ?? null}
+                        tournamentDate={tournamentDate}
+                        earlyBirdBonusEnabled={earlyBirdBonusEnabled}
+                        rosterPlayers={rosterPlayers}
+                        onPlaceConflict={setPlaceConflictNotice}
+                        onUpdatePlayerField={onUpdatePlayerField}
+                        onSetPlayerArrival={onSetPlayerArrival}
+                        onRequestActivate={handleRequestActivate}
+                        onOpenOutDialog={openOutDialog}
+                        onRestorePlayer={handleRestorePlayer}
+                        onRemovePlayer={handleRemovePlayer}
+                        onShowContact={setContactPlayer}
+  
+                        playerGifts={playerGifts}
+                        usedGiftIdsThisSession={usedGiftIdsThisSession}
+                        availableGiftIds={availableGiftIds}
+                        onApplyGift={onRedeemGift && availableGifts.length > 0 ? () => setGiftArrivalNotice({ player, gifts: availableGifts }) : undefined}
+                        onAutoApplyGift={onRedeemGift ? (gift) => void onRedeemGift(gift, player) : undefined}
+                      onUnredeemGift={onUnredeemGift}
+                        onOpenGiftDialog={onCreateGift && player.telegramId != null ? () => setGiftDialogPlayer(player) : undefined}
+                      />
+                    );
+                  })}
                 </div>
 
                 <div className="hidden sm:block">
@@ -743,24 +848,39 @@ export function TournamentPlayersTab({
                       </tr>
                     </thead>
                     <tbody>
-                      {allPlayers.map(player => (
-                        <PlayerRow
-                          key={player.id}
-                          player={player}
-                          waitlistPosition={waitlistPositionById.get(player.id) ?? null}
-                          tournamentDate={tournamentDate}
-                          earlyBirdBonusEnabled={earlyBirdBonusEnabled}
-                          rosterPlayers={rosterPlayers}
-                          onPlaceConflict={setPlaceConflictNotice}
-                          onUpdatePlayerField={onUpdatePlayerField}
-                          onSetPlayerArrival={onSetPlayerArrival}
-                          onOpenOutDialog={openOutDialog}
-                          onRestorePlayer={handleRestorePlayer}
-                          onRemovePlayer={handleRemovePlayer}
-                          onShowContact={setContactPlayer}
-                          onRequestActivate={handleRequestActivate}
-                        />
-                      ))}
+                      {allPlayers.map(player => {
+                        const playerGifts = player.telegramId != null
+                          ? (activeGifts?.get(player.telegramId) ?? []).filter(g => g.status === 'redeemed' || g.status === 'active')
+                          : [];
+                        const availableGifts = playerGifts.filter(g => g.status === 'active' && !usedGiftIdsThisSession?.has(g.id) && isGiftApplicable(g) && isGiftValidNow(g, tournamentBotId, tournamentTitle, currentSessionId));
+                        const availableGiftIds = new Set(availableGifts.map(g => g.id));
+                        return (
+                          <PlayerRow
+                            key={player.id}
+                            player={player}
+                            waitlistPosition={waitlistPositionById.get(player.id) ?? null}
+                            tournamentDate={tournamentDate}
+                            earlyBirdBonusEnabled={earlyBirdBonusEnabled}
+                            rosterPlayers={rosterPlayers}
+                            onPlaceConflict={setPlaceConflictNotice}
+                            onUpdatePlayerField={onUpdatePlayerField}
+                            onSetPlayerArrival={onSetPlayerArrival}
+                            onOpenOutDialog={openOutDialog}
+                            onRestorePlayer={handleRestorePlayer}
+                            onRemovePlayer={handleRemovePlayer}
+                            onShowContact={setContactPlayer}
+                            onRequestActivate={handleRequestActivate}
+      
+                            playerGifts={playerGifts}
+                            usedGiftIdsThisSession={usedGiftIdsThisSession}
+                            availableGiftIds={availableGiftIds}
+                            onApplyGift={onRedeemGift && availableGifts.length > 0 ? () => setGiftArrivalNotice({ player, gifts: availableGifts }) : undefined}
+                            onAutoApplyGift={onRedeemGift ? (gift) => void onRedeemGift(gift, player) : undefined}
+                      onUnredeemGift={onUnredeemGift}
+                            onOpenGiftDialog={onCreateGift && player.telegramId != null ? () => setGiftDialogPlayer(player) : undefined}
+                          />
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -954,6 +1074,56 @@ export function TournamentPlayersTab({
           </div>
         </div>
       )}
+      {giftArrivalNotice && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-3 sm:items-center sm:p-6"
+          onClick={() => setGiftArrivalNotice(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl border border-violet-700/70 bg-[#111] shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="border-b border-[#2D2D2D] px-5 py-4">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-violet-300">Призы</div>
+              <div className="mt-2 text-xl font-black text-white">У игрока есть призы</div>
+              <div className="mt-1 break-words text-sm text-[#888]">{giftArrivalNotice.player.name}</div>
+            </div>
+            <div className="flex flex-col gap-3 px-5 py-4">
+              {giftArrivalNotice.gifts.map(gift => (
+                <div key={gift.id} className={`rounded-2xl border px-4 py-3 ${giftBannerTone(gift.type)}`}>
+                  <div className="text-sm font-bold">{giftTypeLabel(gift)}</div>
+                  <div className="mt-0.5 text-[11px] opacity-70">{giftValidLabel(gift)}</div>
+                  {onRedeemGift && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void onRedeemGift(gift, giftArrivalNotice.player);
+                        setGiftArrivalNotice(prev => {
+                          if (!prev) return null;
+                          const remaining = prev.gifts.filter(g => g.id !== gift.id);
+                          return remaining.length > 0 ? { ...prev, gifts: remaining } : null;
+                        });
+                      }}
+                      className="mt-2.5 w-full rounded-xl px-3 py-2 text-xs font-bold uppercase tracking-wide bg-white/10 hover:bg-white/20 transition-colors"
+                    >
+                      {gift.type === 'custom' ? 'Отметить использованным' : 'Применить'}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-[#2D2D2D] px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setGiftArrivalNotice(null)}
+                className="admin-btn-secondary w-full py-3 text-sm"
+              >
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {seatModalPlayer && (
         <SeatAssignModal
           player={seatModalPlayer}
@@ -964,6 +1134,95 @@ export function TournamentPlayersTab({
           onSkip={() => void handleSeatSkip()}
           onClose={() => setSeatModalPlayer(null)}
         />
+      )}
+
+      {giftDialogPlayer && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/75 p-3 sm:items-center sm:p-6">
+          <div className="w-full max-w-md rounded-3xl border border-[#2D2D2D] bg-[#111] shadow-2xl">
+            <div className="border-b border-[#2D2D2D] px-5 py-4">
+              <div className="text-white font-black text-lg">Выдать подарок</div>
+              <div className="mt-1 text-sm text-[#777] break-words">{giftDialogPlayer.name}</div>
+            </div>
+            <div className="px-5 py-4 flex flex-col gap-4">
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-[#666] mb-2">Тип подарка</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['free_entry', 'free_rebuy', 'free_addon', 'custom'] as const).map(t => (
+                    <button key={t} type="button"
+                      onClick={() => setGiftDialogType(t)}
+                      className={`rounded-xl border px-3 py-2.5 text-xs font-bold text-left transition-colors ${giftDialogType === t ? 'border-[#C0392B] bg-[#2A0C0A] text-white' : 'border-[#2D2D2D] bg-[#141414] text-[#888] hover:border-[#555]'}`}
+                    >
+                      {t === 'free_entry' ? 'Бесплатный вход' : t === 'free_rebuy' ? 'Бесплатный ребай' : t === 'free_addon' ? 'Бесплатный аддон' : 'Другое'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {giftDialogType === 'custom' && (
+                <input
+                  value={giftDialogComment}
+                  onChange={e => setGiftDialogComment(e.target.value)}
+                  placeholder="Описание подарка"
+                  className="admin-input"
+                />
+              )}
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-[#666] mb-2">Срок действия</div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {([
+                    ['next_tournament', 'Следующий турнир'],
+                    ['next_month', 'Следующий месяц'],
+                    ['until_date', 'До даты'],
+                    ['specific_tournament', 'Конкретный турнир'],
+                    ['indefinite', 'Бессрочно'],
+                  ] as const).map(([v, label]) => (
+                    <button key={v} type="button"
+                      onClick={() => { setGiftDialogValidity(v); setGiftDialogDate(''); setGiftDialogTournamentTitle(''); }}
+                      className={`rounded-xl border px-2 py-2.5 text-[11px] font-bold text-center transition-colors ${giftDialogValidity === v ? 'border-[#C0392B] bg-[#2A0C0A] text-white' : 'border-[#2D2D2D] bg-[#141414] text-[#888] hover:border-[#555]'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {giftDialogValidity === 'until_date' && (
+                <input
+                  type="date"
+                  value={giftDialogDate}
+                  onChange={e => setGiftDialogDate(e.target.value)}
+                  className="admin-input"
+                />
+              )}
+              {giftDialogValidity === 'specific_tournament' && (
+                <select
+                  value={giftDialogTournamentTitle}
+                  onChange={e => setGiftDialogTournamentTitle(e.target.value)}
+                  className="admin-input"
+                >
+                  <option value="">— выберите турнир —</option>
+                  {[...botGames].sort((a, b) => a.date.localeCompare(b.date)).map(t => (
+                    <option key={t.id} value={t.title}>{t.title} · {new Date(t.date).toLocaleDateString('ru-RU')}</option>
+                  ))}
+                </select>
+              )}
+              {giftDialogType !== 'custom' && (
+                <input
+                  value={giftDialogComment}
+                  onChange={e => setGiftDialogComment(e.target.value)}
+                  placeholder="Комментарий (необязательно)"
+                  className="admin-input"
+                />
+              )}
+            </div>
+            <div className="flex gap-2 border-t border-[#2D2D2D] px-5 py-4">
+              <button type="button" onClick={() => setGiftDialogPlayer(null)} disabled={giftDialogBusy} className="admin-btn-secondary flex-1 py-3 text-sm">
+                Отмена
+              </button>
+              <button type="button" onClick={() => void handleCreateGiftSubmit()} disabled={giftDialogBusy || (giftDialogType === 'custom' && !giftDialogComment.trim()) || (giftDialogValidity === 'until_date' && !giftDialogDate) || (giftDialogValidity === 'specific_tournament' && !giftDialogTournamentTitle)} className="admin-btn-primary flex-1 py-3 text-sm disabled:opacity-40">
+                {giftDialogBusy ? 'Сохранение...' : 'Выдать'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1079,6 +1338,36 @@ function compareWaitlistQueue(a: LiveTournamentPlayer, b: LiveTournamentPlayer) 
     || a.name.localeCompare(b.name, 'ru');
 }
 
+
+function giftTypeLabel(gift: PlayerGift): string {
+  if (gift.type === 'free_entry') return 'Бесплатный вход';
+  if (gift.type === 'free_rebuy') return 'Бесплатный ребай';
+  if (gift.type === 'free_addon') return 'Бесплатный аддон';
+  return gift.comment ?? 'Подарок';
+}
+
+function giftValidLabel(gift: PlayerGift): string {
+  if (gift.validCondition === 'next_tournament') return 'На следующий турнир';
+  if (gift.validCondition === 'next_month') {
+    if (gift.validUntil) return `До ${new Date(gift.validUntil).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+    return 'Следующий месяц';
+  }
+  if (gift.validCondition === 'until_date' && gift.validUntil) {
+    return `До ${new Date(gift.validUntil).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+  }
+  if (gift.validCondition === 'specific_tournament') {
+    return gift.validTournamentTitle ? gift.validTournamentTitle : 'Конкретный турнир';
+  }
+  return 'Бессрочно';
+}
+
+function giftBannerTone(type: PlayerGiftType): string {
+  if (type === 'free_entry') return 'border-emerald-700/50 bg-emerald-950/30 text-emerald-200';
+  if (type === 'free_rebuy') return 'border-amber-700/50 bg-amber-950/30 text-amber-200';
+  if (type === 'free_addon') return 'border-blue-700/50 bg-blue-950/30 text-blue-200';
+  return 'border-violet-700/50 bg-violet-950/30 text-violet-200';
+}
+
 function MobilePlayerCard({
   player,
   waitlistPosition,
@@ -1093,6 +1382,13 @@ function MobilePlayerCard({
   onRestorePlayer,
   onRemovePlayer,
   onShowContact,
+  playerGifts,
+  usedGiftIdsThisSession,
+  availableGiftIds,
+  onApplyGift,
+  onAutoApplyGift,
+  onUnredeemGift,
+  onOpenGiftDialog,
 }: {
   player: LiveTournamentPlayer;
   waitlistPosition: number | null;
@@ -1107,6 +1403,13 @@ function MobilePlayerCard({
   onRestorePlayer: (playerId: string) => Promise<void>;
   onRemovePlayer: (player: LiveTournamentPlayer) => Promise<void>;
   onShowContact: (player: LiveTournamentPlayer) => void;
+  playerGifts?: PlayerGift[];
+  usedGiftIdsThisSession?: Set<string>;
+  availableGiftIds?: Set<string>;
+  onApplyGift?: (gift: PlayerGift) => void;
+  onAutoApplyGift?: (gift: PlayerGift) => void;
+  onUnredeemGift?: (gift: PlayerGift) => void;
+  onOpenGiftDialog?: () => void;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
@@ -1174,6 +1477,14 @@ function MobilePlayerCard({
                 className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full border border-[#3D3D3D] text-[#888] text-[11px] hover:border-[#888] hover:text-white transition-colors"
                 title="Контакты"
               >ⓘ</button>
+              {onOpenGiftDialog && (
+                <button
+                  type="button"
+                  onClick={onOpenGiftDialog}
+                  className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full border border-amber-700/50 text-amber-500 text-[11px] hover:border-amber-500 hover:text-amber-300 transition-colors"
+                  title="Выдать подарок"
+                >+</button>
+              )}
             </div>
           <div className="mt-1 flex flex-wrap gap-1">
             <div className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.12em] ${nameBadgeTone}`}>
@@ -1192,6 +1503,47 @@ function MobilePlayerCard({
           </div>
           {player.arrivalStatus !== 'absent' && !isOut && player.tableNumber != null && player.seatNumber != null && (
             <div className="mt-1 text-[10px] text-[#555]">Стол {player.tableNumber}, бокс {player.seatNumber}</div>
+          )}
+          {playerGifts && playerGifts.length > 0 && (
+            <div className="mt-1.5 flex flex-col gap-1">
+              {playerGifts.map(gift => {
+                const isUsedThisSession = usedGiftIdsThisSession?.has(gift.id);
+                if (gift.status === 'redeemed' || isUsedThisSession) {
+                  return (
+                    <div key={gift.id} className="flex w-full items-center justify-between gap-2 rounded-lg border border-[#2D2D2D] px-2 py-1">
+                      <span className="text-[10px] font-bold truncate text-[#888] opacity-50">✓ {giftTypeLabel(gift)}{isUsedThisSession && gift.status === 'active' ? ' (в этой игре)' : ''}</span>
+                      {onUnredeemGift && (
+                        <button type="button" onClick={() => onUnredeemGift(gift)} className="shrink-0 text-[10px] text-[#555] hover:text-[#C0392B] transition-colors" title="Отменить применение">✕</button>
+                      )}
+                    </div>
+                  );
+                }
+                const isAvailable = availableGiftIds?.has(gift.id) ?? false;
+                if (!isAvailable) {
+                  const pendingLabel = gift.validCondition === 'next_tournament' ? 'след. турнир'
+                    : gift.validCondition === 'specific_tournament' ? 'другой турнир'
+                    : 'только классика';
+                  return (
+                    <div key={gift.id} className={`flex w-full items-center justify-between gap-2 rounded-lg border px-2 py-1 opacity-40 ${giftBannerTone(gift.type)}`}>
+                      <span className="text-[10px] font-bold truncate">{giftTypeLabel(gift)}</span>
+                      <span className="shrink-0 text-[9px] opacity-70">{pendingLabel}</span>
+                    </div>
+                  );
+                }
+                return (
+                  <button
+                    key={gift.id}
+                    type="button"
+                    onClick={onApplyGift ? () => onApplyGift(gift) : undefined}
+                    disabled={!onApplyGift}
+                    className={`flex w-full items-center justify-between gap-2 rounded-lg border px-2 py-1 text-left transition-opacity ${giftBannerTone(gift.type)} ${onApplyGift ? 'hover:opacity-75' : ''}`}
+                  >
+                    <span className="text-[10px] font-bold truncate">{giftTypeLabel(gift)}</span>
+                    {onApplyGift && <span className="shrink-0 text-[10px] opacity-50">›</span>}
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
 
@@ -1261,14 +1613,22 @@ function MobilePlayerCard({
           value={player.rebuyCount}
           disabled={!canEditCounters}
           onDecrease={() => void onUpdatePlayerField(player.id, { rebuyCount: Math.max(0, player.rebuyCount - 1) })}
-          onIncrease={() => void onUpdatePlayerField(player.id, { rebuyCount: player.rebuyCount + 1 })}
+          onIncrease={() => {
+            const freeGift = playerGifts?.find(g => g.type === 'free_rebuy' && g.status === 'active' && !usedGiftIdsThisSession?.has(g.id) && (availableGiftIds?.has(g.id) ?? true));
+            if (freeGift && onAutoApplyGift) { onAutoApplyGift(freeGift); }
+            else { void onUpdatePlayerField(player.id, { rebuyCount: player.rebuyCount + 1 }); }
+          }}
         />
         <MobileCounter
           label="Addon"
           value={player.addonCount}
           disabled={!canEditCounters}
           onDecrease={() => void onUpdatePlayerField(player.id, { addonCount: Math.max(0, player.addonCount - 1) })}
-          onIncrease={() => void onUpdatePlayerField(player.id, { addonCount: player.addonCount + 1 })}
+          onIncrease={() => {
+            const freeGift = playerGifts?.find(g => g.type === 'free_addon' && g.status === 'active' && !usedGiftIdsThisSession?.has(g.id) && (availableGiftIds?.has(g.id) ?? true));
+            if (freeGift && onAutoApplyGift) { onAutoApplyGift(freeGift); }
+            else { void onUpdatePlayerField(player.id, { addonCount: player.addonCount + 1 }); }
+          }}
         />
         <MobileCounter
           label="Бонус"
@@ -1439,6 +1799,13 @@ function PlayerRow({
   onRemovePlayer,
   onShowContact,
   onRequestActivate,
+  playerGifts,
+  usedGiftIdsThisSession,
+  availableGiftIds,
+  onApplyGift,
+  onAutoApplyGift,
+  onUnredeemGift,
+  onOpenGiftDialog,
 }: {
   player: LiveTournamentPlayer;
   waitlistPosition: number | null;
@@ -1453,6 +1820,13 @@ function PlayerRow({
   onRemovePlayer: (player: LiveTournamentPlayer) => Promise<void>;
   onShowContact: (player: LiveTournamentPlayer) => void;
   onRequestActivate: (player: LiveTournamentPlayer) => void;
+  playerGifts?: PlayerGift[];
+  usedGiftIdsThisSession?: Set<string>;
+  availableGiftIds?: Set<string>;
+  onApplyGift?: (gift: PlayerGift) => void;
+  onAutoApplyGift?: (gift: PlayerGift) => void;
+  onUnredeemGift?: (gift: PlayerGift) => void;
+  onOpenGiftDialog?: () => void;
 }) {
   const [openField, setOpenField] = useState<'entry' | 'split' | null>(null);
   const canEditCounters = player.arrivalStatus !== 'absent';
@@ -1520,6 +1894,14 @@ function PlayerRow({
                 className="shrink-0 inline-flex items-center justify-center w-4 h-4 sm:w-5 sm:h-5 rounded-full border border-[#3D3D3D] text-[#888] text-[9px] sm:text-[11px] hover:border-[#888] hover:text-white transition-colors"
                 title="Контакты"
               >ⓘ</button>
+              {onOpenGiftDialog && (
+                <button
+                  type="button"
+                  onClick={onOpenGiftDialog}
+                  className="shrink-0 inline-flex items-center justify-center w-4 h-4 sm:w-5 sm:h-5 rounded-full border border-amber-700/50 text-amber-500 text-[9px] sm:text-[11px] hover:border-amber-500 hover:text-amber-300 transition-colors"
+                  title="Выдать подарок"
+                >+</button>
+              )}
             </div>
           <div className="flex flex-wrap gap-1">
             <div className={`inline-flex w-fit items-center rounded-full border px-1.5 py-0.5 text-[8px] sm:px-2 sm:text-[9px] uppercase tracking-[0.12em] sm:tracking-[0.14em] ${nameBadgeTone}`}>
@@ -1545,6 +1927,47 @@ function PlayerRow({
           </div>
           {player.arrivalStatus !== 'absent' && !isOut && player.tableNumber != null && player.seatNumber != null && (
             <div className="text-[8px] sm:text-[9px] text-[#555]">Стол {player.tableNumber}, бокс {player.seatNumber}</div>
+          )}
+          {playerGifts && playerGifts.length > 0 && (
+            <div className="flex flex-col gap-0.5">
+              {playerGifts.map(gift => {
+                const isUsedThisSession = usedGiftIdsThisSession?.has(gift.id);
+                if (gift.status === 'redeemed' || isUsedThisSession) {
+                  return (
+                    <div key={gift.id} className="flex w-full items-center justify-between gap-1 rounded-md border border-[#2D2D2D] px-1 py-0.5">
+                      <span className="text-[7px] sm:text-[8px] uppercase tracking-[0.08em] truncate text-[#888] opacity-50">✓ {giftTypeLabel(gift)}{isUsedThisSession && gift.status === 'active' ? ' (эта игра)' : ''}</span>
+                      {onUnredeemGift && (
+                        <button type="button" onClick={() => onUnredeemGift(gift)} className="shrink-0 text-[9px] text-[#555] hover:text-[#C0392B] transition-colors" title="Отменить">✕</button>
+                      )}
+                    </div>
+                  );
+                }
+                const isAvailable = availableGiftIds?.has(gift.id) ?? false;
+                if (!isAvailable) {
+                  const pendingLabel = gift.validCondition === 'next_tournament' ? 'след. турнир'
+                    : gift.validCondition === 'specific_tournament' ? 'другой турнир'
+                    : 'классика';
+                  return (
+                    <div key={gift.id} className={`flex w-full items-center justify-between gap-1 rounded-md border px-1 py-0.5 opacity-40 ${giftBannerTone(gift.type)}`}>
+                      <span className="text-[7px] sm:text-[8px] uppercase tracking-[0.08em] truncate">{giftTypeLabel(gift)}</span>
+                      <span className="shrink-0 text-[7px] opacity-70">{pendingLabel}</span>
+                    </div>
+                  );
+                }
+                return (
+                  <button
+                    key={gift.id}
+                    type="button"
+                    onClick={onApplyGift ? () => onApplyGift(gift) : undefined}
+                    disabled={!onApplyGift}
+                    className={`flex w-full items-center justify-between gap-1 rounded-md border px-1 py-0.5 text-left transition-opacity ${giftBannerTone(gift.type)} ${onApplyGift ? 'hover:opacity-75' : ''}`}
+                  >
+                    <span className="text-[7px] sm:text-[8px] uppercase tracking-[0.08em] truncate">{giftTypeLabel(gift)}</span>
+                    {onApplyGift && <span className="shrink-0 text-[8px] opacity-50">›</span>}
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
       </td>
@@ -1592,7 +2015,11 @@ function PlayerRow({
           <div className="w-3 text-center text-white font-black text-[10px] sm:w-4 sm:text-[11px] leading-none">{player.rebuyCount}</div>
           <button
             type="button"
-            onClick={() => void onUpdatePlayerField(player.id, { rebuyCount: player.rebuyCount + 1 })}
+            onClick={() => {
+              const freeGift = playerGifts?.find(g => g.type === 'free_rebuy' && g.status === 'active' && !usedGiftIdsThisSession?.has(g.id) && (availableGiftIds?.has(g.id) ?? true));
+              if (freeGift && onAutoApplyGift) { onAutoApplyGift(freeGift); }
+              else { void onUpdatePlayerField(player.id, { rebuyCount: player.rebuyCount + 1 }); }
+            }}
             disabled={!canEditCounters}
             className="h-[18px] w-[18px] sm:h-6 sm:w-6 rounded-md sm:rounded-lg bg-[#C0392B] text-white text-[10px] sm:text-xs font-bold disabled:opacity-30"
           >
@@ -1614,7 +2041,11 @@ function PlayerRow({
           <div className="w-3 text-center text-white font-black text-[10px] sm:w-4 sm:text-[11px] leading-none">{player.addonCount}</div>
           <button
             type="button"
-            onClick={() => void onUpdatePlayerField(player.id, { addonCount: player.addonCount + 1 })}
+            onClick={() => {
+              const freeGift = playerGifts?.find(g => g.type === 'free_addon' && g.status === 'active' && !usedGiftIdsThisSession?.has(g.id) && (availableGiftIds?.has(g.id) ?? true));
+              if (freeGift && onAutoApplyGift) { onAutoApplyGift(freeGift); }
+              else { void onUpdatePlayerField(player.id, { addonCount: player.addonCount + 1 }); }
+            }}
             disabled={!canEditCounters}
             className="h-[18px] w-[18px] sm:h-6 sm:w-6 rounded-md sm:rounded-lg bg-[#C0392B] text-white text-[10px] sm:text-xs font-bold disabled:opacity-30"
           >
