@@ -21,6 +21,7 @@ export function usePlayerGifts(telegramIds: number[], sessionId?: number | null)
   const reload = useCallback(() => setTick(t => t + 1), []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (telegramIds.length === 0) { setGifts([]); return; }
     let cancelled = false;
     setLoading(true);

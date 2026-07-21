@@ -66,7 +66,7 @@ type Props = {
   currentSessionId?: number | null;
   onRedeemGift?: (gift: PlayerGift, player: LiveTournamentPlayer) => Promise<void>;
   onUnredeemGift?: (gift: PlayerGift) => void;
-  onCreateGift?: (player: LiveTournamentPlayer, type: PlayerGiftType, comment: string | null, validCondition: PlayerGiftValidCondition, validUntil: string | null, validTournamentTitle: string | null) => Promise<void>;
+  onCreateGift?: (player: LiveTournamentPlayer, type: PlayerGiftType, comment: string | null, validCondition: PlayerGiftValidCondition, validUntil: string | null, validTournamentTitle: string | null) => Promise<{ notifyStatus: 'sent' | 'skipped' | 'error' | null }>;
   botGames?: Array<{ id: number; title: string; date: string }>;
 };
 
@@ -133,6 +133,7 @@ export function TournamentPlayersTab({
   const [giftDialogTournamentTitle, setGiftDialogTournamentTitle] = useState('');
   const [giftDialogComment, setGiftDialogComment] = useState('');
   const [giftDialogBusy, setGiftDialogBusy] = useState(false);
+  const [giftDialogNotifyStatus, setGiftDialogNotifyStatus] = useState<'sent' | 'skipped' | 'error' | null>(null);
 
   const getProfileArrivalStatus = (player: LiveTournamentPlayer): LiveTournamentArrivalStatus => {
     const status = (player.telegramId != null ? profilesByTelegramId?.get(player.telegramId)?.defaultArrivalStatus : undefined) ?? 'paid';
@@ -203,13 +204,17 @@ export function TournamentPlayersTab({
     try {
       const validUntil = giftDialogValidity === 'until_date' ? (giftDialogDate || null) : null;
       const validTournamentTitle = giftDialogValidity === 'specific_tournament' ? (giftDialogTournamentTitle || null) : null;
-      await onCreateGift(giftDialogPlayer, giftDialogType, giftDialogComment.trim() || null, giftDialogValidity, validUntil, validTournamentTitle);
-      setGiftDialogPlayer(null);
-      setGiftDialogComment('');
-      setGiftDialogType('free_entry');
-      setGiftDialogValidity('next_tournament');
-      setGiftDialogDate('');
-      setGiftDialogTournamentTitle('');
+      const result = await onCreateGift(giftDialogPlayer, giftDialogType, giftDialogComment.trim() || null, giftDialogValidity, validUntil, validTournamentTitle);
+      setGiftDialogNotifyStatus(result.notifyStatus);
+      setTimeout(() => {
+        setGiftDialogPlayer(null);
+        setGiftDialogComment('');
+        setGiftDialogType('free_entry');
+        setGiftDialogValidity('next_tournament');
+        setGiftDialogDate('');
+        setGiftDialogTournamentTitle('');
+        setGiftDialogNotifyStatus(null);
+      }, 2000);
     } finally {
       setGiftDialogBusy(false);
     }
@@ -1213,6 +1218,13 @@ export function TournamentPlayersTab({
                 />
               )}
             </div>
+            {giftDialogNotifyStatus && (
+              <div className={`mx-5 mb-1 rounded-xl px-3 py-2 text-xs ${giftDialogNotifyStatus === 'sent' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-amber-900/30 text-amber-400'}`}>
+                {giftDialogNotifyStatus === 'sent' && '✓ Подарок выдан — уведомление отправлено'}
+                {giftDialogNotifyStatus === 'skipped' && '✓ Подарок выдан — игрок недоступен в Telegram'}
+                {giftDialogNotifyStatus === 'error' && '✓ Подарок выдан — уведомление не отправлено, ошибка бота'}
+              </div>
+            )}
             <div className="flex gap-2 border-t border-[#2D2D2D] px-5 py-4">
               <button type="button" onClick={() => setGiftDialogPlayer(null)} disabled={giftDialogBusy} className="admin-btn-secondary flex-1 py-3 text-sm">
                 Отмена

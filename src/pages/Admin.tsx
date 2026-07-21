@@ -882,6 +882,7 @@ export function Admin() {
   const [selectedGiftPlayer, setSelectedGiftPlayer] = useState<MergedPlayerAggregate | null>(null);
   const [giftBusy, setGiftBusy] = useState(false);
   const [giftError, setGiftError] = useState<string | null>(null);
+  const [giftNotifyStatus, setGiftNotifyStatus] = useState<'sent' | 'skipped' | 'error' | null>(null);
   const [editingGift, setEditingGift] = useState<PlayerGift | null>(null);
   const [editingGiftDraft, setEditingGiftDraft] = useState<{ type: PlayerGiftType; comment: string; validCondition: PlayerGiftValidCondition; validUntil: string; validTournamentTitle: string } | null>(null);
   const [editingGiftBusy, setEditingGiftBusy] = useState(false);
@@ -986,10 +987,11 @@ export function Admin() {
   const floorSessionId = Math.max(1, Math.round(gameState.resetAt || 0));
 
   // ── Player gifts ───────────────────────────────────────────────────────
+  const tournamentTelegramIdsKey = tournamentPlayers.map(p => p.telegramId).join(',');
   const tournamentTelegramIds = useMemo(
     () => tournamentPlayers.flatMap(p => p.telegramId != null ? [p.telegramId] : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tournamentPlayers.map(p => p.telegramId).join(',')]
+    [tournamentTelegramIdsKey]
   );
   const { giftsByTelegramId, reload: reloadGifts } = usePlayerGifts(tournamentTelegramIds, floorSessionId);
   const [usedGiftIdsThisSession, setUsedGiftIdsThisSession] = useState<Set<string>>(new Set());
@@ -2048,6 +2050,7 @@ export function Admin() {
   useEffect(() => {
     if (activeTab !== 'archive' || !archiveAuthed || archiveSubTab !== 'gifts') return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAllGiftsLoading(true);
     fetchAllGifts()
       .then(data => { if (!cancelled) setAllGifts(data); })
@@ -2067,6 +2070,7 @@ export function Admin() {
         }
       }
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMonthPrizesIssued(issued);
   }, [allGifts, monthPrizesMonth]);
 
@@ -2805,16 +2809,25 @@ export function Admin() {
       issuedAtTournamentBotId: gameState.tournamentBotId ?? null,
       issuedAtTournamentTitle: gameState.tournamentTitle || null,
     });
+    let notifyStatus: 'sent' | 'skipped' | 'error' | null = null;
     if (player.telegramId != null) {
       try {
         const notifyText = buildGiftNotifyText(type, comment, validCondition, validUntil, validTournamentTitle);
         const notifyResult = await sendPlayerNotification(player.telegramId, notifyText);
-        if (notifyResult.ok && !notifyResult.skipped) {
+        if (notifyResult.ok && notifyResult.skipped) {
+          notifyStatus = 'skipped';
+        } else if (notifyResult.ok) {
+          notifyStatus = 'sent';
           await markGiftNotified(gift.id);
+        } else {
+          notifyStatus = 'error';
         }
-      } catch { /* notification failure doesn't block gift creation */ }
+      } catch {
+        notifyStatus = 'error';
+      }
     }
     reloadGifts();
+    return { notifyStatus };
   }, [floorSessionId, gameState.tournamentBotId, gameState.tournamentTitle, reloadGifts]);
 
   const fetchAllGiftsData = useCallback(async () => {
@@ -2865,15 +2878,24 @@ export function Admin() {
         validTournamentTitle,
         issuedBy: 'admin',
       });
+      let notifyStatus: 'sent' | 'skipped' | 'error' | null = null;
       if (selectedGiftPlayer.telegramId != null) {
         try {
           const notifyText = buildGiftNotifyText(giftDraft.type, comment, giftDraft.validCondition, validUntil, validTournamentTitle);
           const notifyResult = await sendPlayerNotification(selectedGiftPlayer.telegramId, notifyText);
-          if (notifyResult.ok && !notifyResult.skipped) {
+          if (notifyResult.ok && notifyResult.skipped) {
+            notifyStatus = 'skipped';
+          } else if (notifyResult.ok) {
+            notifyStatus = 'sent';
             await markGiftNotified(gift.id);
+          } else {
+            notifyStatus = 'error';
           }
-        } catch { /* notification failure doesn't block gift creation */ }
+        } catch {
+          notifyStatus = 'error';
+        }
       }
+      setGiftNotifyStatus(notifyStatus);
       setGiftDraft(null);
       setSelectedGiftPlayer(null);
       setGiftPlayerSearch('');
@@ -2887,6 +2909,7 @@ export function Admin() {
     } finally {
       setGiftBusy(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [giftDraft, selectedGiftPlayer, fetchAllGiftsData]);
 
   if (!authed) {
@@ -6384,6 +6407,17 @@ export function Admin() {
                 + Создать приз
               </button>
             </div>
+
+            {!giftDraft && giftNotifyStatus && (
+              <div className={`rounded-xl px-3 py-2 text-xs flex items-center justify-between gap-2 ${giftNotifyStatus === 'sent' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-amber-900/30 text-amber-400'}`}>
+                <span>
+                  {giftNotifyStatus === 'sent' && '✓ Подарок выдан — уведомление отправлено'}
+                  {giftNotifyStatus === 'skipped' && '✓ Подарок выдан — игрок недоступен в Telegram'}
+                  {giftNotifyStatus === 'error' && '✓ Подарок выдан — уведомление не отправлено, ошибка бота'}
+                </span>
+                <button type="button" onClick={() => setGiftNotifyStatus(null)} className="opacity-60 hover:opacity-100">✕</button>
+              </div>
+            )}
 
             {giftDraft && (() => {
               const allAggs = mergeWithBotPlayerList(aggregatePlayerHistory(tournaments, archiveDetailsById), botPlayerList ?? []);
