@@ -128,8 +128,6 @@ export interface LiveTournamentPlayer {
   bonusCount: number;
   bounty: number;
   bonusRcPoints: number;
-  freeRebuyCount: number;
-  freeAddonCount: number;
   cashPaid: number;
   cardPaid: number;
   paymentDue: number;
@@ -370,70 +368,7 @@ export interface TournamentResultsPayload {
   players: TournamentResultsPlayerRecord[];
 }
 
-// ─── Player profiles ───────────────────────────────────────────────────────
-
-export type PlayerProfileDefaultStatus =
-  'paid' | 'free' | 'promo' | 'freePromo' | 'admin';
-
-export interface PlayerProfile {
-  id: string;
-  telegramId: number | null;
-  playerName: string;
-  username: string | null;
-  phone: string | null;
-  defaultArrivalStatus: PlayerProfileDefaultStatus;
-  notes: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// ─── Player gifts ──────────────────────────────────────────────────────────
-
-export type PlayerGiftType =
-  'free_entry' | 'free_rebuy' | 'free_addon' | 'custom';
-
-export type PlayerGiftStatus =
-  'active' | 'redeemed' | 'cancelled' | 'expired';
-
-export type PlayerGiftSource =
-  'manual'
-  | 'auto_winner'
-  | 'auto_monthly_rating'
-  | 'auto_monthly_bounty'
-  | 'auto_monthly_double';
-
-export type PlayerGiftValidCondition =
-  'next_tournament' | 'specific_tournament' | 'until_date' | 'next_month' | 'indefinite';
-
-export interface PlayerGift {
-  id: string;
-  telegramId: number | null;
-  playerName: string;
-  username: string | null;
-  type: PlayerGiftType;
-  comment: string | null;
-  validCondition: PlayerGiftValidCondition;
-  validTournamentBotId: number | null;
-  validTournamentTitle: string | null;
-  validUntil: string | null;
-  status: PlayerGiftStatus;
-  source: PlayerGiftSource;
-  sourceMonth: string | null;
-  issuedAtSessionId: number | null;
-  issuedAtTournamentBotId: number | null;
-  issuedAtTournamentTitle: string | null;
-  issuedBy: string | null;
-  createdAt: string;
-  redeemedAt: string | null;
-  redeemedAtSessionId: number | null;
-  redeemedAtTournamentBotId: number | null;
-  redeemedAtTournamentTitle: string | null;
-  redeemedBy: string | null;
-  notifiedAt: string | null;
-  reminderSentAt: string | null;
-}
-
-// ─── Rank points from Excel table (Покер RANK.xlsx):
+// Rank points from Excel table (Покер RANK.xlsx):
 // total points are distributed across top-9 with fixed shares.
 const RANK_POINT_SHARES = [0.315, 0.195, 0.137, 0.105, 0.067, 0.054, 0.047, 0.042, 0.038] as const;
 const MIN_RANKED_PLAYERS = 9;

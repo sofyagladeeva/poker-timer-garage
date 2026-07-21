@@ -32,7 +32,6 @@ import type {
   FloorNotification,
   PersonnelRecord,
   StaffMember,
-  PlayerProfileDefaultStatus,
 } from '../types';
 import { PersonnelForm } from '../components/PersonnelForm';
 import { formatPersonnelRole, personnelTotals } from '../personnel';
@@ -46,7 +45,7 @@ import {
 } from '../tournamentResultsFlow';
 import { aggregatePlayerHistory, filterByPeriod, mergeWithBotPlayerList } from '../playerHistory';
 import type { MergedPlayerAggregate, PeriodFilter, PlayerAggregate } from '../playerHistory';
-import { fetchBotPlayerList, sendPlayerNotification } from '../tournamentBotApi';
+import { fetchBotPlayerList } from '../tournamentBotApi';
 import type { BotPlayerListItem } from '../tournamentBotApi';
 import { matchesSearchQuery } from '../searchUtils';
 import * as XLSX from 'xlsx';
@@ -96,11 +95,6 @@ import {
   savePersonnelDraft,
   saveStaffMember,
 } from '../staffDirectory';
-import { usePlayerProfiles } from '../hooks/usePlayerProfiles';
-import { upsertPlayerProfile } from '../playerProfiles';
-import { usePlayerGifts } from '../hooks/usePlayerGifts';
-import { createGift, redeemGift, unredeemGift, cancelGift, updateGift, reactivateGift, markGiftNotified, fetchAllGifts, isGiftValidNow } from '../playerGifts';
-import type { PlayerGift, PlayerGiftType, PlayerGiftValidCondition } from '../types';
 
 // ─── Error Boundary ────────────────────────────────────────────────────────
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
@@ -707,14 +701,6 @@ function BlindRow({
   );
 }
 
-function endOfNextMonthISO(fromMonth: string): string {
-  const [y, m] = fromMonth.split('-').map(Number);
-  const nm = m === 12 ? 1 : m + 1;
-  const ny = m === 12 ? y + 1 : y;
-  // new Date(ny, nm, 0) = last day of nm (1-indexed), because JS day=0 wraps to previous month
-  return new Date(ny, nm, 0, 23, 59, 59, 999).toISOString();
-}
-
 // ─── Main Admin page ───────────────────────────────────────────────────────
 export function Admin() {
   const tabletAdminLayout = useTabletAdminLayout();
@@ -726,9 +712,7 @@ export function Admin() {
   const [pwError, setPwError] = useState(false);
   const [archivePwInput, setArchivePwInput] = useState('');
   const [archivePwError, setArchivePwError] = useState(false);
-  const [activeTab, setActiveTab] = useState<AdminTab>(() => {
-    try { return (localStorage.getItem('admin_active_tab') as AdminTab) || 'home'; } catch { return 'home'; }
-  });
+  const [activeTab, setActiveTab] = useState<AdminTab>('home');
   const [entryMode, setEntryMode] = useState<AdminEntryMode>('home');
   const [entrySyncBusy, setEntrySyncBusy] = useState(false);
   const [entrySyncError, setEntrySyncError] = useState<string | null>(null);
@@ -781,9 +765,7 @@ export function Admin() {
 
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([]);
   const [archiveDetailsById, setArchiveDetailsById] = useState<Record<number, TournamentArchiveDetails | null>>({});
-  const [archiveSubTab, setArchiveSubTab] = useState<'games' | 'players' | 'salary' | 'staff' | 'gifts'>(() => {
-    try { return (localStorage.getItem('admin_archive_subtab') as 'games' | 'players' | 'salary' | 'staff' | 'gifts') || 'games'; } catch { return 'games'; }
-  });
+  const [archiveSubTab, setArchiveSubTab] = useState<'games' | 'players' | 'salary' | 'staff'>('games');
   const [playerHistorySearch, setPlayerHistorySearch] = useState('');
   const [archivePeriod, setArchivePeriod] = useState<'7' | '30' | '90' | '365' | 'all'>('all');
   const [playerHistoryLoading, setPlayerHistoryLoading] = useState(false);
@@ -837,39 +819,6 @@ export function Admin() {
   } | null>(null);
   const [personnelSavingId, setPersonnelSavingId] = useState<number | null>(null);
   const [financialExportBusy, setFinancialExportBusy] = useState(false);
-
-  // ── Player profiles ────────────────────────────────────────────────────
-  const { profilesByTelegramId, reload: reloadProfiles } = usePlayerProfiles();
-  const [giftDraft, setGiftDraft] = useState<{
-    type: PlayerGiftType;
-    comment: string;
-    validCondition: PlayerGiftValidCondition;
-    validUntil: string;
-    validTournamentTitle: string;
-  } | null>(null);
-  const [giftPlayerSearch, setGiftPlayerSearch] = useState('');
-  const [selectedGiftPlayer, setSelectedGiftPlayer] = useState<MergedPlayerAggregate | null>(null);
-  const [giftBusy, setGiftBusy] = useState(false);
-  const [giftError, setGiftError] = useState<string | null>(null);
-  const [editingGift, setEditingGift] = useState<PlayerGift | null>(null);
-  const [editingGiftDraft, setEditingGiftDraft] = useState<{ type: PlayerGiftType; comment: string; validCondition: PlayerGiftValidCondition; validUntil: string; validTournamentTitle: string } | null>(null);
-  const [editingGiftBusy, setEditingGiftBusy] = useState(false);
-  const [editingGiftError, setEditingGiftError] = useState<string | null>(null);
-  const [cancelConfirmGiftId, setCancelConfirmGiftId] = useState<string | null>(null);
-  const [unredeemConfirmGift, setUnredeemConfirmGift] = useState<PlayerGift | null>(null);
-  const [allGifts, setAllGifts] = useState<PlayerGift[]>([]);
-  const [allGiftsLoading, setAllGiftsLoading] = useState(false);
-  const [allGiftsFilter, setAllGiftsFilter] = useState<'active' | 'all'>('active');
-
-  const defaultMonthPrizesMonth = () => {
-    const now = new Date();
-    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
-  };
-  const [monthPrizesMonth, setMonthPrizesMonth] = useState(defaultMonthPrizesMonth);
-  const [monthPrizesBusy, setMonthPrizesBusy] = useState<string | null>(null);
-  const [monthPrizesIssued, setMonthPrizesIssued] = useState<Record<string, boolean>>({});
-
   const [priceConfirmOpen, setPriceConfirmOpen] = useState(false);
   const [priceDraft, setPriceDraft] = useState({ buyIn: '', rebuy: '', addon: '' });
   const [finishBusy, setFinishBusy] = useState(false);
@@ -953,16 +902,6 @@ export function Admin() {
     earlyBirdBonusEnabled: selectedTournamentIsClassic,
   });
   const floorSessionId = Math.max(1, Math.round(gameState.resetAt || 0));
-
-  // ── Player gifts ───────────────────────────────────────────────────────
-  const tournamentTelegramIds = useMemo(
-    () => tournamentPlayers.flatMap(p => p.telegramId != null ? [p.telegramId] : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tournamentPlayers.map(p => p.telegramId).join(',')]
-  );
-  const { giftsByTelegramId, reload: reloadGifts } = usePlayerGifts(tournamentTelegramIds, floorSessionId);
-  const [usedGiftIdsThisSession, setUsedGiftIdsThisSession] = useState<Set<string>>(new Set());
-
   const personnelSaveSequenceRef = useRef(0);
   const personnelSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const personnelLocalWritesRef = useRef(0);
@@ -1286,35 +1225,6 @@ export function Admin() {
           financeError: null,
           financeSkipped: true,
         };
-      }
-
-      // Auto-winner gift
-      const winner = tournamentPlayers.find(p => p.place === 1 && p.telegramId != null);
-      if (winner?.telegramId != null) {
-        try {
-          const winnerGift = await createGift({
-            telegramId: winner.telegramId,
-            playerName: winner.name,
-            username: winner.username ?? null,
-            type: 'free_entry',
-            comment: null,
-            validCondition: 'next_tournament',
-            source: 'auto_winner',
-            issuedAtSessionId: floorSessionId,
-            issuedAtTournamentBotId: gameState.tournamentBotId ?? null,
-            issuedAtTournamentTitle: gameState.tournamentTitle || null,
-          });
-          const notifyText = gameState.tournamentTitle
-            ? `Поздравляем с победой в турнире «${gameState.tournamentTitle}»! Вам выдан бесплатный вход на следующий турнир Garage.`
-            : 'Поздравляем с победой! Вам выдан бесплатный вход на следующий турнир Garage.';
-          const notifyResult = await sendPlayerNotification(winner.telegramId, notifyText);
-          if (notifyResult.ok && !notifyResult.skipped) {
-            await markGiftNotified(winnerGift.id);
-          }
-          reloadGifts();
-        } catch {
-          // Auto-gift failure doesn't block the main results flow
-        }
       }
 
       return {
@@ -1814,7 +1724,7 @@ export function Admin() {
 
   useEffect(() => {
     const needsDetails = activeTab === 'archive' && archiveAuthed && (
-      archiveSubTab === 'players' || archiveSubTab === 'salary' || archiveSubTab === 'staff' || archiveSubTab === 'gifts'
+      archiveSubTab === 'players' || archiveSubTab === 'salary' || archiveSubTab === 'staff'
     );
     if (!needsDetails) return;
     if (tournaments.length === 0) return;
@@ -2013,31 +1923,6 @@ export function Admin() {
     void doFetch();
     return () => { cancelled = true; };
   }, [activeTab, archiveAuthed, archiveSubTab]);
-
-  useEffect(() => {
-    if (activeTab !== 'archive' || !archiveAuthed || archiveSubTab !== 'gifts') return;
-    let cancelled = false;
-    setAllGiftsLoading(true);
-    fetchAllGifts()
-      .then(data => { if (!cancelled) setAllGifts(data); })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setAllGiftsLoading(false); });
-    return () => { cancelled = true; };
-  }, [activeTab, archiveAuthed, archiveSubTab]);
-
-  useEffect(() => {
-    const issued: Record<string, boolean> = {};
-    for (const g of allGifts) {
-      if (g.status === 'cancelled') continue;
-      if (g.sourceMonth === monthPrizesMonth && g.source != null && ['auto_monthly_rating', 'auto_monthly_bounty', 'auto_monthly_double'].includes(g.source)) {
-        issued[`${g.source}:${monthPrizesMonth}`] = true;
-        if (g.source === 'auto_monthly_rating' || g.source === 'auto_monthly_double') {
-          issued[`auto_monthly_rating:${monthPrizesMonth}`] = true;
-        }
-      }
-    }
-    setMonthPrizesIssued(issued);
-  }, [allGifts, monthPrizesMonth]);
 
   const handleExportXlsx = () => {
     const allAggs = aggregatePlayerHistory(tournaments, archiveDetailsById);
@@ -2676,168 +2561,6 @@ export function Admin() {
     setCustomGameTitle('');
   };
 
-  const isMultiUseGift = (gift: PlayerGift) =>
-    gift.validCondition === 'until_date' || gift.validCondition === 'next_month';
-
-  const handleRedeemGift = useCallback(async (gift: PlayerGift, player: LiveTournamentPlayer) => {
-    if (gift.type === 'free_entry') {
-      await setPlayerArrival(player.id, 'free');
-    } else if (gift.type === 'free_rebuy') {
-      const paidRebuys = player.rebuyCount - (player.freeRebuyCount ?? 0);
-      await updatePlayerField(player.id, {
-        rebuyCount: paidRebuys > 0 ? player.rebuyCount : player.rebuyCount + 1,
-        freeRebuyCount: (player.freeRebuyCount ?? 0) + 1,
-      });
-    } else if (gift.type === 'free_addon') {
-      const paidAddons = player.addonCount - (player.freeAddonCount ?? 0);
-      await updatePlayerField(player.id, {
-        addonCount: paidAddons > 0 ? player.addonCount : player.addonCount + 1,
-        freeAddonCount: (player.freeAddonCount ?? 0) + 1,
-      });
-    }
-    if (isMultiUseGift(gift)) {
-      setUsedGiftIdsThisSession(prev => new Set([...prev, gift.id]));
-    } else {
-      await redeemGift({
-        giftId: gift.id,
-        sessionId: floorSessionId,
-        tournamentBotId: gameState.tournamentBotId ?? null,
-        tournamentTitle: gameState.tournamentTitle || null,
-      });
-      reloadGifts();
-    }
-  }, [setPlayerArrival, updatePlayerField, floorSessionId, gameState.tournamentBotId, gameState.tournamentTitle, reloadGifts]);
-
-  const handleUnredeemGift = useCallback(async (gift: PlayerGift) => {
-    if (gift.type === 'free_rebuy' || gift.type === 'free_addon') {
-      const player = tournamentPlayers.find(p => p.telegramId != null && p.telegramId === gift.telegramId);
-      if (player) {
-        if (gift.type === 'free_rebuy') {
-          const allFree = player.rebuyCount <= (player.freeRebuyCount ?? 0);
-          await updatePlayerField(player.id, {
-            freeRebuyCount: Math.max(0, (player.freeRebuyCount ?? 0) - 1),
-            ...(allFree ? { rebuyCount: Math.max(0, player.rebuyCount - 1) } : {}),
-          });
-        } else {
-          const allFree = player.addonCount <= (player.freeAddonCount ?? 0);
-          await updatePlayerField(player.id, {
-            freeAddonCount: Math.max(0, (player.freeAddonCount ?? 0) - 1),
-            ...(allFree ? { addonCount: Math.max(0, player.addonCount - 1) } : {}),
-          });
-        }
-      }
-    }
-    if (gift.status === 'redeemed') {
-      await unredeemGift(gift.id);
-      reloadGifts();
-    } else {
-      setUsedGiftIdsThisSession(prev => { const s = new Set(prev); s.delete(gift.id); return s; });
-    }
-  }, [reloadGifts, tournamentPlayers, updatePlayerField]);
-
-  const autoAppliedGiftIdsRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (!selectedTournamentIsClassic) return;
-    for (const player of tournamentPlayers) {
-      if (player.telegramId == null) continue;
-      const playerGifts = giftsByTelegramId.get(player.telegramId) ?? [];
-      for (const gift of playerGifts) {
-        if (gift.type !== 'free_entry') continue;
-        if (gift.status !== 'active') continue;
-        if (!isGiftValidNow(gift, gameState.tournamentBotId ?? null, gameState.tournamentTitle || null, floorSessionId)) continue;
-        if (autoAppliedGiftIdsRef.current.has(gift.id)) continue;
-        autoAppliedGiftIdsRef.current.add(gift.id);
-        void handleRedeemGift(gift, player);
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tournamentPlayers, giftsByTelegramId, selectedTournamentIsClassic]);
-
-  const handleCreateGift = useCallback(async (
-    player: LiveTournamentPlayer,
-    type: PlayerGiftType,
-    comment: string | null,
-    validCondition: PlayerGiftValidCondition,
-    validUntil: string | null,
-    validTournamentTitle: string | null,
-  ) => {
-    await createGift({
-      telegramId: player.telegramId ?? null,
-      playerName: player.name,
-      username: player.username ?? null,
-      type,
-      comment,
-      validCondition,
-      validUntil,
-      validTournamentTitle,
-      issuedAtSessionId: floorSessionId,
-      issuedAtTournamentBotId: gameState.tournamentBotId ?? null,
-      issuedAtTournamentTitle: gameState.tournamentTitle || null,
-    });
-    reloadGifts();
-  }, [floorSessionId, gameState.tournamentBotId, gameState.tournamentTitle, reloadGifts]);
-
-  const fetchAllGiftsData = useCallback(async () => {
-    setAllGiftsLoading(true);
-    try {
-      const data = await fetchAllGifts();
-      setAllGifts(data);
-    } catch {
-      // ignore
-    } finally {
-      setAllGiftsLoading(false);
-    }
-    reloadGifts();
-  }, [reloadGifts]);
-
-  const handleCreateGiftFromPrizesTab = useCallback(async () => {
-    if (!giftDraft || !selectedGiftPlayer) return;
-    setGiftBusy(true);
-    setGiftError(null);
-    try {
-      const duplicate = allGifts.find(g =>
-        g.status === 'active' &&
-        g.type === giftDraft.type &&
-        (selectedGiftPlayer.telegramId != null
-          ? g.telegramId === selectedGiftPlayer.telegramId
-          : g.playerName === selectedGiftPlayer.currentName)
-      );
-      if (duplicate) {
-        setGiftError(`У ${selectedGiftPlayer.currentName} уже есть активный приз этого типа`);
-        setGiftBusy(false);
-        return;
-      }
-      const now = new Date();
-      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const validUntil = giftDraft.validCondition === 'until_date' ? (giftDraft.validUntil || null)
-        : giftDraft.validCondition === 'next_month' ? endOfNextMonthISO(currentMonth)
-        : null;
-      await createGift({
-        telegramId: selectedGiftPlayer.telegramId ?? null,
-        playerName: selectedGiftPlayer.currentName,
-        username: selectedGiftPlayer.currentUsername ?? null,
-        type: giftDraft.type,
-        comment: giftDraft.type === 'custom' ? (giftDraft.comment || null) : null,
-        validCondition: giftDraft.validCondition,
-        validUntil,
-        validTournamentTitle: giftDraft.validCondition === 'specific_tournament' ? (giftDraft.validTournamentTitle || null) : null,
-        issuedBy: 'admin',
-      });
-      setGiftDraft(null);
-      setSelectedGiftPlayer(null);
-      setGiftPlayerSearch('');
-      await fetchAllGiftsData();
-    } catch (e) {
-      console.error('createGift error:', e);
-      const msg = e instanceof Error ? e.message
-        : (e != null && typeof e === 'object' && 'message' in e) ? String((e as { message: unknown }).message)
-        : String(e);
-      setGiftError(msg || 'Ошибка при создании приза');
-    } finally {
-      setGiftBusy(false);
-    }
-  }, [giftDraft, selectedGiftPlayer, fetchAllGiftsData]);
-
   if (!authed) {
     return (
       <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center px-4">
@@ -3088,7 +2811,6 @@ export function Admin() {
   const selectTab = (tabId: AdminTab) => {
     if (!hasActiveTournament && tabId !== 'home' && tabId !== 'archive') {
       setActiveTab('home');
-      try { localStorage.setItem('admin_active_tab', 'home'); } catch { /* ignore */ }
       return;
     }
 
@@ -3100,122 +2822,15 @@ export function Admin() {
     if (tabId === 'archive' && archiveAuthed) {
       setArchiveLoading(true);
     }
-    if (tabId === 'control' || tabId === 'players') {
-      reloadGifts();
-    }
     setActiveTab(tabId);
-    try { localStorage.setItem('admin_active_tab', tabId); } catch { /* ignore */ }
   };
 
-  const selectArchiveSubTab = (tabId: 'games' | 'players' | 'salary' | 'staff' | 'gifts') => {
+  const selectArchiveSubTab = (tabId: 'games' | 'players' | 'salary' | 'staff') => {
     setArchiveSubTab(tabId);
-    try { localStorage.setItem('admin_archive_subtab', tabId); } catch { /* ignore */ }
   };
 
   const selectArchivePeriod = (period: PeriodFilter) => {
     setArchivePeriod(period);
-  };
-
-  const handleIssueMonthlyPrize = async (
-    leader: PlayerAggregate,
-    source: 'auto_monthly_rating' | 'auto_monthly_bounty',
-    month: string,
-  ) => {
-    if (leader.telegramId == null) return;
-    const key = `${source}:${month}`;
-    setMonthPrizesBusy(key);
-    const validUntil = endOfNextMonthISO(month);
-    try {
-      const gift = await createGift({
-        telegramId: leader.telegramId,
-        playerName: leader.currentName,
-        username: leader.currentUsername ?? null,
-        type: 'free_entry',
-        comment: null,
-        validCondition: 'next_month',
-        validUntil,
-        source,
-        sourceMonth: month,
-      });
-      const monthLabel = new Date(`${month}-01`).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-      const prizeLabel = source === 'auto_monthly_rating' ? 'лидер рейтинга' : 'лидер по баунти';
-      const notifyText = `Вы ${prizeLabel} за ${monthLabel}! Вам выдан бесплатный вход на турниры Garage в следующем месяце.`;
-      const notifyResult = await sendPlayerNotification(leader.telegramId, notifyText);
-      if (notifyResult.ok && !notifyResult.skipped) {
-        await markGiftNotified(gift.id);
-      }
-      setMonthPrizesIssued(prev => ({ ...prev, [key]: true }));
-      void fetchAllGiftsData();
-    } catch (err) {
-      const msg = (err as Error).message ?? '';
-      if (msg.includes('unique') || msg.includes('duplicate') || msg.includes('23505')) {
-        const cancelled = allGifts.find(g => g.status === 'cancelled' && g.sourceMonth === month && g.source === source && g.telegramId === leader.telegramId);
-        if (cancelled) {
-          try { await reactivateGift(cancelled.id); } catch { /* ignore */ }
-        }
-        void fetchAllGiftsData();
-      }
-    } finally {
-      setMonthPrizesBusy(null);
-    }
-  };
-
-  const handleIssueDoubleMonthlyPrize = async (leader: PlayerAggregate, month: string) => {
-    if (leader.telegramId == null) return;
-    const key = `double:${month}`;
-    setMonthPrizesBusy(key);
-    const validUntil = endOfNextMonthISO(month);
-    try {
-      const [gift1, gift2] = await Promise.all([
-        createGift({
-          telegramId: leader.telegramId,
-          playerName: leader.currentName,
-          username: leader.currentUsername ?? null,
-          type: 'free_entry',
-          comment: null,
-          validCondition: 'next_month',
-          validUntil,
-          source: 'auto_monthly_rating',
-          sourceMonth: month,
-        }),
-        createGift({
-          telegramId: leader.telegramId,
-          playerName: leader.currentName,
-          username: leader.currentUsername ?? null,
-          type: 'free_addon',
-          comment: null,
-          validCondition: 'next_month',
-          validUntil,
-          source: 'auto_monthly_double',
-          sourceMonth: month,
-        }),
-      ]);
-      const monthLabel = new Date(`${month}-01`).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-      const notifyText = `Вы лидер и рейтинга, и баунти за ${monthLabel}! Выдан двойной приз: бесплатный вход + addon на следующий месяц.`;
-      const notifyResult = await sendPlayerNotification(leader.telegramId, notifyText);
-      if (notifyResult.ok && !notifyResult.skipped) {
-        await Promise.all([markGiftNotified(gift1.id), markGiftNotified(gift2.id)]);
-      }
-      setMonthPrizesIssued(prev => ({
-        ...prev,
-        [`auto_monthly_rating:${month}`]: true,
-        [`auto_monthly_double:${month}`]: true,
-      }));
-      void fetchAllGiftsData();
-    } catch (err) {
-      const msg = (err as Error).message ?? '';
-      if (msg.includes('unique') || msg.includes('duplicate') || msg.includes('23505')) {
-        const cancelledRating = allGifts.find(g => g.status === 'cancelled' && g.sourceMonth === month && g.source === 'auto_monthly_rating' && g.telegramId === leader.telegramId);
-        const cancelledDouble = allGifts.find(g => g.status === 'cancelled' && g.sourceMonth === month && g.source === 'auto_monthly_double' && g.telegramId === leader.telegramId);
-        await Promise.all([
-          cancelledRating ? reactivateGift(cancelledRating.id).catch(() => {}) : Promise.resolve(),
-          cancelledDouble ? reactivateGift(cancelledDouble.id).catch(() => {}) : Promise.resolve(),
-        ]);
-        void fetchAllGiftsData();
-      }
-    } finally {
-      setMonthPrizesBusy(null);
-    }
   };
 
   const applyAnteStartLevel = (startLevel: number) => {
@@ -4488,11 +4103,8 @@ export function Admin() {
               playerBackups={playerBackups}
               botSyncState={botSyncState}
               tournamentBotId={gameState.tournamentBotId}
-              tournamentTitle={gameState.tournamentTitle || null}
               tournamentDate={selectedBotGame?.date ?? null}
               earlyBirdBonusEnabled={selectedTournamentIsClassic}
-              isClassicTournament={selectedTournamentIsClassic}
-              currentSessionId={floorSessionId}
               isTournamentEnded={false}
               preferMobileCards={tabletAdminLayout}
               reviewPlayers={[]}
@@ -4575,13 +4187,6 @@ export function Admin() {
                 await assignPlayerSeat(playerId, tableNumber, seatNumber);
               }}
               knownPlayers={knownPlayersWithBot}
-              profilesByTelegramId={profilesByTelegramId}
-              activeGifts={giftsByTelegramId}
-              usedGiftIdsThisSession={usedGiftIdsThisSession}
-              onRedeemGift={handleRedeemGift}
-              onUnredeemGift={(gift) => setUnredeemConfirmGift(gift)}
-              onCreateGift={handleCreateGift}
-              botGames={botGames}
             />
 
           </div>
@@ -4891,7 +4496,7 @@ export function Admin() {
                 {/* Sub-tab switcher + period filter */}
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                  {(['games', 'players', 'staff', 'gifts'] as const).map(tab => (
+                  {(['games', 'players', 'staff'] as const).map(tab => (
                     <button
                       key={tab}
                       type="button"
@@ -4902,7 +4507,7 @@ export function Admin() {
                           : 'bg-[#111] border border-[#2D2D2D] text-[#888] hover:text-white hover:border-[#555]'
                       }`}
                     >
-                      {tab === 'games' ? 'Игры' : tab === 'players' ? 'Игроки' : tab === 'staff' ? 'Сотрудники' : 'Призы'}
+                      {tab === 'games' ? 'Игры' : tab === 'players' ? 'Игроки' : 'Сотрудники'}
                     </button>
                   ))}
                   </div>
@@ -5455,34 +5060,6 @@ export function Admin() {
 
                             {isExpanded && (
                               <div className="border-t border-[#2D2D2D] px-4 py-3 flex flex-col gap-3">
-                                {/* Default arrival status */}
-                                <div className="flex items-center gap-2">
-                                  <div className="shrink-0 text-[10px] uppercase tracking-widest text-[#666]">Статус</div>
-                                  <select
-                                    value={(agg.telegramId != null ? profilesByTelegramId.get(agg.telegramId)?.defaultArrivalStatus : undefined) ?? 'paid'}
-                                    onChange={e => {
-                                      const status = e.target.value as PlayerProfileDefaultStatus;
-                                      const profile = agg.telegramId != null ? profilesByTelegramId.get(agg.telegramId) : undefined;
-                                      void upsertPlayerProfile({
-                                        id: profile?.id,
-                                        telegramId: agg.telegramId,
-                                        playerName: agg.currentName,
-                                        username: agg.currentUsername ?? null,
-                                        phone: profile?.phone ?? null,
-                                        defaultArrivalStatus: status,
-                                        notes: profile?.notes ?? null,
-                                      }).then(() => reloadProfiles()).catch(() => {});
-                                    }}
-                                    onClick={e => e.stopPropagation()}
-                                    className="admin-input py-1 text-xs"
-                                  >
-                                    <option value="paid">Платно</option>
-                                    <option value="promo">Скидка 50%</option>
-                                    <option value="free">Бесплатно</option>
-                                    <option value="freePromo">Бесплатно + скидка</option>
-                                    <option value="admin">Админ</option>
-                                  </select>
-                                </div>
                                 {/* Aggregate stats */}
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                   <div className="rounded-xl bg-[#0A0A0A] px-3 py-2">
@@ -6147,554 +5724,6 @@ export function Admin() {
           </div>
         )}
 
-        {/* ─── PROFILES TAB ────────────────────────────────────────────── */}
-        {cancelConfirmGiftId && (() => {
-          const gift = allGifts.find(g => g.id === cancelConfirmGiftId);
-          return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4" onClick={() => setCancelConfirmGiftId(null)}>
-              <div className="w-full max-w-sm rounded-2xl border border-[#2D2D2D] bg-[#111] p-5" onClick={e => e.stopPropagation()}>
-                <div className="text-base font-bold text-white">Отменить приз?</div>
-                {gift && <div className="mt-1 text-sm text-[#888]">{gift.playerName} — {gift.type === 'free_entry' ? 'Бесплатный вход' : gift.type === 'free_rebuy' ? 'Бесплатный ребай' : gift.type === 'free_addon' ? 'Бесплатный аддон' : (gift.comment ?? 'Подарок')}</div>}
-                <div className="mt-4 flex gap-2">
-                  <button type="button" onClick={() => setCancelConfirmGiftId(null)} className="admin-btn-secondary flex-1 py-2 text-sm">Назад</button>
-                  <button
-                    type="button"
-                    onClick={() => { const id = cancelConfirmGiftId; setCancelConfirmGiftId(null); void cancelGift(id).then(() => fetchAllGiftsData()); }}
-                    className="admin-btn-danger flex-1 py-2 text-sm"
-                  >
-                    Да, отменить
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-        {unredeemConfirmGift && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4" onClick={() => setUnredeemConfirmGift(null)}>
-            <div className="w-full max-w-sm rounded-2xl border border-[#2D2D2D] bg-[#111] p-5" onClick={e => e.stopPropagation()}>
-              <div className="text-base font-bold text-white">Вернуть приз?</div>
-              <div className="mt-1 text-sm text-[#888]">
-                {unredeemConfirmGift.playerName} — {unredeemConfirmGift.type === 'free_entry' ? 'Бесплатный вход' : unredeemConfirmGift.type === 'free_rebuy' ? 'Бесплатный ребай' : unredeemConfirmGift.type === 'free_addon' ? 'Бесплатный аддон' : (unredeemConfirmGift.comment ?? 'Подарок')}
-              </div>
-              <div className="mt-2 text-xs text-[#555]">
-                {unredeemConfirmGift.type === 'free_rebuy' || unredeemConfirmGift.type === 'free_addon'
-                  ? 'Приз снова станет активным, счётчик будет уменьшен автоматически.'
-                  : 'Приз снова станет активным. Если игрок уже зарегистрирован — скорректируйте статус вручную.'}
-              </div>
-              <div className="mt-4 flex gap-2">
-                <button type="button" onClick={() => setUnredeemConfirmGift(null)} className="admin-btn-secondary flex-1 py-2 text-sm">Назад</button>
-                <button
-                  type="button"
-                  onClick={() => { const g = unredeemConfirmGift; setUnredeemConfirmGift(null); void handleUnredeemGift(g).then(fetchAllGiftsData); }}
-                  className="admin-btn-primary flex-1 py-2 text-sm"
-                >
-                  Да, вернуть
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeContentTab === 'archive' && archiveAuthed && archiveSubTab === 'gifts' && (
-          <div className="mt-4 flex flex-col gap-4">
-            {/* Monthly prizes section */}
-            {(() => {
-              const monthTournaments = tournaments.filter(t => t.finished_at.startsWith(monthPrizesMonth));
-              const archiveLoaded = monthTournaments.every(t => Object.prototype.hasOwnProperty.call(archiveDetailsById, t.id));
-              const monthTournamentById = new Map(monthTournaments.map(t => [t.id, t]));
-              const monthAggs = aggregatePlayerHistory(
-                monthTournaments.filter(t => Object.prototype.hasOwnProperty.call(archiveDetailsById, t.id)),
-                archiveDetailsById
-              ).filter(a => a.tournamentCount > 0);
-
-              const monthAggsWithStats = monthAggs.map(agg => {
-                let ratingPoints = 0;
-                for (const entry of agg.tournaments) {
-                  if (entry.place == null || entry.place < 1) continue;
-                  const t = monthTournamentById.get(entry.tournamentId);
-                  if (!t) continue;
-                  const pts = getRankPoints(t.players);
-                  ratingPoints += pts[entry.place - 1] ?? 0;
-                }
-                return { agg, ratingPoints };
-              });
-
-              const ratingEntry = [...monthAggsWithStats].sort((a, b) => b.ratingPoints - a.ratingPoints)[0] ?? null;
-              const bountyEntry = [...monthAggsWithStats].filter(x => x.agg.totalBounty > 0).sort((a, b) => b.agg.totalBounty - a.agg.totalBounty)[0] ?? null;
-              const isDouble = ratingEntry && bountyEntry && ratingEntry.agg.key === bountyEntry.agg.key;
-              const nowForMonth = new Date();
-              const isCurrentMonth = monthPrizesMonth === `${nowForMonth.getFullYear()}-${String(nowForMonth.getMonth() + 1).padStart(2, '0')}`;
-
-              return (
-                <div className="rounded-2xl border border-[#2D2D2D] bg-[#111] p-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="text-xs font-bold uppercase tracking-widest text-[#888]">Автопризы за месяц</div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const [y, m] = monthPrizesMonth.split('-').map(Number);
-                          const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
-                          setMonthPrizesMonth(prev);
-                        }}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#2D2D2D] bg-[#1A1A1A] text-[#AAA] hover:bg-[#252525] text-sm"
-                      >‹</button>
-                      <div className="min-w-[110px] text-center text-xs font-semibold text-white">
-                        {['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'][Number(monthPrizesMonth.split('-')[1]) - 1]} {monthPrizesMonth.split('-')[0]}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const [y, m] = monthPrizesMonth.split('-').map(Number);
-                          const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
-                          setMonthPrizesMonth(next);
-                        }}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#2D2D2D] bg-[#1A1A1A] text-[#AAA] hover:bg-[#252525] text-sm"
-                      >›</button>
-                    </div>
-                  </div>
-                  {isCurrentMonth && (
-                    <div className="mb-3 rounded-xl border border-amber-700/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-400">
-                      Текущий месяц ещё не закончился — призы можно выдать только в начале следующего.
-                    </div>
-                  )}
-                  {monthTournaments.length === 0 ? (
-                    <div className="text-xs text-[#555]">За этот месяц турниров нет.</div>
-                  ) : !archiveLoaded ? (
-                    <div className="text-xs text-[#555]">Загрузка данных архива...</div>
-                  ) : isDouble && ratingEntry ? (
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-700/40 bg-amber-950/20 px-3 py-2">
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-amber-300">Двойной приз (рейтинг + баунти)</div>
-                        <div className="text-[10px] text-[#555]">free_entry + addon на следующий месяц</div>
-                        <div className="mt-0.5 text-xs text-[#AAA]">
-                          {ratingEntry.agg.currentName}{ratingEntry.agg.currentUsername ? ` @${ratingEntry.agg.currentUsername}` : ''} — {Math.round(ratingEntry.ratingPoints * 10) / 10} очк. · {ratingEntry.agg.totalBounty} баунти
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        disabled={isCurrentMonth || ratingEntry.agg.telegramId == null || (monthPrizesIssued[`auto_monthly_rating:${monthPrizesMonth}`] ?? false) || monthPrizesBusy === `double:${monthPrizesMonth}`}
-                        onClick={() => void handleIssueDoubleMonthlyPrize(ratingEntry.agg, monthPrizesMonth)}
-                        className="shrink-0 admin-btn-primary min-h-9 px-3 text-xs disabled:opacity-30"
-                      >
-                        {monthPrizesBusy === `double:${monthPrizesMonth}` ? '...' : (monthPrizesIssued[`auto_monthly_rating:${monthPrizesMonth}`] ?? false) ? 'Выдан' : 'Выдать'}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-3">
-                      {([
-                        { source: 'auto_monthly_rating' as const, label: 'Рейтинг месяца', sublabel: 'наибольшая сумма очков', entry: ratingEntry, stat: ratingEntry ? `${Math.round(ratingEntry.ratingPoints * 10) / 10} очк.` : null },
-                        { source: 'auto_monthly_bounty' as const, label: 'Баунти месяца', sublabel: 'наибольшее количество выбиваний', entry: bountyEntry, stat: bountyEntry ? `${bountyEntry.agg.totalBounty} баунти` : null },
-                      ] as const).map(({ source, label, sublabel, entry, stat }) => {
-                        const key = `${source}:${monthPrizesMonth}`;
-                        const issued = monthPrizesIssued[key] ?? false;
-                        const busy = monthPrizesBusy === key;
-                        return (
-                          <div key={source} className="flex items-center justify-between gap-3 rounded-xl border border-[#1D1D1D] bg-[#0A0A0A] px-3 py-2">
-                            <div className="min-w-0">
-                              <div className="text-xs font-bold text-white">{label}</div>
-                              <div className="text-[10px] text-[#555]">{sublabel} → free_entry</div>
-                              {entry ? (
-                                <div className="mt-0.5 text-xs text-[#AAA]">
-                                  {entry.agg.currentName}{entry.agg.currentUsername ? ` @${entry.agg.currentUsername}` : ''} — {stat}
-                                </div>
-                              ) : (
-                                <div className="mt-0.5 text-[10px] text-[#444]">Нет данных</div>
-                              )}
-                            </div>
-                            <button
-                              type="button"
-                              disabled={isCurrentMonth || !entry || entry.agg.telegramId == null || issued || busy}
-                              onClick={() => entry && void handleIssueMonthlyPrize(entry.agg, source, monthPrizesMonth)}
-                              className="shrink-0 admin-btn-primary min-h-9 px-3 text-xs disabled:opacity-30"
-                            >
-                              {busy ? '...' : issued ? 'Выдан' : 'Выдать'}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-xs font-bold uppercase tracking-widest text-[#666]">Призы игроков</div>
-              <button
-                type="button"
-                onClick={() => { setGiftDraft({ type: 'free_entry', comment: '', validCondition: 'next_tournament', validUntil: '', validTournamentTitle: '' }); setSelectedGiftPlayer(null); setGiftPlayerSearch(''); }}
-                className="admin-btn-primary min-h-10 w-full px-4 py-2 text-sm sm:w-auto"
-              >
-                + Создать приз
-              </button>
-            </div>
-
-            {giftDraft && (() => {
-              const allAggs = mergeWithBotPlayerList(aggregatePlayerHistory(tournaments, archiveDetailsById), botPlayerList ?? []);
-              const searchQuery = giftPlayerSearch.trim().toLowerCase();
-              const filteredPlayers = searchQuery.length >= 1
-                ? allAggs.filter(a => matchesSearchQuery(a.currentName, searchQuery) || matchesSearchQuery(a.currentUsername ?? '', searchQuery)).slice(0, 8)
-                : [];
-              return (
-                <div className="flex flex-col gap-3 rounded-2xl border border-[#2D2D2D] bg-[#111] p-4">
-                  <div className="text-xs font-bold uppercase tracking-widest text-[#888]">Новый приз</div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <div className="flex flex-col gap-1">
-                      <div className="text-[10px] uppercase tracking-widest text-[#666]">Тип</div>
-                      <select
-                        value={giftDraft.type}
-                        onChange={e => setGiftDraft(d => d && ({ ...d, type: e.target.value as PlayerGiftType }))}
-                        className="admin-input"
-                      >
-                        <option value="free_entry">Бесплатный вход</option>
-                        <option value="free_rebuy">Бесплатный ребай</option>
-                        <option value="free_addon">Бесплатный аддон</option>
-                        <option value="custom">Другое</option>
-                      </select>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <div className="text-[10px] uppercase tracking-widest text-[#666]">Срок действия</div>
-                      <select
-                        value={giftDraft.validCondition}
-                        onChange={e => setGiftDraft(d => d && ({ ...d, validCondition: e.target.value as PlayerGiftValidCondition, validUntil: '', validTournamentTitle: '' }))}
-                        className="admin-input"
-                      >
-                        <option value="next_tournament">Следующий турнир</option>
-                        <option value="next_month">Следующий месяц</option>
-                        <option value="until_date">До даты</option>
-                        <option value="specific_tournament">Конкретный турнир</option>
-                        <option value="indefinite">Бессрочно</option>
-                      </select>
-                    </div>
-                  </div>
-                  {giftDraft.validCondition === 'until_date' && (
-                    <input
-                      type="date"
-                      value={giftDraft.validUntil}
-                      onChange={e => setGiftDraft(d => d && ({ ...d, validUntil: e.target.value }))}
-                      className="admin-input"
-                    />
-                  )}
-                  {giftDraft.validCondition === 'specific_tournament' && (
-                    <select
-                      value={giftDraft.validTournamentTitle}
-                      onChange={e => setGiftDraft(d => d && ({ ...d, validTournamentTitle: e.target.value }))}
-                      className="admin-input"
-                    >
-                      <option value="">— выберите турнир —</option>
-                      {[...botGames].sort((a, b) => a.date.localeCompare(b.date)).map(t => (
-                        <option key={t.id} value={t.title}>{t.title} · {new Date(t.date).toLocaleDateString('ru-RU')}</option>
-                      ))}
-                    </select>
-                  )}
-                  {giftDraft.type === 'custom' && (
-                    <input
-                      value={giftDraft.comment}
-                      onChange={e => setGiftDraft(d => d && ({ ...d, comment: e.target.value }))}
-                      placeholder="Описание подарка"
-                      className="admin-input"
-                    />
-                  )}
-                  <div className="flex flex-col gap-2">
-                    <div className="text-[10px] uppercase tracking-widest text-[#666]">Получатель</div>
-                    <input
-                      value={giftPlayerSearch}
-                      onChange={e => { setGiftPlayerSearch(e.target.value); if (selectedGiftPlayer) setSelectedGiftPlayer(null); }}
-                      placeholder="Поиск по имени или @username..."
-                      className="admin-input"
-                    />
-                    {filteredPlayers.length > 0 && !selectedGiftPlayer && (
-                      <div className="flex max-h-52 flex-col gap-0.5 overflow-y-auto rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] p-1.5">
-                        {filteredPlayers.map(a => (
-                          <button
-                            key={a.key}
-                            type="button"
-                            onClick={() => { setSelectedGiftPlayer(a); setGiftPlayerSearch(a.currentName + (a.currentUsername ? ` @${a.currentUsername}` : '')); }}
-                            className="rounded-lg px-2 py-1.5 text-left text-xs hover:bg-[#1A1A1A]"
-                          >
-                            <span className="font-bold text-white">{a.currentName}</span>
-                            {a.currentUsername && <span className="ml-1.5 text-[#666]">@{a.currentUsername}</span>}
-                            {a.telegramId == null && <span className="ml-1.5 text-[10px] text-amber-600">нет TG</span>}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {selectedGiftPlayer && (
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-emerald-500">✓ {selectedGiftPlayer.currentName}</span>
-                        {selectedGiftPlayer.telegramId == null && (
-                          <span className="text-amber-500">нет Telegram ID — уведомление не придёт</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  {giftError && (
-                    <div className="rounded-xl border border-red-700/50 bg-red-900/20 px-3 py-2 text-xs text-red-400">
-                      {giftError}
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => { setGiftDraft(null); setSelectedGiftPlayer(null); setGiftPlayerSearch(''); setGiftError(null); }}
-                      className="admin-btn-secondary min-h-10 px-4 py-2 text-sm"
-                    >
-                      Отмена
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleCreateGiftFromPrizesTab()}
-                      disabled={!selectedGiftPlayer || giftBusy || (giftDraft.type === 'custom' && !giftDraft.comment.trim()) || (giftDraft.validCondition === 'specific_tournament' && !giftDraft.validTournamentTitle.trim()) || (giftDraft.validCondition === 'until_date' && !giftDraft.validUntil)}
-                      className="admin-btn-primary min-h-10 px-4 py-2 text-sm disabled:opacity-40"
-                    >
-                      {giftBusy ? 'Выдача...' : 'Выдать'}
-                    </button>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Gift list */}
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                {(['active', 'all'] as const).map(f => (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => setAllGiftsFilter(f)}
-                    className={`admin-filter-button min-h-8 rounded-lg px-3 py-1 text-xs font-bold transition-colors ${allGiftsFilter === f ? 'bg-[#C0392B] text-white' : 'border border-[#2D2D2D] bg-[#111] text-[#888] hover:text-white'}`}
-                  >
-                    {f === 'active' ? 'Активные' : 'Все'}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => void fetchAllGiftsData()}
-                  disabled={allGiftsLoading}
-                  className="admin-btn-secondary ml-auto min-h-8 px-3 py-1 text-xs disabled:opacity-50"
-                >
-                  {allGiftsLoading ? '...' : '↺ Обновить'}
-                </button>
-              </div>
-              {allGiftsLoading && allGifts.length === 0 ? (
-                <div className="text-xs text-[#555]">Загрузка...</div>
-              ) : (() => {
-                const filtered = allGiftsFilter === 'active' ? allGifts.filter(g => g.status === 'active') : allGifts;
-                if (filtered.length === 0) {
-                  return (
-                    <div className="rounded-xl border border-[#1D1D1D] bg-[#0A0A0A] px-4 py-5 text-sm text-[#555]">
-                      {allGiftsFilter === 'active' ? 'Нет активных призов.' : 'Призов нет.'}
-                    </div>
-                  );
-                }
-                return (
-                  <div className="flex flex-col gap-1.5">
-                    {filtered.map(gift => {
-                      const giftLabel = gift.type === 'free_entry' ? 'Бесплатный вход'
-                        : gift.type === 'free_rebuy' ? 'Бесплатный ребай'
-                        : gift.type === 'free_addon' ? 'Бесплатный аддон'
-                        : gift.comment ?? 'Подарок';
-                      const statusLabel = gift.status === 'redeemed' ? 'Использован'
-                        : gift.status === 'cancelled' ? 'Отменён'
-                        : gift.status === 'expired' ? 'Истёк' : 'Активен';
-                      const statusColor = gift.status === 'active' ? 'text-emerald-500'
-                        : gift.status === 'redeemed' ? 'text-[#555]' : 'text-red-800';
-                      const validLabel = gift.validCondition === 'next_tournament' ? 'Следующий турнир'
-                        : gift.validCondition === 'next_month' ? 'Следующий месяц'
-                        : gift.validCondition === 'until_date' && gift.validUntil
-                          ? `до ${new Date(gift.validUntil).toLocaleDateString('ru-RU')}`
-                          : gift.validCondition === 'specific_tournament'
-                            ? (gift.validTournamentTitle ?? 'Конкретный турнир')
-                            : gift.validCondition === 'indefinite' ? 'Бессрочно'
-                            : '';
-                      const isEditing = editingGift?.id === gift.id && editingGiftDraft != null;
-                      return (
-                        <div key={gift.id} className="rounded-xl border border-[#1D1D1D] bg-[#0A0A0A]">
-                          <div className="flex items-start justify-between gap-3 px-3 py-2">
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <div className="text-sm font-bold text-white">{gift.playerName}</div>
-                                {gift.username && <div className="text-xs text-[#555]">@{gift.username}</div>}
-                              </div>
-                              <div className="mt-0.5 text-xs text-[#888]">{giftLabel}</div>
-                              <div className="mt-0.5 flex items-center gap-2 text-[10px] text-[#555]">
-                                <span>{new Date(gift.createdAt).toLocaleDateString('ru-RU')}</span>
-                                {validLabel && <span>· {validLabel}</span>}
-                              </div>
-                            </div>
-                            <div className="flex shrink-0 flex-col items-end gap-1.5">
-                              <div className={`text-[10px] uppercase tracking-widest ${statusColor}`}>{statusLabel}</div>
-                              {gift.status === 'active' && (
-                                <div className="flex gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (isEditing) {
-                                        setEditingGift(null);
-                                        setEditingGiftDraft(null);
-                                        setEditingGiftError(null);
-                                      } else {
-                                        setEditingGift(gift);
-                                        setEditingGiftDraft({
-                                          type: gift.type,
-                                          comment: gift.comment ?? '',
-                                          validCondition: gift.validCondition,
-                                          validUntil: gift.validUntil ? gift.validUntil.slice(0, 10) : '',
-                                          validTournamentTitle: gift.validTournamentTitle ?? '',
-                                        });
-                                        setEditingGiftError(null);
-                                      }
-                                    }}
-                                    className="text-[10px] text-[#666] hover:text-blue-400"
-                                  >
-                                    {isEditing ? 'Свернуть' : 'Изменить'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setCancelConfirmGiftId(gift.id)}
-                                    className="text-[10px] text-[#666] hover:text-red-400"
-                                  >
-                                    Отменить
-                                  </button>
-                                </div>
-                              )}
-                              {gift.status === 'redeemed' && (
-                                <button
-                                  type="button"
-                                  onClick={() => setUnredeemConfirmGift(gift)}
-                                  className="text-[10px] text-[#555] hover:text-amber-400 transition-colors"
-                                >
-                                  Вернуть
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          {isEditing && editingGiftDraft && (
-                            <div className="flex flex-col gap-2 border-t border-[#1D1D1D] px-3 pb-3 pt-2">
-                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                <div className="flex flex-col gap-1">
-                                  <div className="text-[10px] uppercase tracking-widest text-[#666]">Тип</div>
-                                  <select
-                                    value={editingGiftDraft.type}
-                                    onChange={e => setEditingGiftDraft(d => d && ({ ...d, type: e.target.value as PlayerGiftType }))}
-                                    className="admin-input"
-                                  >
-                                    <option value="free_entry">Бесплатный вход</option>
-                                    <option value="free_rebuy">Бесплатный ребай</option>
-                                    <option value="free_addon">Бесплатный аддон</option>
-                                    <option value="custom">Другое</option>
-                                  </select>
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                  <div className="text-[10px] uppercase tracking-widest text-[#666]">Срок действия</div>
-                                  <select
-                                    value={editingGiftDraft.validCondition}
-                                    onChange={e => setEditingGiftDraft(d => d && ({ ...d, validCondition: e.target.value as PlayerGiftValidCondition }))}
-                                    className="admin-input"
-                                  >
-                                    <option value="next_tournament">Следующий турнир</option>
-                                    <option value="next_month">Следующий месяц</option>
-                                    <option value="until_date">До даты</option>
-                                    <option value="specific_tournament">Конкретный турнир</option>
-                                    <option value="indefinite">Бессрочно</option>
-                                  </select>
-                                </div>
-                              </div>
-                              {editingGiftDraft.validCondition === 'until_date' && (
-                                <input
-                                  type="date"
-                                  value={editingGiftDraft.validUntil}
-                                  onChange={e => setEditingGiftDraft(d => d && ({ ...d, validUntil: e.target.value }))}
-                                  className="admin-input"
-                                />
-                              )}
-                              {editingGiftDraft.validCondition === 'specific_tournament' && (
-                                <select
-                                  value={editingGiftDraft.validTournamentTitle}
-                                  onChange={e => setEditingGiftDraft(d => d && ({ ...d, validTournamentTitle: e.target.value }))}
-                                  className="admin-input"
-                                >
-                                  <option value="">— выберите турнир —</option>
-                                  {[...botGames].sort((a, b) => a.date.localeCompare(b.date)).map(t => (
-                                    <option key={t.id} value={t.title}>{t.title} · {new Date(t.date).toLocaleDateString('ru-RU')}</option>
-                                  ))}
-                                </select>
-                              )}
-                              {editingGiftDraft.type === 'custom' && (
-                                <input
-                                  type="text"
-                                  value={editingGiftDraft.comment}
-                                  onChange={e => setEditingGiftDraft(d => d && ({ ...d, comment: e.target.value }))}
-                                  placeholder="Описание подарка"
-                                  className="admin-input"
-                                />
-                              )}
-                              {editingGiftError && (
-                                <div className="rounded-xl border border-red-700/50 bg-red-900/20 px-3 py-2 text-xs text-red-400">
-                                  {editingGiftError}
-                                </div>
-                              )}
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => { setEditingGift(null); setEditingGiftDraft(null); setEditingGiftError(null); }}
-                                  className="admin-btn-secondary px-4 py-1.5 text-xs"
-                                >
-                                  Отмена
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={editingGiftBusy || (editingGiftDraft.type === 'custom' && !editingGiftDraft.comment.trim()) || (editingGiftDraft.validCondition === 'specific_tournament' && !editingGiftDraft.validTournamentTitle.trim()) || (editingGiftDraft.validCondition === 'until_date' && !editingGiftDraft.validUntil)}
-                                  onClick={async () => {
-                                    if (!editingGift || !editingGiftDraft) return;
-                                    setEditingGiftBusy(true);
-                                    setEditingGiftError(null);
-                                    try {
-                                      const now = new Date();
-                                      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-                                      const validUntil = editingGiftDraft.validCondition === 'until_date' ? (editingGiftDraft.validUntil || null)
-                                        : editingGiftDraft.validCondition === 'next_month' ? endOfNextMonthISO(currentMonth)
-                                        : null;
-                                      await updateGift({
-                                        giftId: editingGift.id,
-                                        type: editingGiftDraft.type,
-                                        comment: editingGiftDraft.type === 'custom' ? (editingGiftDraft.comment || null) : null,
-                                        validCondition: editingGiftDraft.validCondition,
-                                        validUntil,
-                                        validTournamentTitle: editingGiftDraft.validCondition === 'specific_tournament' ? (editingGiftDraft.validTournamentTitle || null) : null,
-                                      });
-                                      setEditingGift(null);
-                                      setEditingGiftDraft(null);
-                                      await fetchAllGiftsData();
-                                    } catch (e) {
-                                      const msg = e instanceof Error ? e.message
-                                        : (e != null && typeof e === 'object' && 'message' in e) ? String((e as { message: unknown }).message)
-                                        : String(e);
-                                      setEditingGiftError(msg || 'Ошибка при сохранении');
-                                    } finally {
-                                      setEditingGiftBusy(false);
-                                    }
-                                  }}
-                                  className="admin-btn-primary px-4 py-1.5 text-xs disabled:opacity-40"
-                                >
-                                  {editingGiftBusy ? 'Сохранение...' : 'Сохранить'}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-            </div>
-
-          </div>
-        )}
-
         {/* ─── SETTINGS TAB ────────────────────────────────────────────── */}
         {activeContentTab === 'settings' && (
           <div className="flex flex-col gap-4">
@@ -7155,11 +6184,8 @@ export function Admin() {
                       playerBackups={playerBackups}
                       botSyncState={botSyncState}
                       tournamentBotId={gameState.tournamentBotId}
-                      tournamentTitle={gameState.tournamentTitle || null}
                       tournamentDate={selectedBotGame?.date ?? null}
                       earlyBirdBonusEnabled={selectedTournamentIsClassic}
-                      isClassicTournament={selectedTournamentIsClassic}
-                      currentSessionId={floorSessionId}
                       isTournamentEnded={false}
                       preferMobileCards={tabletAdminLayout}
                       reviewPlayers={[]}
@@ -7177,13 +6203,6 @@ export function Admin() {
                         await assignPlayerSeat(playerId, tableNumber, seatNumber);
                       }}
                       knownPlayers={knownPlayersWithBot}
-                      profilesByTelegramId={profilesByTelegramId}
-                      activeGifts={giftsByTelegramId}
-                      usedGiftIdsThisSession={usedGiftIdsThisSession}
-                      onRedeemGift={handleRedeemGift}
-              onUnredeemGift={(gift) => setUnredeemConfirmGift(gift)}
-                      onCreateGift={handleCreateGift}
-                      botGames={botGames}
                     />
                   </div>
                 </>
