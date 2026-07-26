@@ -108,7 +108,7 @@ export function useBotRating(): UseBotRatingResult {
       ? `${BOT_API}/api/rating/rank?month=all`
       : `${BOT_API}/api/rating/rank?month=${month}`;
 
-    fetch(withCacheBuster(url), { cache: 'no-store' })
+    fetch(withCacheBuster(url))
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();

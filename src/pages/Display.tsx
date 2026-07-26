@@ -154,6 +154,7 @@ export function Display() {
   const {
     players: ratingPlayers,
     loading: ratingLoading,
+    error: ratingError,
     refetch: refetchRating,
   } = useBotRating();
   const {
@@ -391,6 +392,17 @@ export function Display() {
               Рейтинг · {new Date().toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
             </div>
           </div>
+          {ratingLoading && ratingPlayers.length === 0 && (
+            <div className="text-[#555] text-2xl">Загрузка...</div>
+          )}
+          {ratingError && ratingPlayers.length === 0 && (
+            <div className="text-red-600 text-lg text-center max-w-xl">
+              Нет связи с ботом: {ratingError}
+            </div>
+          )}
+          {ratingError && ratingPlayers.length > 0 && (
+            <div className="text-[#555] text-sm">нет связи с ботом · показаны сохранённые данные</div>
+          )}
           <div className="flex items-end justify-center gap-6 w-full max-w-4xl">
             {top3[1] && <RatingCard player={top3[1]} medal={2} big={false} />}
             {top3[0] && <RatingCard player={top3[0]} medal={1} big />}

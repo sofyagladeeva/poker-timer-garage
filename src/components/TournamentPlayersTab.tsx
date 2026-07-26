@@ -1219,7 +1219,7 @@ export function TournamentPlayersTab({
               )}
             </div>
             {giftDialogNotifyStatus && (
-              <div className={`mx-5 mb-1 rounded-xl px-3 py-2 text-xs ${giftDialogNotifyStatus === 'sent' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-amber-900/30 text-amber-400'}`}>
+              <div className={`mx-5 mb-2 rounded-xl px-3 py-2 text-xs ${giftDialogNotifyStatus === 'sent' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-amber-900/30 text-amber-400'}`}>
                 {giftDialogNotifyStatus === 'sent' && '✓ Подарок выдан — уведомление отправлено'}
                 {giftDialogNotifyStatus === 'skipped' && '✓ Подарок выдан — игрок недоступен в Telegram'}
                 {giftDialogNotifyStatus === 'error' && '✓ Подарок выдан — уведомление не отправлено, ошибка бота'}

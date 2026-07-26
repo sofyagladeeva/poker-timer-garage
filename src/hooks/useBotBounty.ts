@@ -98,7 +98,7 @@ export function useBotBounty(): UseBotBountyResult {
     let cancelled = false;
     const cacheKey = buildLeaderboardCacheKey(BOT_BOUNTY_CACHE_PREFIX, month);
 
-    fetch(withCacheBuster(`${BOT_API}/api/rating/bounty?month=${month}`), { cache: 'no-store' })
+    fetch(withCacheBuster(`${BOT_API}/api/rating/bounty?month=${month}`))
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
