@@ -313,8 +313,9 @@ export function Display() {
 
   const rankPoints   = getRankPoints(gameState.players);
   const displayRatingPlayers = gameState.ratingSnapshot ?? ratingPlayers;
+  const displayBountyPlayers = gameState.bountySnapshot ?? bountyPlayers;
   const top3         = displayRatingPlayers.slice(0, 3);
-  const top3Bounty   = bountyPlayers.slice(0, 3);
+  const top3Bounty   = displayBountyPlayers.slice(0, 3);
   const activeCombos = combinations.filter(c => c.enabled);
   const sidebarLeaderboardTitle = sidebarLeaderboardMode === 'rating' ? 'Топ-3 месяца' : 'Топ-3 баунти';
   const sidebarLeaderboardPlayers = sidebarLeaderboardMode === 'rating' ? top3 : top3Bounty;

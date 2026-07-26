@@ -1,4 +1,4 @@
-import type { ChipLeaderEntry, ChipLeadersState, GameState, GameStatus, RatingSnapshotEntry } from './types.ts';
+import type { BountySnapshotEntry, ChipLeaderEntry, ChipLeadersState, GameState, GameStatus, RatingSnapshotEntry } from './types.ts';
 
 function toNumber(value: unknown, fallback = 0) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -98,6 +98,20 @@ function normalizeRatingSnapshot(raw: unknown, fallback: RatingSnapshotEntry[] |
     } satisfies RatingSnapshotEntry));
 }
 
+function normalizeBountySnapshot(raw: unknown, fallback: BountySnapshotEntry[] | null): BountySnapshotEntry[] | null {
+  if (!Array.isArray(raw)) return fallback;
+  return raw
+    .filter(item => item && typeof item === 'object')
+    .map((item: Record<string, unknown>) => ({
+      rank: typeof item.rank === 'number' ? item.rank : 0,
+      telegram_id: typeof item.telegram_id === 'number' ? item.telegram_id : null,
+      name: typeof item.name === 'string' ? item.name : '',
+      username: typeof item.username === 'string' ? item.username : null,
+      total_bounty: typeof item.total_bounty === 'number' ? item.total_bounty : 0,
+      games: typeof item.games === 'number' ? item.games : 0,
+    } satisfies BountySnapshotEntry));
+}
+
 export function normalizeGameState(raw: unknown, fallback: GameState): GameState {
   const source = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
 
@@ -139,6 +153,7 @@ export function normalizeGameState(raw: unknown, fallback: GameState): GameState
     extraAddonCount: toWholeNumber(source.extraAddonCount ?? source.extra_addon_count, fallback.extraAddonCount ?? 0),
     extraBonusCount: toWholeNumber(source.extraBonusCount ?? source.extra_bonus_count, fallback.extraBonusCount ?? 0),
     ratingSnapshot: normalizeRatingSnapshot(source.ratingSnapshot ?? source.rating_snapshot, fallback.ratingSnapshot ?? null),
+    bountySnapshot: normalizeBountySnapshot(source.bountySnapshot ?? source.bounty_snapshot, fallback.bountySnapshot ?? null),
   };
 
   const explicitTotal = source.totalStack ?? source.total_stack;

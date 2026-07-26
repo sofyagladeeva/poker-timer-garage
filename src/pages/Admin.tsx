@@ -4,6 +4,7 @@ import { useGameState } from '../hooks/useGameState';
 import { useTournamentBotLiveSync } from '../hooks/useTournamentBotLiveSync';
 import { useTournamentPlayers } from '../hooks/useTournamentPlayers';
 import { useBotRating } from '../hooks/useBotRating';
+import { useBotBounty } from '../hooks/useBotBounty';
 import { supabase } from '../supabase';
 import { getNextGarageBlindPair } from '../blindStructure';
 import {
@@ -810,6 +811,14 @@ export function Admin() {
     setMonth: setAdminRatingMonth,
     refetch: refetchAdminRating,
   } = useBotRating();
+  const {
+    players: adminBountyPlayers,
+    loading: adminBountyLoading,
+    error: adminBountyError,
+    month: adminBountyMonth,
+    setMonth: setAdminBountyMonth,
+    refetch: refetchAdminBounty,
+  } = useBotBounty();
   const gameStateSnapshotRef = useRef(gameState);
   const displayPresenceEnabled = isDisplayPresenceEnabled();
   const [displayClients, setDisplayClients] = useState<DisplayClient[]>([]);
@@ -4593,6 +4602,61 @@ export function Admin() {
                     className="mt-1 text-xs text-[#555] hover:text-white border border-[#222] hover:border-[#444] rounded-lg px-3 py-1 transition-colors self-start"
                   >
                     Сохранить на TV без показа
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Bounty snapshot */}
+            <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-3">
+              <div>
+                <div className="text-white font-medium text-sm">Топ-3 баунти на табло</div>
+                <div className="text-[#555] text-xs mt-0.5">Показывается в сайдбаре во время турнира</div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setAdminBountyMonth((() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })())}
+                      className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${adminBountyMonth !== 'all' ? 'border-[#C0392B] text-[#C0392B]' : 'border-[#333] text-[#555]'}`}
+                    >
+                      Этот месяц
+                    </button>
+                    <button
+                      onClick={() => setAdminBountyMonth('all')}
+                      className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${adminBountyMonth === 'all' ? 'border-[#C0392B] text-[#C0392B]' : 'border-[#333] text-[#555]'}`}
+                    >
+                      За всё время
+                    </button>
+                  </div>
+                  <button onClick={refetchAdminBounty} className="text-[#444] hover:text-white text-sm px-1">↻</button>
+                </div>
+
+                {adminBountyLoading && adminBountyPlayers.length === 0 && (
+                  <div className="text-[#555] text-xs py-1">Загрузка...</div>
+                )}
+                {adminBountyError && (
+                  <div className="text-red-600 text-xs py-1">Ошибка: {adminBountyError}</div>
+                )}
+                {!adminBountyLoading && !adminBountyError && adminBountyPlayers.length === 0 && (
+                  <div className="text-[#555] text-xs py-1">Данных за этот период нет</div>
+                )}
+
+                {adminBountyPlayers.slice(0, 7).map((p, i) => (
+                  <div key={p.telegram_id ?? `admin-bounty-${p.name}-${i}`} className="flex items-center gap-2 text-xs">
+                    <span className="text-[#555] w-4 text-right">{i + 1}</span>
+                    <span className="text-white flex-1 truncate">{p.name}</span>
+                    <span className="text-[#888]">{p.games} игр</span>
+                    <span className="text-[#E31E24] font-bold">{p.total_bounty} KO</span>
+                  </div>
+                ))}
+
+                {adminBountyPlayers.length > 0 && (
+                  <button
+                    onClick={() => void updateGameState({ bountySnapshot: adminBountyPlayers })}
+                    className="mt-1 text-xs text-[#555] hover:text-white border border-[#222] hover:border-[#444] rounded-lg px-3 py-1 transition-colors self-start"
+                  >
+                    Сохранить на TV
                   </button>
                 )}
               </div>

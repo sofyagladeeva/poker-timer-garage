@@ -9,6 +9,15 @@ export interface RatingSnapshotEntry {
   championships: number;
 }
 
+export interface BountySnapshotEntry {
+  rank: number;
+  telegram_id: number | null;
+  name: string;
+  username: string | null;
+  total_bounty: number;
+  games: number;
+}
+
 export type Suit = 'spades' | 'hearts' | 'diamonds' | 'clubs' | 'any';
 export type Rank = 'A' | 'K' | 'Q' | 'J' | 'T' | '9' | '8' | '7' | '6' | '5' | '4' | '3' | '2';
 
@@ -112,6 +121,7 @@ export interface GameState {
   extraAddonCount: number; // аддоны вне игроков, добавленные вручную из «Управления»
   extraBonusCount: number; // бонусы вне игроков, добавленные вручную из «Управления»
   ratingSnapshot: RatingSnapshotEntry[] | null; // кэш рейтинга из бота, сохранённый через админку
+  bountySnapshot: BountySnapshotEntry[] | null; // кэш баунти из бота, сохранённый через админку
 }
 
 export type LiveTournamentPlayerSource = 'bot' | 'manual';
