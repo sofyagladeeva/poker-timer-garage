@@ -312,7 +312,8 @@ export function Display() {
   const avgInBB      = currentBB > 0 && avgStack > 0 ? Math.round(avgStack / currentBB) : 0;
 
   const rankPoints   = getRankPoints(gameState.players);
-  const top3         = ratingPlayers.slice(0, 3);
+  const displayRatingPlayers = gameState.ratingSnapshot ?? ratingPlayers;
+  const top3         = displayRatingPlayers.slice(0, 3);
   const top3Bounty   = bountyPlayers.slice(0, 3);
   const activeCombos = combinations.filter(c => c.enabled);
   const sidebarLeaderboardTitle = sidebarLeaderboardMode === 'rating' ? 'Топ-3 месяца' : 'Топ-3 баунти';
@@ -392,16 +393,13 @@ export function Display() {
               Рейтинг · {new Date().toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
             </div>
           </div>
-          {ratingLoading && ratingPlayers.length === 0 && (
+          {ratingLoading && !gameState.ratingSnapshot && displayRatingPlayers.length === 0 && (
             <div className="text-[#555] text-2xl">Загрузка...</div>
           )}
-          {ratingError && ratingPlayers.length === 0 && (
+          {ratingError && !gameState.ratingSnapshot && displayRatingPlayers.length === 0 && (
             <div className="text-red-600 text-lg text-center max-w-xl">
               Нет связи с ботом: {ratingError}
             </div>
-          )}
-          {ratingError && ratingPlayers.length > 0 && (
-            <div className="text-[#555] text-sm">нет связи с ботом · показаны сохранённые данные</div>
           )}
           <div className="flex items-end justify-center gap-6 w-full max-w-4xl">
             {top3[1] && <RatingCard player={top3[1]} medal={2} big={false} />}
@@ -409,7 +407,7 @@ export function Display() {
             {top3[2] && <RatingCard player={top3[2]} medal={3} big={false} />}
           </div>
           <div className="flex gap-4 flex-wrap justify-center">
-            {ratingPlayers.slice(3, 7).map((p, i) => (
+            {displayRatingPlayers.slice(3, 7).map((p, i) => (
               <div key={p.telegram_id ?? `rating-${p.name}-${i + 4}`}
                    className="bg-[#141414] border border-[#222] rounded-xl px-6 py-3 flex items-center gap-4 min-w-[220px]">
                 <span className="text-[#444] font-bold w-5">{i + 4}</span>

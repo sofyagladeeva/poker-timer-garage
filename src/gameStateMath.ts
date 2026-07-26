@@ -1,4 +1,4 @@
-import type { ChipLeaderEntry, ChipLeadersState, GameState, GameStatus } from './types.ts';
+import type { ChipLeaderEntry, ChipLeadersState, GameState, GameStatus, RatingSnapshotEntry } from './types.ts';
 
 function toNumber(value: unknown, fallback = 0) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -82,6 +82,22 @@ export function calcTotalStack(state: Pick<GameState, 'players' | 'rebuys' | 'st
   );
 }
 
+function normalizeRatingSnapshot(raw: unknown, fallback: RatingSnapshotEntry[] | null): RatingSnapshotEntry[] | null {
+  if (!Array.isArray(raw)) return fallback;
+  return raw
+    .filter(item => item && typeof item === 'object')
+    .map((item: Record<string, unknown>) => ({
+      rank: typeof item.rank === 'number' ? item.rank : 0,
+      telegram_id: typeof item.telegram_id === 'number' ? item.telegram_id : null,
+      name: typeof item.name === 'string' ? item.name : '',
+      username: typeof item.username === 'string' ? item.username : '',
+      points: typeof item.points === 'number' ? item.points : 0,
+      games: typeof item.games === 'number' ? item.games : 0,
+      best_place: typeof item.best_place === 'number' ? item.best_place : 0,
+      championships: typeof item.championships === 'number' ? item.championships : 0,
+    } satisfies RatingSnapshotEntry));
+}
+
 export function normalizeGameState(raw: unknown, fallback: GameState): GameState {
   const source = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
 
@@ -122,6 +138,7 @@ export function normalizeGameState(raw: unknown, fallback: GameState): GameState
     addonOpen: toBoolean(source.addonOpen ?? source.addon_open, fallback.addonOpen ?? false),
     extraAddonCount: toWholeNumber(source.extraAddonCount ?? source.extra_addon_count, fallback.extraAddonCount ?? 0),
     extraBonusCount: toWholeNumber(source.extraBonusCount ?? source.extra_bonus_count, fallback.extraBonusCount ?? 0),
+    ratingSnapshot: normalizeRatingSnapshot(source.ratingSnapshot ?? source.rating_snapshot, fallback.ratingSnapshot ?? null),
   };
 
   const explicitTotal = source.totalStack ?? source.total_stack;

@@ -57,4 +57,5 @@ export const DEFAULT_GAME_STATE = {
   addonOpen: false,
   extraAddonCount: 0,
   extraBonusCount: 0,
+  ratingSnapshot: null,
 };

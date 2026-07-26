@@ -3,6 +3,7 @@ import type { ChangeEvent, ReactNode } from 'react';
 import { useGameState } from '../hooks/useGameState';
 import { useTournamentBotLiveSync } from '../hooks/useTournamentBotLiveSync';
 import { useTournamentPlayers } from '../hooks/useTournamentPlayers';
+import { useBotRating } from '../hooks/useBotRating';
 import { supabase } from '../supabase';
 import { getNextGarageBlindPair } from '../blindStructure';
 import {
@@ -801,6 +802,14 @@ export function Admin() {
     updateGameState, forceSyncDisplays, startTimer, pauseTimer, nextLevel, prevLevel, resetTournament,
     updateBlindLevels, updateCombinations, saveTournament, fetchTournaments, fetchTournamentArchiveDetails, fetchTournamentArchiveDetailsBatch, updateTournamentArchiveDetails, deleteTournament,
   } = useGameState();
+  const {
+    players: adminRatingPlayers,
+    loading: adminRatingLoading,
+    error: adminRatingError,
+    month: adminRatingMonth,
+    setMonth: setAdminRatingMonth,
+    refetch: refetchAdminRating,
+  } = useBotRating();
   const gameStateSnapshotRef = useRef(gameState);
   const displayPresenceEnabled = isDisplayPresenceEnabled();
   const [displayClients, setDisplayClients] = useState<DisplayClient[]>([]);
@@ -4515,14 +4524,20 @@ export function Admin() {
             </div>
 
             {/* Rating toggle */}
-            <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4">
+            <div className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-white font-medium text-sm">Показать рейтинг на экране</div>
                   <div className="text-[#555] text-xs mt-0.5">Заменяет таймер на таблицу рейтинга</div>
                 </div>
                 <button
-                  onClick={() => updateGameState({ showRating: !gameState.showRating, showLogo: false })}
+                  onClick={() => {
+                    if (!gameState.showRating && adminRatingPlayers.length > 0) {
+                      void updateGameState({ showRating: true, showLogo: false, ratingSnapshot: adminRatingPlayers });
+                    } else {
+                      void updateGameState({ showRating: !gameState.showRating, showLogo: false });
+                    }
+                  }}
                   className={`w-14 h-7 rounded-full transition-colors flex-shrink-0 ml-4 ${
                     gameState.showRating ? 'bg-[#C0392B]' : 'bg-[#2D2D2D]'
                   }`}
@@ -4531,6 +4546,55 @@ export function Admin() {
                     gameState.showRating ? 'translate-x-7' : 'translate-x-0'
                   }`} />
                 </button>
+              </div>
+
+              {/* Rating preview */}
+              <div className="border-t border-[#1A1A1A] pt-3 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setAdminRatingMonth((() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })())}
+                      className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${adminRatingMonth !== 'all' ? 'border-[#C0392B] text-[#C0392B]' : 'border-[#333] text-[#555]'}`}
+                    >
+                      Этот месяц
+                    </button>
+                    <button
+                      onClick={() => setAdminRatingMonth('all')}
+                      className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${adminRatingMonth === 'all' ? 'border-[#C0392B] text-[#C0392B]' : 'border-[#333] text-[#555]'}`}
+                    >
+                      За всё время
+                    </button>
+                  </div>
+                  <button onClick={refetchAdminRating} className="text-[#444] hover:text-white text-sm px-1">↻</button>
+                </div>
+
+                {adminRatingLoading && adminRatingPlayers.length === 0 && (
+                  <div className="text-[#555] text-xs py-1">Загрузка...</div>
+                )}
+                {adminRatingError && (
+                  <div className="text-red-600 text-xs py-1">Ошибка: {adminRatingError}</div>
+                )}
+                {!adminRatingLoading && !adminRatingError && adminRatingPlayers.length === 0 && (
+                  <div className="text-[#555] text-xs py-1">Данных за этот период нет</div>
+                )}
+
+                {adminRatingPlayers.slice(0, 7).map((p, i) => (
+                  <div key={p.telegram_id ?? `admin-rating-${p.name}-${i}`} className="flex items-center gap-2 text-xs">
+                    <span className="text-[#555] w-4 text-right">{i + 1}</span>
+                    <span className="text-white flex-1 truncate">{p.name}</span>
+                    <span className="text-[#888]">{p.games} игр</span>
+                    <span className="text-[#E31E24] font-bold">{p.points.toFixed(1)}</span>
+                  </div>
+                ))}
+
+                {adminRatingPlayers.length > 0 && (
+                  <button
+                    onClick={() => void updateGameState({ ratingSnapshot: adminRatingPlayers })}
+                    className="mt-1 text-xs text-[#555] hover:text-white border border-[#222] hover:border-[#444] rounded-lg px-3 py-1 transition-colors self-start"
+                  >
+                    Сохранить на TV без показа
+                  </button>
+                )}
               </div>
             </div>
 

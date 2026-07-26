@@ -1,3 +1,14 @@
+export interface RatingSnapshotEntry {
+  rank: number;
+  telegram_id: number | null;
+  name: string;
+  username: string;
+  points: number;
+  games: number;
+  best_place: number;
+  championships: number;
+}
+
 export type Suit = 'spades' | 'hearts' | 'diamonds' | 'clubs' | 'any';
 export type Rank = 'A' | 'K' | 'Q' | 'J' | 'T' | '9' | '8' | '7' | '6' | '5' | '4' | '3' | '2';
 
@@ -100,6 +111,7 @@ export interface GameState {
   addonOpen: boolean; // активирован ли приём аддонов
   extraAddonCount: number; // аддоны вне игроков, добавленные вручную из «Управления»
   extraBonusCount: number; // бонусы вне игроков, добавленные вручную из «Управления»
+  ratingSnapshot: RatingSnapshotEntry[] | null; // кэш рейтинга из бота, сохранённый через админку
 }
 
 export type LiveTournamentPlayerSource = 'bot' | 'manual';
