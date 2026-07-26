@@ -114,7 +114,11 @@ export function loadLocalStaffDirectory(): StaffMember[] {
 }
 
 function saveLocalStaffDirectory(members: StaffMember[]) {
-  localStorage.setItem(STAFF_STORAGE_KEY, JSON.stringify(members));
+  try {
+    localStorage.setItem(STAFF_STORAGE_KEY, JSON.stringify(members));
+  } catch {
+    // ignore quota errors — Supabase is the source of truth
+  }
 }
 
 export async function fetchStaffDirectory(): Promise<StaffMember[]> {
