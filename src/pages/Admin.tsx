@@ -1624,6 +1624,12 @@ export function Admin() {
 
   const confirmStartNewTournament = async (nextTournament?: PendingTournamentSelection) => {
     if (shouldBlockNewTournamentForPendingBotResults({ requiresBotResults, resultsAlreadyCurrent })) {
+      if (!canSubmitTournamentResults && !missingBotRosterForFinish) {
+        const force = confirm('Итоги этого турнира уже отправлены или отправить невозможно. Сбросить турнир без повторной отправки?');
+        if (!force) return;
+        await startNewTournamentFlow(nextTournament);
+        return;
+      }
       setResultsNotice({
         tone: 'error',
         text: missingBotRosterForFinish
