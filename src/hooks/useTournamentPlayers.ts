@@ -5,6 +5,7 @@ import { isPromoUsername } from '../promoPlayerList.ts';
 import {
   addBotTournamentPlayer,
   fetchBotTournamentRoster,
+  notifyBustout,
   removeBotTournamentPlayer,
   submitBotTournamentFinance,
   submitBotTournamentResults,
@@ -2352,7 +2353,7 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     playerId: string,
     options?: { bounty?: number }
   ) => {
-    await applyPlayerMutation(current => {
+    const updatedPlayers = await applyPlayerMutation(current => {
       const entrants = current.filter(player => player.arrivalStatus !== 'absent').length;
       const nextBustoutOrder = current.filter(player => player.status === 'out').length + 1;
       return current.map(player => {
@@ -2372,6 +2373,10 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
         }, sessionId, tournamentBotId);
       });
     });
+    const updatedPlayer = updatedPlayers?.find(p => p.id === playerId);
+    if (tournamentBotId != null && updatedPlayer?.bustoutOrder != null) {
+      notifyBustout(tournamentBotId, updatedPlayer.bustoutOrder);
+    }
   }, [applyPlayerMutation, sessionId, tournamentBotId]);
 
   const markPlayersOutInOrder = useCallback(async (

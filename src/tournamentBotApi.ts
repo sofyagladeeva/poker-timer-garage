@@ -644,6 +644,19 @@ export async function submitBotTournamentFinance(payload: TournamentFinancePaylo
   }
 }
 
+export function notifyBustout(gameId: number, bustoutOrder: number): void {
+  if (!BOT_ADMIN_TOKEN) return;
+  const url = `${BOT_API}/api/admin/games/${gameId}/bustout`;
+  fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Token': BOT_ADMIN_TOKEN,
+    },
+    body: JSON.stringify({ bustoutOrder }),
+  }).catch(err => console.error('[bustout webhook]', err));
+}
+
 export async function sendPlayerNotification(
   telegramId: number,
   message: string
