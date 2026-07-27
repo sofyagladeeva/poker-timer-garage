@@ -1,7 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
 import { useGameState } from '../hooks/useGameState';
-import { useBotRating } from '../hooks/useBotRating';
-import { useBotBounty } from '../hooks/useBotBounty';
 import { useNextGame } from '../hooks/useNextGame';
 import { getKnockoutLabel, getNextKnockoutInfo, isKnockoutLevel } from '../blindLevelMarkers';
 import { getRankPoints, RED_SUITS, SUIT_SYMBOLS } from '../types';
@@ -151,17 +149,6 @@ function useScale() {
 
 export function Display() {
   const { gameState, blindLevels, combinations } = useGameState(true);
-  const {
-    players: ratingPlayers,
-    loading: ratingLoading,
-    error: ratingError,
-    refetch: refetchRating,
-  } = useBotRating();
-  const {
-    players: bountyPlayers,
-    loading: bountyLoading,
-    refetch: refetchBounty,
-  } = useBotBounty();
   const nextGame = useNextGame(gameState.nextGameBotId ?? null);
   const { k, x, y } = useScale();
   const [sidebarLeaderboardMode, setSidebarLeaderboardMode] = useState<'rating' | 'bounty'>('rating');
@@ -210,15 +197,10 @@ export function Display() {
     prevLevelRef.current = gameState.currentLevelIndex;
   }, [gameState.currentLevelIndex]);
 
-  // Свежие данные из бота при открытии экрана рейтинга
   const prevShowRatingRef = useRef<boolean>(false);
   useEffect(() => {
-    if (gameState.showRating && !prevShowRatingRef.current) {
-      refetchRating();
-      refetchBounty();
-    }
     prevShowRatingRef.current = gameState.showRating;
-  }, [gameState.showRating, refetchRating, refetchBounty]);
+  }, [gameState.showRating]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -312,14 +294,14 @@ export function Display() {
   const avgInBB      = currentBB > 0 && avgStack > 0 ? Math.round(avgStack / currentBB) : 0;
 
   const rankPoints   = getRankPoints(gameState.players);
-  const displayRatingPlayers = gameState.ratingSnapshot ?? ratingPlayers;
-  const displayBountyPlayers = gameState.bountySnapshot ?? bountyPlayers;
+  const displayRatingPlayers = gameState.ratingSnapshot ?? [];
+  const displayBountyPlayers = gameState.bountySnapshot ?? [];
   const top3         = displayRatingPlayers.slice(0, 3);
   const top3Bounty   = displayBountyPlayers.slice(0, 3);
   const activeCombos = combinations.filter(c => c.enabled);
   const sidebarLeaderboardTitle = sidebarLeaderboardMode === 'rating' ? 'Топ-3 месяца' : 'Топ-3 баунти';
   const sidebarLeaderboardPlayers = sidebarLeaderboardMode === 'rating' ? top3 : top3Bounty;
-  const sidebarLeaderboardLoading = sidebarLeaderboardMode === 'rating' ? ratingLoading : bountyLoading;
+  const sidebarLeaderboardLoading = false;
   const fallbackNextGameLines = formatFallbackNextGameLines(gameState.nextGameInfo);
 
   // Сколько секунд до следующего перерыва (живой отсчёт)
@@ -394,13 +376,8 @@ export function Display() {
               Рейтинг · {new Date().toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
             </div>
           </div>
-          {ratingLoading && !gameState.ratingSnapshot && displayRatingPlayers.length === 0 && (
-            <div className="text-[#555] text-2xl">Загрузка...</div>
-          )}
-          {ratingError && !gameState.ratingSnapshot && displayRatingPlayers.length === 0 && (
-            <div className="text-red-600 text-lg text-center max-w-xl">
-              Нет связи с ботом: {ratingError}
-            </div>
+          {displayRatingPlayers.length === 0 && (
+            <div className="text-[#555] text-2xl">Нет данных</div>
           )}
           <div className="flex items-end justify-center gap-6 w-full max-w-4xl">
             {top3[1] && <RatingCard player={top3[1]} medal={2} big={false} />}

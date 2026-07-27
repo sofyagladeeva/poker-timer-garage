@@ -511,7 +511,10 @@ export function useGameState(readOnly = false) {
       }
     }
 
-    let payload: Record<string, unknown> = { id: 1, ...patchToPersist };
+    const snakePatch: Record<string, unknown> = { ...patchToPersist };
+    if ('ratingSnapshot' in snakePatch) { snakePatch['rating_snapshot'] = snakePatch.ratingSnapshot; delete snakePatch.ratingSnapshot; }
+    if ('bountySnapshot' in snakePatch) { snakePatch['bounty_snapshot'] = snakePatch.bountySnapshot; delete snakePatch.bountySnapshot; }
+    let payload: Record<string, unknown> = { id: 1, ...snakePatch };
     let error: unknown = null;
 
     for (let attempt = 0; attempt < 4; attempt++) {
