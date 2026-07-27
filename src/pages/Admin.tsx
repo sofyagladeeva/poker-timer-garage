@@ -1624,8 +1624,9 @@ export function Admin() {
 
   const confirmStartNewTournament = async (nextTournament?: PendingTournamentSelection) => {
     if (shouldBlockNewTournamentForPendingBotResults({ requiresBotResults, resultsAlreadyCurrent })) {
-      if (!canSubmitTournamentResults && !missingBotRosterForFinish) {
-        const force = confirm('Итоги этого турнира уже отправлены или отправить невозможно. Сбросить турнир без повторной отправки?');
+      const arrivedPlayers = finishReviewPlayers.filter(p => p.arrivalStatus !== 'absent');
+      if (arrivedPlayers.length === 0) {
+        const force = confirm('Итоги этого турнира уже отправлены или нет данных для отправки. Сбросить турнир?');
         if (!force) return;
         await startNewTournamentFlow(nextTournament);
         return;
