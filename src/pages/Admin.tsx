@@ -1190,6 +1190,13 @@ export function Admin() {
       return;
     }
 
+    // Don't auto-clear bot-linked tournaments — they were intentionally set and
+    // may have registered players even before the game starts (all counters zero).
+    if (gameState.tournamentBotId != null) {
+      initialIdleSelectionResetRef.current = true;
+      return;
+    }
+
     initialIdleSelectionResetRef.current = true;
     void (async () => {
       await prepareTournamentPlayersContext(null, '');
