@@ -819,6 +819,16 @@ export function Admin() {
     setMonth: setAdminBountyMonth,
     refetch: refetchAdminBounty,
   } = useBotBounty();
+  useEffect(() => {
+    if (adminRatingPlayers.length === 0) return;
+    void updateGameState({ ratingSnapshot: adminRatingPlayers });
+  }, [adminRatingPlayers]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (adminBountyPlayers.length === 0) return;
+    void updateGameState({ bountySnapshot: adminBountyPlayers });
+  }, [adminBountyPlayers]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const gameStateSnapshotRef = useRef(gameState);
   const displayPresenceEnabled = isDisplayPresenceEnabled();
   const [displayClients, setDisplayClients] = useState<DisplayClient[]>([]);
@@ -4559,7 +4569,7 @@ export function Admin() {
                   <div className="text-white font-medium text-sm">Топ-3 рейтинга на табло</div>
                   <div className="text-[#555] text-xs mt-0.5">Сайдбар во время турнира</div>
                 </div>
-                <button onClick={refetchAdminRating} className="text-[#444] hover:text-white text-lg px-1">↻</button>
+                <button onClick={refetchAdminRating} className="admin-btn-secondary text-xs px-3 py-1">↻ Обновить</button>
               </div>
               <div className="flex gap-1">
                 <button
@@ -4588,13 +4598,9 @@ export function Admin() {
                   <span className="text-[#E31E24] font-bold">{p.points.toFixed(1)} pts</span>
                 </div>
               ))}
-              <button
-                disabled={adminRatingPlayers.length === 0}
-                onClick={() => void updateGameState({ ratingSnapshot: adminRatingPlayers })}
-                className="admin-btn-secondary text-sm py-2 disabled:opacity-30"
-              >
-                Сохранить на TV
-              </button>
+              {adminRatingPlayers.length > 0 && (
+                <div className="text-[#555] text-xs">Данные сохраняются на TV автоматически</div>
+              )}
             </div>
 
             {/* Top-3 bounty snapshot */}
@@ -4604,7 +4610,7 @@ export function Admin() {
                   <div className="text-white font-medium text-sm">Топ-3 баунти на табло</div>
                   <div className="text-[#555] text-xs mt-0.5">Сайдбар во время турнира</div>
                 </div>
-                <button onClick={refetchAdminBounty} className="text-[#444] hover:text-white text-lg px-1">↻</button>
+                <button onClick={refetchAdminBounty} className="admin-btn-secondary text-xs px-3 py-1">↻ Обновить</button>
               </div>
               <div className="flex gap-1">
                 <button
@@ -4633,13 +4639,9 @@ export function Admin() {
                   <span className="text-[#E31E24] font-bold">{p.total_bounty} KO</span>
                 </div>
               ))}
-              <button
-                disabled={adminBountyPlayers.length === 0}
-                onClick={() => void updateGameState({ bountySnapshot: adminBountyPlayers })}
-                className="admin-btn-secondary text-sm py-2 disabled:opacity-30"
-              >
-                Сохранить на TV
-              </button>
+              {adminBountyPlayers.length > 0 && (
+                <div className="text-[#555] text-xs">Данные сохраняются на TV автоматически</div>
+              )}
             </div>
 
             {/* Logo toggle */}
