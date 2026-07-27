@@ -1334,8 +1334,7 @@ export function useGameState(readOnly = false) {
     const { data } = await supabase
       .from('tournaments')
       .select('*')
-      .order('finished_at', { ascending: false })
-      .limit(50);
+      .order('finished_at', { ascending: false });
     return data ?? [];
   }, [isSupabaseConfigured]);
 
