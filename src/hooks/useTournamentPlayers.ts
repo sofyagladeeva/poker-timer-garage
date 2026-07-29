@@ -37,6 +37,7 @@ const TOURNAMENT_UNIT_PRICE = 1000;
 const PROMO_DISCOUNT_FACTOR = 0.5;
 const SHARED_PLAYERS_BACKUP_KEEP_COUNT = 10;
 const SHARED_PLAYERS_BACKUP_FETCH_COUNT = 20;
+const SHARED_PLAYERS_SESSION_KEEP_COUNT = 10;
 const PERIODIC_BACKUP_INTERVAL_MS = 3 * 60 * 1000;
 
 type UpdateGameState = (patch: Partial<GameState>, immediate?: boolean) => Promise<boolean | undefined>;
@@ -2501,8 +2502,33 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
     });
     if (error) return false;
 
-    // Backups are pruned naturally by persistSharedPlayersBackup when new ones
-    // are created — never delete them here to avoid destroying recovery data.
+    // Cleanup old sessions in the background — keep only the last N sessions.
+    void (async () => {
+      const { data: allLiveRows } = await supabase
+        .from(SHARED_PLAYERS_TABLE)
+        .select('id')
+        .like('id', `${SHARED_PLAYERS_PREFIX}%`)
+        .order('id', { ascending: false });
+
+      if (!allLiveRows || allLiveRows.length === 0) return;
+
+      // Extract unique session IDs (format: __live_players__:{sessionId}:{suffix})
+      const sessionIds = [...new Set(
+        allLiveRows
+          .map(r => r.id.split(':')[1])
+          .filter(Boolean)
+      )].sort((a, b) => Number(b) - Number(a));
+
+      const oldSessionIds = sessionIds.slice(SHARED_PLAYERS_SESSION_KEEP_COUNT);
+      if (oldSessionIds.length === 0) return;
+
+      const idsToDelete = allLiveRows
+        .filter(r => oldSessionIds.some(sid => r.id.includes(`:${sid}:`)))
+        .map(r => r.id);
+
+      if (idsToDelete.length === 0) return;
+      await supabase.from(SHARED_PLAYERS_TABLE).delete().in('id', idsToDelete);
+    })();
 
     return true;
   }, [sharedEnabled]);
