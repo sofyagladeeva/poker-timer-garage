@@ -979,6 +979,7 @@ export function useGameState(readOnly = false) {
       const stateToSave = pendingUpsertState.current;
       const patchToPersist = pendingUpsertPatch.current;
       if (!stateToSave || !patchToPersist) return;
+      if (stateToSave.resetAt !== gameStateRef.current.resetAt) return;
       void persistGameState(stateToSave, patchToPersist, false);
     }, 300);
 
