@@ -219,6 +219,20 @@ export function hasMissingChipLeaderCollectionActive(error: unknown) {
   return message.includes('chipLeaderCollectionActive') || message.includes('chip_leader_collection_active');
 }
 
+export function hasMissingRatingSnapshot(error: unknown) {
+  const message = typeof error === 'object' && error && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : '';
+  return message.includes('rating_snapshot') || message.includes('ratingSnapshot');
+}
+
+export function hasMissingBountySnapshot(error: unknown) {
+  const message = typeof error === 'object' && error && 'message' in error
+    ? String((error as { message?: unknown }).message ?? '')
+    : '';
+  return message.includes('bounty_snapshot') || message.includes('bountySnapshot');
+}
+
 export function hasIntegerOverflow(error: unknown) {
   const message = typeof error === 'object' && error && 'message' in error
     ? String((error as { message?: unknown }).message ?? '')

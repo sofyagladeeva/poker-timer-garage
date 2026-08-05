@@ -8,7 +8,7 @@ import {
   stripUnsupportedChipLeaderCollectionColumns,
   stripUnsupportedChipLeaderColumns,
 } from '../gameStateSync';
-import { hasMissingAddonOpen, hasMissingBonusColumns, hasMissingChipLeaderCollectionActive, hasMissingChipLeaders, hasMissingNextGameBotId, hasMissingResetAt, hasMissingTableCount, hasIntegerOverflow, normalizeGameState } from '../gameStateMath';
+import { hasMissingAddonOpen, hasMissingBonusColumns, hasMissingBountySnapshot, hasMissingChipLeaderCollectionActive, hasMissingChipLeaders, hasMissingNextGameBotId, hasMissingRatingSnapshot, hasMissingResetAt, hasMissingTableCount, hasIntegerOverflow, normalizeGameState } from '../gameStateMath';
 import { buildAdvanceLevelPatch, buildAutoAdvanceAnchor } from '../levelAdvance';
 import type {
   GameState,
@@ -566,6 +566,23 @@ export function useGameState(readOnly = false) {
         const { addonOpen, ...noAddonOpen } = payload;
         void addonOpen;
         payload = noAddonOpen;
+        continue;
+      }
+
+      // rating_snapshot / bounty_snapshot columns missing — run supabase/rating_snapshot.sql
+      if (hasMissingRatingSnapshot(error)) {
+        console.error('game_state.rating_snapshot column missing — run supabase/rating_snapshot.sql', error);
+        const { rating_snapshot, ratingSnapshot, ...noRating } = payload;
+        void rating_snapshot; void ratingSnapshot;
+        payload = noRating;
+        continue;
+      }
+
+      if (hasMissingBountySnapshot(error)) {
+        console.error('game_state.bounty_snapshot column missing — run supabase/rating_snapshot.sql', error);
+        const { bounty_snapshot, bountySnapshot, ...noBounty } = payload;
+        void bounty_snapshot; void bountySnapshot;
+        payload = noBounty;
         continue;
       }
 
