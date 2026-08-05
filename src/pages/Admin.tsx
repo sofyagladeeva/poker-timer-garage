@@ -867,6 +867,12 @@ export function Admin() {
   const [displayForceSyncResult, setDisplayForceSyncResult] = useState<'ok' | 'error' | null>(null);
   const [displayReloadSent, setDisplayReloadSent] = useState(false);
   const [displayReloadAcks, setDisplayReloadAcks] = useState(0);
+
+  useEffect(() => {
+    const onAck = () => setDisplayReloadAcks(n => n + 1);
+    window.addEventListener('display-reload-ack', onAck);
+    return () => window.removeEventListener('display-reload-ack', onAck);
+  }, []);
   const [presenceNow, setPresenceNow] = useState(() => Date.now());
 
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([]);
@@ -3027,12 +3033,6 @@ export function Admin() {
   const canSaveChipLeaders = chipLeaderRowsReady === 3;
   const onlineDisplayClients = displayClients.filter(client => isDisplayClientOnline(client, presenceNow));
   const offlineDisplayClients = displayClients.filter(client => !isDisplayClientOnline(client, presenceNow));
-
-  useEffect(() => {
-    const onAck = () => setDisplayReloadAcks(n => n + 1);
-    window.addEventListener('display-reload-ack', onAck);
-    return () => window.removeEventListener('display-reload-ack', onAck);
-  }, []);
 
   const handleForceSyncDisplays = async () => {
     if (displayForceSyncBusy) return;
