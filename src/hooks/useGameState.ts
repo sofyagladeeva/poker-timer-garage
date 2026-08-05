@@ -696,7 +696,17 @@ export function useGameState(readOnly = false) {
           syncAuthoritativeClock(peerAuthoritativeNow, 'broadcast');
         }
         if (incoming._reload === true && readOnly) {
-          window.location.reload();
+          // Send ack so admin can see which TVs received the command
+          broadcastChannelRef.current?.send({
+            type: 'broadcast',
+            event: 'game_state',
+            payload: { _cid: clientId.current, _reload_ack: true },
+          });
+          setTimeout(() => window.location.reload(), 300);
+          return;
+        }
+        if (incoming._reload_ack === true && !readOnly) {
+          window.dispatchEvent(new CustomEvent('display-reload-ack'));
           return;
         }
         if (incoming._force === true) {

@@ -865,6 +865,8 @@ export function Admin() {
   const [displayClientsCollapsed, setDisplayClientsCollapsed] = useState(false);
   const [displayForceSyncBusy, setDisplayForceSyncBusy] = useState(false);
   const [displayForceSyncResult, setDisplayForceSyncResult] = useState<'ok' | 'error' | null>(null);
+  const [displayReloadSent, setDisplayReloadSent] = useState(false);
+  const [displayReloadAcks, setDisplayReloadAcks] = useState(0);
   const [presenceNow, setPresenceNow] = useState(() => Date.now());
 
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([]);
@@ -3026,6 +3028,12 @@ export function Admin() {
   const onlineDisplayClients = displayClients.filter(client => isDisplayClientOnline(client, presenceNow));
   const offlineDisplayClients = displayClients.filter(client => !isDisplayClientOnline(client, presenceNow));
 
+  useEffect(() => {
+    const onAck = () => setDisplayReloadAcks(n => n + 1);
+    window.addEventListener('display-reload-ack', onAck);
+    return () => window.removeEventListener('display-reload-ack', onAck);
+  }, []);
+
   const handleForceSyncDisplays = async () => {
     if (displayForceSyncBusy) return;
 
@@ -4030,11 +4038,28 @@ export function Admin() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => reloadDisplays()}
-                    className="rounded-full border border-[#444] bg-[#0A0A0A] px-3 py-1 text-xs font-bold text-[#aaa] active:scale-95 transition-transform"
+                    onClick={() => {
+                      setDisplayReloadAcks(0);
+                      const ok = reloadDisplays();
+                      if (ok) {
+                        setDisplayReloadSent(true);
+                        setTimeout(() => setDisplayReloadSent(false), 8000);
+                      }
+                    }}
+                    className={`rounded-full border px-3 py-1 text-xs font-bold active:scale-95 transition-all ${
+                      displayReloadAcks > 0
+                        ? 'border-green-700 bg-green-950 text-green-300'
+                        : displayReloadSent
+                          ? 'border-yellow-700 bg-yellow-950 text-yellow-300'
+                          : 'border-[#444] bg-[#0A0A0A] text-[#aaa]'
+                    }`}
                     title="Перезагрузить все TV-экраны — они получат свежие данные из базы"
                   >
-                    ↺ Перезагрузить экраны
+                    {displayReloadAcks > 0
+                      ? `✓ ${displayReloadAcks} экр. ответили`
+                      : displayReloadSent
+                        ? '⏳ Ждём ответа...'
+                        : '↺ Перезагрузить экраны'}
                   </button>
                   <button
                     type="button"
