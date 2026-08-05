@@ -819,14 +819,43 @@ export function Admin() {
     setMonth: setAdminBountyMonth,
     refetch: refetchAdminBounty,
   } = useBotBounty();
+  const [ratingSyncStatus, setRatingSyncStatus] = useState<'idle' | 'syncing' | 'ok' | 'error'>('idle');
+  const [bountySyncStatus, setBountySyncStatus] = useState<'idle' | 'syncing' | 'ok' | 'error'>('idle');
+  const ratingUserRefetchAt = useRef(0);
+  const bountyUserRefetchAt = useRef(0);
+
+  const handleRatingRefetch = () => {
+    ratingUserRefetchAt.current = Date.now();
+    setRatingSyncStatus('syncing');
+    refetchAdminRating();
+  };
+
+  const handleBountyRefetch = () => {
+    bountyUserRefetchAt.current = Date.now();
+    setBountySyncStatus('syncing');
+    refetchAdminBounty();
+  };
+
   useEffect(() => {
     if (adminRatingPlayers.length === 0) return;
-    void updateGameState({ ratingSnapshot: adminRatingPlayers });
+    const isUserRefetch = Date.now() - ratingUserRefetchAt.current < 15000;
+    void updateGameState({ ratingSnapshot: adminRatingPlayers }, true).then(ok => {
+      if (isUserRefetch) {
+        setRatingSyncStatus(ok ? 'ok' : 'error');
+        setTimeout(() => setRatingSyncStatus('idle'), 3000);
+      }
+    });
   }, [adminRatingPlayers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (adminBountyPlayers.length === 0) return;
-    void updateGameState({ bountySnapshot: adminBountyPlayers });
+    const isUserRefetch = Date.now() - bountyUserRefetchAt.current < 15000;
+    void updateGameState({ bountySnapshot: adminBountyPlayers }, true).then(ok => {
+      if (isUserRefetch) {
+        setBountySyncStatus(ok ? 'ok' : 'error');
+        setTimeout(() => setBountySyncStatus('idle'), 3000);
+      }
+    });
   }, [adminBountyPlayers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const gameStateSnapshotRef = useRef(gameState);
@@ -4532,7 +4561,17 @@ export function Admin() {
                   <div className="text-white font-medium text-sm">Топ-3 рейтинга на табло</div>
                   <div className="text-[#555] text-xs mt-0.5">Сайдбар во время турнира</div>
                 </div>
-                <button onClick={refetchAdminRating} className="admin-btn-secondary text-xs px-3 py-1">↻ Обновить</button>
+                <div className="flex items-center gap-2">
+                  {ratingSyncStatus === 'ok' && <span className="text-green-500 text-xs font-medium">✓ Отправлено</span>}
+                  {ratingSyncStatus === 'error' && <span className="text-red-500 text-xs font-medium">✗ Ошибка</span>}
+                  <button
+                    onClick={handleRatingRefetch}
+                    disabled={ratingSyncStatus === 'syncing'}
+                    className="admin-btn-secondary text-xs px-3 py-1 disabled:opacity-50"
+                  >
+                    {ratingSyncStatus === 'syncing' ? '...' : '↻ Обновить'}
+                  </button>
+                </div>
               </div>
               <div className="flex gap-1">
                 <button
@@ -4561,9 +4600,6 @@ export function Admin() {
                   <span className="text-[#E31E24] font-bold">{p.points.toFixed(1)} pts</span>
                 </div>
               ))}
-              {adminRatingPlayers.length > 0 && (
-                <div className="text-[#555] text-xs">Данные сохраняются на TV автоматически</div>
-              )}
             </div>
 
             {/* Top-3 bounty snapshot */}
@@ -4573,7 +4609,17 @@ export function Admin() {
                   <div className="text-white font-medium text-sm">Топ-3 баунти на табло</div>
                   <div className="text-[#555] text-xs mt-0.5">Сайдбар во время турнира</div>
                 </div>
-                <button onClick={refetchAdminBounty} className="admin-btn-secondary text-xs px-3 py-1">↻ Обновить</button>
+                <div className="flex items-center gap-2">
+                  {bountySyncStatus === 'ok' && <span className="text-green-500 text-xs font-medium">✓ Отправлено</span>}
+                  {bountySyncStatus === 'error' && <span className="text-red-500 text-xs font-medium">✗ Ошибка</span>}
+                  <button
+                    onClick={handleBountyRefetch}
+                    disabled={bountySyncStatus === 'syncing'}
+                    className="admin-btn-secondary text-xs px-3 py-1 disabled:opacity-50"
+                  >
+                    {bountySyncStatus === 'syncing' ? '...' : '↻ Обновить'}
+                  </button>
+                </div>
               </div>
               <div className="flex gap-1">
                 <button
