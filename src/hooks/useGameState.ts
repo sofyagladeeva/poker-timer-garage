@@ -695,6 +695,10 @@ export function useGameState(readOnly = false) {
         if (peerAuthoritativeNow !== null) {
           syncAuthoritativeClock(peerAuthoritativeNow, 'broadcast');
         }
+        if (incoming._reload === true && readOnly) {
+          window.location.reload();
+          return;
+        }
         if (incoming._force === true) {
           applyAuthoritativeGameState({ ...gameStateRef.current, ...incoming }, 'broadcast-force');
           return;
@@ -1132,6 +1136,16 @@ export function useGameState(readOnly = false) {
     return persistGameState(synced, persistedPatch, true);
   }, [applyAuthoritativeGameState, getAuthoritativeNow, isSupabaseConfigured, markClientActivity, persistGameState]);
 
+  const reloadDisplays = useCallback(() => {
+    if (!broadcastChannelRef.current) return false;
+    broadcastChannelRef.current.send({
+      type: 'broadcast',
+      event: 'game_state',
+      payload: { _cid: clientId.current, _reload: true },
+    });
+    return true;
+  }, []);
+
   const advanceToLevelIndex = useCallback((targetIndex: number) => {
     const patch = buildAdvanceLevelPatch(blindLevelsRef.current, targetIndex, getAuthoritativeNow());
     return updateGameState(patch, true);
@@ -1482,6 +1496,7 @@ export function useGameState(readOnly = false) {
     retrySync,
     updateGameState,
     forceSyncDisplays,
+    reloadDisplays,
     startTimer,
     pauseTimer,
     nextLevel,

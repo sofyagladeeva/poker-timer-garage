@@ -800,7 +800,7 @@ export function Admin() {
 
   const {
     gameState, blindLevels, combinations, syncReady, authoritativeReady, syncError, getAuthoritativeNow, retrySync,
-    updateGameState, forceSyncDisplays, startTimer, pauseTimer, nextLevel, prevLevel, resetTournament,
+    updateGameState, forceSyncDisplays, reloadDisplays, startTimer, pauseTimer, nextLevel, prevLevel, resetTournament,
     updateBlindLevels, updateCombinations, saveTournament, fetchTournaments, fetchTournamentArchiveDetails, fetchTournamentArchiveDetailsBatch, updateTournamentArchiveDetails, deleteTournament,
   } = useGameState();
   const {
@@ -4027,6 +4027,14 @@ export function Admin() {
                     }`}
                   >
                     {displayForceSyncBusy ? 'Синхр...' : displayForceSyncResult === 'ok' ? '✓ Отправлено' : displayForceSyncResult === 'error' ? '✕ Ошибка' : 'Синхронизировать'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => reloadDisplays()}
+                    className="rounded-full border border-[#444] bg-[#0A0A0A] px-3 py-1 text-xs font-bold text-[#aaa] active:scale-95 transition-transform"
+                    title="Перезагрузить все TV-экраны — они получат свежие данные из базы"
+                  >
+                    ↺ Перезагрузить экраны
                   </button>
                   <button
                     type="button"
