@@ -14,9 +14,13 @@ import {
   setKnockoutMarker,
 } from '../blindLevelMarkers';
 import {
-  deleteChipLeaderSubmissions,
+  buildTopChipLeaders,
+  deleteSessionChipLeaderSubmissions,
+  fetchSessionChipLeaderSubmissions,
+  getActiveChipLeaderTables,
   getChipLeaderHideAfterLevelIndex,
 } from '../chipLeaderSubmissions';
+import type { ChipLeaderSubmission } from '../types';
 import { calcTotalStack } from '../gameStateMath';
 import type {
   BlindLevel,
@@ -783,6 +787,7 @@ export function Admin() {
   const [backgroundUploadNote, setBackgroundUploadNote] = useState<string | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [chipLeaderDraftOverride, setChipLeaderDraftOverride] = useState<ChipLeaderDraftOverride>(null);
+  const [dealerSubmissions, setDealerSubmissions] = useState<ChipLeaderSubmission[]>([]);
   useEffect(() => {
     const onScroll = () => setShowScrollTop(window.scrollY > 400);
     window.addEventListener('scroll', onScroll, { passive: true });
@@ -984,10 +989,15 @@ export function Admin() {
   // ── Bot games list ─────────────────────────────────────────────────────
   const [botGames, setBotGames] = useState<BotGameSummary[]>([]);
   useEffect(() => {
-    fetch(`${BOT_API}/api/games?include_private=true`)
-      .then(r => r.json())
-      .then(setBotGames)
-      .catch(() => {});
+    const fetchGames = () => {
+      fetch(`${BOT_API}/api/games?include_private=true`)
+        .then(r => r.json())
+        .then(setBotGames)
+        .catch(() => {});
+    };
+    fetchGames();
+    const interval = setInterval(fetchGames, 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -1144,6 +1154,30 @@ export function Admin() {
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [authed, floorSessionId]);
+  useEffect(() => {
+    if (!authed || floorSessionId <= 0) return;
+    let cancelled = false;
+
+    const load = async () => {
+      const { submissions } = await fetchSessionChipLeaderSubmissions(floorSessionId);
+      if (!cancelled) setDealerSubmissions(submissions);
+    };
+
+    void load();
+
+    const chan = supabase
+      .channel(`chip-leader-submissions-admin-${floorSessionId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chip_leader_submissions' }, () => {
+        void load();
+      })
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(chan);
+    };
+  }, [authed, floorSessionId]);
+
   const {
     notifications: floorNotifications,
     pendingCount: floorPendingCount,
@@ -3027,6 +3061,15 @@ export function Admin() {
   const chipLeadersSavedForTarget = gameState.chipLeaders?.levelIndex === chipLeaderTargetLevelIndex
     ? gameState.chipLeaders.entries.length
     : 0;
+  const latestSubmissionLevelIndex = dealerSubmissions.length > 0
+    ? Math.max(...dealerSubmissions.map(s => s.levelIndex))
+    : null;
+  const latestDealerSubmissions = latestSubmissionLevelIndex !== null
+    ? dealerSubmissions.filter(s => s.levelIndex === latestSubmissionLevelIndex)
+    : [];
+  const activeTables = getActiveChipLeaderTables(tournamentPlayers);
+  const submittedTableNumbers = new Set(latestDealerSubmissions.map(s => s.tableNumber));
+  const pendingDealerTables = activeTables.filter(t => !submittedTableNumbers.has(t));
   const chipLeaderRowsReady = chipLeaderDraft.filter(row => (
     row.playerId && Math.round(Number(row.stack.replace(/\s+/g, '')) || 0) > 0
   )).length;
@@ -3130,15 +3173,6 @@ export function Admin() {
     setChipLeaderSaveError(null);
     setChipLeaderSaveNote(null);
 
-    if (floorSessionId > 0 && chipLeaderTargetLevelIndex >= 0) {
-      const cleared = await deleteChipLeaderSubmissions(floorSessionId, chipLeaderTargetLevelIndex);
-      if (!cleared.ok) {
-        console.error('Failed to clear chip leader submissions before collection', cleared.error);
-        setChipLeaderSaveError('Не удалось очистить прошлые отправки столов для текущего уровня.');
-        return;
-      }
-    }
-
     await updateGameState({
       chipLeaderCollectionActive: true,
       chipLeaders: null,
@@ -3150,14 +3184,23 @@ export function Admin() {
     setChipLeaderSaveNote('Сбор запущен. Кнопка появилась у дилеров.');
   };
 
-  const clearChipLeaders = () => {
+  const resetChipLeaderData = async () => {
     setChipLeaderSaveError(null);
     setChipLeaderSaveNote(null);
-    setChipLeaderDraftOverride({
-      levelIndex: chipLeaderTargetLevelIndex,
-      rows: createBlankChipLeaderDraft(),
-    });
+    if (floorSessionId > 0) {
+      const deleted = await deleteSessionChipLeaderSubmissions(floorSessionId);
+      if (!deleted.ok) {
+        setChipLeaderSaveError('Не удалось очистить данные столов.');
+        return;
+      }
+    }
+    setDealerSubmissions([]);
+    setChipLeaderDraftOverride({ levelIndex: chipLeaderTargetLevelIndex, rows: createBlankChipLeaderDraft() });
     updateGameState({ chipLeaders: null, chipLeaderCollectionActive: false }, true);
+  };
+
+  const clearChipLeadersFromScreen = () => {
+    updateGameState({ chipLeaders: null }, true);
   };
 
   const handleResetTournamentWithoutArchive = async () => {
@@ -4477,18 +4520,84 @@ export function Admin() {
                       : gameState.chipLeaderCollectionActive
                       ? 'Ручной сбор активен: кнопка доступна у дилеров'
                       : 'В перерывах кнопка появляется у дилеров автоматически. Вне перерыва запустите сбор вручную.'}
-                    {chipLeadersSavedForTarget > 0 ? ` · сохранено ${chipLeadersSavedForTarget}/3` : ''}
+                    {chipLeadersSavedForTarget > 0 ? ` · на экране ${chipLeadersSavedForTarget}/3` : ''}
                   </div>
                 </div>
-                {gameState.chipLeaders && (
-                  <button
-                    onClick={clearChipLeaders}
-                    className="text-[#666] hover:text-white text-xs px-2 py-1 rounded-lg bg-[#0A0A0A] border border-[#2D2D2D]"
-                  >
-                    Скрыть
-                  </button>
-                )}
+                <div className="flex gap-2 flex-shrink-0">
+                  {gameState.chipLeaders && (
+                    <button
+                      onClick={clearChipLeadersFromScreen}
+                      className="text-[#666] hover:text-white text-xs px-2 py-1 rounded-lg bg-[#0A0A0A] border border-[#2D2D2D]"
+                    >
+                      Скрыть с экрана
+                    </button>
+                  )}
+                  {(latestDealerSubmissions.length > 0 || gameState.chipLeaderCollectionActive || gameState.chipLeaders) && (
+                    <button
+                      onClick={() => void resetChipLeaderData()}
+                      className="text-[#666] hover:text-red-400 text-xs px-2 py-1 rounded-lg bg-[#0A0A0A] border border-[#2D2D2D]"
+                    >
+                      Сбросить данные
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {/* Dealer submissions */}
+              {latestDealerSubmissions.length > 0 && (
+                <div className="mb-3 rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-3 flex flex-col gap-2">
+                  <div className="text-[#888] text-xs uppercase tracking-widest mb-1">
+                    Данные от дилеров
+                    {latestSubmissionLevelIndex !== null && latestSubmissionLevelIndex !== chipLeaderTargetLevelIndex && (
+                      <span className="ml-2 text-[#555] normal-case">
+                        (уровень {latestSubmissionLevelIndex + 1})
+                      </span>
+                    )}
+                  </div>
+                  {latestDealerSubmissions.map(sub => (
+                    <div key={sub.tableNumber} className="flex flex-col gap-0.5">
+                      <div className="text-[#666] text-xs">Стол {sub.tableNumber}</div>
+                      {sub.entries.length > 0 ? (
+                        <div className="flex flex-col gap-0.5 pl-2">
+                          {sub.entries
+                            .slice()
+                            .sort((a, b) => b.stack - a.stack)
+                            .map(entry => (
+                              <div key={entry.playerId} className="flex justify-between text-sm">
+                                <span className="text-white">{entry.name}</span>
+                                <span className="text-[#888] tabular-nums">{entry.stack.toLocaleString('ru-RU')}</span>
+                              </div>
+                            ))}
+                        </div>
+                      ) : (
+                        <div className="text-[#555] text-xs pl-2">нет данных</div>
+                      )}
+                    </div>
+                  ))}
+                  {pendingDealerTables.length > 0 && (
+                    <div className="text-[#555] text-xs mt-1">
+                      Ожидание: {pendingDealerTables.map(t => `стол ${t}`).join(', ')}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      const top3 = buildTopChipLeaders(latestDealerSubmissions);
+                      if (top3.length === 0) return;
+                      void updateGameState({
+                        chipLeaders: {
+                          levelIndex: chipLeaderTargetLevelIndex,
+                          hideAfterLevelIndex: getChipLeaderHideAfterLevelIndex(gameState.status, chipLeaderTargetLevelIndex),
+                          entries: top3,
+                        },
+                        chipLeaderCollectionActive: false,
+                      }, true);
+                    }}
+                    className="admin-btn-primary py-2 text-sm mt-1"
+                  >
+                    Вывести топ-3 на экран
+                  </button>
+                </div>
+              )}
 
               {chipLeaderCandidatePlayers.length === 0 ? (
                 <div className="rounded-xl border border-[#2D2D2D] bg-[#0A0A0A] px-3 py-3 text-[#666] text-sm">

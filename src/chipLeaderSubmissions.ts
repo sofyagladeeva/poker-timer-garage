@@ -147,3 +147,27 @@ export async function deleteChipLeaderSubmissions(sessionId: number, levelIndex:
 
   return { ok: !error, error };
 }
+
+export async function fetchSessionChipLeaderSubmissions(sessionId: number) {
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('session_id, level_index, table_number, entries, submitted_at')
+    .eq('session_id', sessionId)
+    .order('level_index', { ascending: false })
+    .order('table_number', { ascending: true });
+
+  if (error) return { submissions: [] as ChipLeaderSubmission[], error };
+  return {
+    submissions: ((data ?? []) as SubmissionRow[]).map(toSubmission),
+    error: null,
+  };
+}
+
+export async function deleteSessionChipLeaderSubmissions(sessionId: number) {
+  const { error } = await supabase
+    .from(TABLE)
+    .delete()
+    .eq('session_id', sessionId);
+
+  return { ok: !error, error };
+}
