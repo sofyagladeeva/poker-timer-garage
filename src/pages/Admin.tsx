@@ -105,7 +105,7 @@ import {
 import { usePlayerProfiles } from '../hooks/usePlayerProfiles';
 import { upsertPlayerProfile } from '../playerProfiles';
 import { usePlayerGifts } from '../hooks/usePlayerGifts';
-import { createGift, redeemGift, unredeemGift, cancelGift, updateGift, reactivateGift, markGiftNotified, fetchAllGifts, isGiftValidNow } from '../playerGifts';
+import { createGift, redeemGift, unredeemGift, cancelGift, updateGift, reactivateGift, markGiftNotified, fetchAllGifts } from '../playerGifts';
 import type { PlayerGift, PlayerGiftType, PlayerGiftValidCondition } from '../types';
 
 // ─── Error Boundary ────────────────────────────────────────────────────────
@@ -233,7 +233,6 @@ function isPassiveBotPlayerForUpcomingGame(player: {
   status: string;
   rebuyCount: number;
   addonCount: number;
-  bonusCount: number;
   bounty: number;
   paymentDue: number;
   cashPaid: number;
@@ -247,7 +246,6 @@ function isPassiveBotPlayerForUpcomingGame(player: {
     player.status !== 'out' &&
     player.rebuyCount === 0 &&
     player.addonCount === 0 &&
-    player.bonusCount === 0 &&
     player.bounty === 0 &&
     player.paymentDue === 0 &&
     player.cashPaid === 0 &&
@@ -262,7 +260,6 @@ function hasLiveTournamentProgress(player: {
   status: string;
   rebuyCount: number;
   addonCount: number;
-  bonusCount: number;
   bounty: number;
   paymentDue: number;
   cashPaid: number;
@@ -275,7 +272,6 @@ function hasLiveTournamentProgress(player: {
     player.status === 'out' ||
     player.rebuyCount > 0 ||
     player.addonCount > 0 ||
-    player.bonusCount > 0 ||
     player.bounty > 0 ||
     player.paymentDue > 0 ||
     player.cashPaid > 0 ||
@@ -1380,13 +1376,15 @@ export function Admin() {
       const winner = tournamentPlayers.find(p => p.place === 1 && p.telegramId != null);
       if (winner?.telegramId != null) {
         try {
+          const winnerGiftValidUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
           const winnerGift = await createGift({
             telegramId: winner.telegramId,
             playerName: winner.name,
             username: winner.username ?? null,
             type: 'free_entry',
             comment: null,
-            validCondition: 'next_tournament',
+            validCondition: 'until_date',
+            validUntil: winnerGiftValidUntil,
             source: 'auto_winner',
             issuedAtSessionId: floorSessionId,
             issuedAtTournamentBotId: gameState.tournamentBotId ?? null,
@@ -2832,23 +2830,6 @@ export function Admin() {
     }
   }, [reloadGifts, tournamentPlayers, updatePlayerField]);
 
-  const autoAppliedGiftIdsRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (!selectedTournamentIsClassic) return;
-    for (const player of tournamentPlayers) {
-      if (player.telegramId == null) continue;
-      const playerGifts = giftsByTelegramId.get(player.telegramId) ?? [];
-      for (const gift of playerGifts) {
-        if (gift.type !== 'free_entry') continue;
-        if (gift.status !== 'active') continue;
-        if (!isGiftValidNow(gift, gameState.tournamentBotId ?? null, gameState.tournamentTitle || null, floorSessionId)) continue;
-        if (autoAppliedGiftIdsRef.current.has(gift.id)) continue;
-        autoAppliedGiftIdsRef.current.add(gift.id);
-        void handleRedeemGift(gift, player);
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tournamentPlayers, giftsByTelegramId, selectedTournamentIsClassic]);
 
   const handleCreateGift = useCallback(async (
     player: LiveTournamentPlayer,
