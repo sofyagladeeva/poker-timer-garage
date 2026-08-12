@@ -581,11 +581,6 @@ function isTransientBotRosterPlayer(player: LiveTournamentPlayer) {
     player.source === 'bot' &&
     player.arrivalStatus === 'absent' &&
     player.status !== 'out' &&
-    clampWhole(player.rebuyCount) === 0 &&
-    clampWhole(player.addonCount) === 0 &&
-    clampWhole(player.bonusCount) === 0 &&
-    clampWhole(player.bounty) === 0 &&
-    clampWhole(player.bonusRcPoints) === 0 &&
     clampWhole(player.cashPaid) === 0 &&
     clampWhole(player.cardPaid) === 0 &&
     player.place === null &&
