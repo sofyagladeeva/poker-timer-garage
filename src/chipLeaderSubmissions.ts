@@ -97,8 +97,8 @@ export function buildTopChipLeaders(submissions: ChipLeaderSubmission[]): ChipLe
     }));
 }
 
-export function getChipLeaderHideAfterLevelIndex(status: string, currentLevelIndex: number) {
-  return status === 'break' ? currentLevelIndex + 1 : currentLevelIndex;
+export function getChipLeaderHideAfterLevelIndex(_status: string, currentLevelIndex: number) {
+  return currentLevelIndex + 1;
 }
 
 export async function fetchChipLeaderSubmissions(sessionId: number, levelIndex: number) {
