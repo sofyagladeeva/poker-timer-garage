@@ -1479,8 +1479,7 @@ function MobilePlayerCard({
 
   return (
     <div className="rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+      <div className="min-w-0">
           <div className="flex items-center gap-1.5">
               <div className="text-white font-black text-base leading-tight break-words">{player.name}</div>
               <button
@@ -1559,7 +1558,7 @@ function MobilePlayerCard({
           )}
         </div>
 
-        <div className="shrink-0 grid grid-cols-2 gap-2 min-w-[156px]">
+        <div className="mt-3 grid grid-cols-2 gap-2">
           <div className="rounded-xl border border-[#2D2D2D] bg-[#141414] px-2 py-2 text-center">
             <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Выбыл</div>
             <button
@@ -1589,7 +1588,6 @@ function MobilePlayerCard({
             )}
           </div>
         </div>
-      </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button
