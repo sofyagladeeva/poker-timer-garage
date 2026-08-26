@@ -2326,7 +2326,7 @@ export function useTournamentPlayers({ gameState, updateGameState, tournamentDat
 
       const nextStatus = arrivalStatus === 'absent'
         ? deriveBaseStatus(player.registrationSource)
-        : 'active';
+        : player.status === 'out' ? 'out' : 'active';
       const becameActive = player.arrivalStatus === 'absent' && arrivalStatus !== 'absent';
       const nextSortOrder = becameActive ? getNextPlayerSortOrder(current) : player.sortOrder;
 

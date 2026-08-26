@@ -1163,6 +1163,7 @@ export function useGameState(readOnly = false) {
 
   const nextLevel = useCallback(() => {
     const nextIndex = gameStateRef.current.currentLevelIndex + 1;
+    if (nextIndex >= blindLevelsRef.current.length) return;
     return advanceToLevelIndex(nextIndex);
   }, [advanceToLevelIndex]);
 

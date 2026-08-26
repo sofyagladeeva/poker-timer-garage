@@ -44,11 +44,55 @@ function occupancyStyle(count: number, idealMin: number): {
   return { badge: 'text-orange-400', border: 'border-orange-700/60', bar: 'bg-orange-500' };
 }
 
+// Собирает свободные боксы, чередуя столы от наименее заполненного к наиболее.
+// Результат: при раздаче по порядку каждый стол получает игроков равномерно.
+function collectFreeSeatsInterleaved(
+  tableNumbers: number[],
+  occupiedSeats: Set<string>
+): { tableNumber: number; seatNumber: number }[] {
+  // Сортируем столы: наименее заполненный первым
+  const sorted = [...tableNumbers].sort((a, b) => {
+    const aFree = Array.from({ length: SEATS_PER_TABLE }, (_, i) => i + 1).filter(s => !occupiedSeats.has(`${a}:${s}`)).length;
+    const bFree = Array.from({ length: SEATS_PER_TABLE }, (_, i) => i + 1).filter(s => !occupiedSeats.has(`${b}:${s}`)).length;
+    return bFree - aFree;
+  });
+
+  // Для каждого стола — список его свободных боксов
+  const freeBySeat = sorted.map(t =>
+    Array.from({ length: SEATS_PER_TABLE }, (_, i) => i + 1)
+      .filter(s => !occupiedSeats.has(`${t}:${s}`))
+      .map(s => ({ tableNumber: t, seatNumber: s }))
+  );
+
+  // Чередуем: берём по одному боксу с каждого стола по кругу
+  const result: { tableNumber: number; seatNumber: number }[] = [];
+  let round = 0;
+  while (true) {
+    let added = false;
+    for (const seats of freeBySeat) {
+      if (round < seats.length) { result.push(seats[round]); added = true; }
+    }
+    if (!added) break;
+    round++;
+  }
+  return result;
+}
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 export function TablesTab({ tableCount, players, onUpdateTableCount, onAssignSeat, onUpdatePlayerField, onMarkPlayerOut }: Props) {
   const [movingPlayer, setMovingPlayer] = useState<LiveTournamentPlayer | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [merging, setMerging] = useState(false);
   const [balancing, setBalancing] = useState(false);
+  const [seating, setSeating] = useState(false);
 
   const activePlayers = players.filter(p => p.arrivalStatus !== 'absent' && p.status !== 'out');
   const unseated = activePlayers.filter(p => p.tableNumber == null || p.seatNumber == null);
@@ -80,38 +124,48 @@ export function TablesTab({ tableCount, players, onUpdateTableCount, onAssignSea
   const handleMerge = async () => {
     setMerging(true);
     try {
-      // Игроки с убираемых столов (tableNumber > neededTables)
-      const playersToMove = activePlayers.filter(
-        p => p.tableNumber != null && p.tableNumber > neededTables
-      );
+      // Игроки для переезда: с закрываемых столов + unseated
+      const playersToMove = shuffleArray(activePlayers.filter(
+        p => (p.tableNumber != null && p.tableNumber > neededTables) || p.tableNumber == null || p.seatNumber == null
+      ));
 
-      // Занятые боксы в остающихся столах
+      // Занятые боксы в остающихся столах (только остающиеся и сидящие)
       const occupiedSeats = new Set(
         activePlayers
           .filter(p => p.tableNumber != null && p.tableNumber <= neededTables && p.seatNumber != null)
           .map(p => `${p.tableNumber}:${p.seatNumber}`)
       );
 
-      // Свободные боксы в столах 1..neededTables
-      const freeSeats: { tableNumber: number; seatNumber: number }[] = [];
-      for (let t = 1; t <= neededTables; t++) {
-        for (let s = 1; s <= SEATS_PER_TABLE; s++) {
-          if (!occupiedSeats.has(`${t}:${s}`)) {
-            freeSeats.push({ tableNumber: t, seatNumber: s });
-          }
-        }
-      }
+      const remainingTables = Array.from({ length: neededTables }, (_, i) => i + 1);
+      const freeSeats = collectFreeSeatsInterleaved(remainingTables, occupiedSeats);
 
-      for (let i = 0; i < playersToMove.length; i++) {
-        const seat = freeSeats[i];
-        if (seat) {
-          await onAssignSeat(playersToMove[i].id, seat.tableNumber, seat.seatNumber);
-        }
+      for (let i = 0; i < playersToMove.length && i < freeSeats.length; i++) {
+        await onAssignSeat(playersToMove[i].id, freeSeats[i].tableNumber, freeSeats[i].seatNumber);
       }
 
       onUpdateTableCount(neededTables);
     } finally {
       setMerging(false);
+    }
+  };
+
+  const handleRandomSeat = async () => {
+    if (unseated.length === 0) return;
+    setSeating(true);
+    try {
+      const allTableNumbers = Array.from({ length: tableCount }, (_, i) => i + 1);
+      const occupiedSeats = new Set(
+        activePlayers
+          .filter(p => p.tableNumber != null && p.seatNumber != null)
+          .map(p => `${p.tableNumber}:${p.seatNumber}`)
+      );
+      const freeSeats = collectFreeSeatsInterleaved(allTableNumbers, occupiedSeats);
+      const shuffled = shuffleArray(unseated);
+      for (let i = 0; i < shuffled.length && i < freeSeats.length; i++) {
+        await onAssignSeat(shuffled[i].id, freeSeats[i].tableNumber, freeSeats[i].seatNumber);
+      }
+    } finally {
+      setSeating(false);
     }
   };
 
@@ -302,11 +356,21 @@ export function TablesTab({ tableCount, players, onUpdateTableCount, onAssignSea
         </div>
       ) : (
         <div className="bg-[#111] border border-amber-800/50 rounded-2xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="text-amber-400 text-lg">⚠</div>
-            <div className="text-amber-300 font-bold text-sm">
-              {unseated.length} {unseated.length === 1 ? 'игрок' : unseated.length < 5 ? 'игрока' : 'игроков'} без места
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2">
+              <div className="text-amber-400 text-lg">⚠</div>
+              <div className="text-amber-300 font-bold text-sm">
+                {unseated.length} {unseated.length === 1 ? 'игрок' : unseated.length < 5 ? 'игрока' : 'игроков'} без места
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={() => void handleRandomSeat()}
+              disabled={seating}
+              className="shrink-0 px-3 py-1.5 rounded-xl bg-amber-700/40 border border-amber-600/60 text-amber-200 text-xs font-bold hover:bg-amber-700/60 transition-colors disabled:opacity-50"
+            >
+              {seating ? '...' : 'Рассадить случайно'}
+            </button>
           </div>
           <div className="flex flex-wrap gap-2">
             {unseated.map(p => (

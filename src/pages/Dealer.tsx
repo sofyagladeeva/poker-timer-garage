@@ -476,13 +476,13 @@ function SeatCard({
             ) : (
               <button type="button" onClick={startEdit}
                 className="text-left flex items-center gap-1 group min-w-0">
-                <span className="text-base landscape:text-sm pointer-fine:text-sm font-black text-white group-hover:text-[#EEE] truncate leading-tight">
+                <span className="text-sm landscape:text-xs pointer-fine:text-xs font-black text-white group-hover:text-[#EEE] truncate leading-tight">
                   {player.realName || <span className="italic text-[#444] font-normal">имя...</span>}
                 </span>
                 <span className="shrink-0 text-[10px] text-[#333] group-hover:text-[#666]">✏</span>
               </button>
             )}
-            <div className="text-[#666] text-sm landscape:text-xs pointer-fine:text-xs leading-tight truncate">{player.name}</div>
+            <div className="text-[#666] text-[10px] landscape:text-[9px] pointer-fine:text-[9px] leading-tight truncate">{player.name}</div>
           </div>
 
           {/* В portrait — кнопки вертикально, в landscape — горизонтально */}
