@@ -667,6 +667,23 @@ function findImportedMatch(players: LiveTournamentPlayer[], importedPlayer: Impo
     return nameMatches[0];
   }
 
+  // Fallback: ручной игрок с тем же именем или username — тот же человек, просто добавлен до регистрации в боте
+  const manualPlayers = players.filter(player => player.source === 'manual');
+
+  if (normalizedUsername) {
+    const manualUsernameMatch = manualPlayers.find(player =>
+      player.username?.trim().toLowerCase() === normalizedUsername
+    );
+    if (manualUsernameMatch) return manualUsernameMatch;
+  }
+
+  const manualNameMatches = manualPlayers.filter(player =>
+    player.name.trim().toLowerCase() === normalizedName
+  );
+  if (manualNameMatches.length === 1) {
+    return manualNameMatches[0];
+  }
+
   return undefined;
 }
 
