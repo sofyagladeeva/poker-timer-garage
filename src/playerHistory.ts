@@ -89,7 +89,11 @@ export function aggregatePlayerHistory(
         arrivalStatus: p.arrivalStatus,
       };
 
-      const existing = aliases.map(alias => aliasMap.get(alias)).find(Boolean);
+      const existing =
+        aliases.map(alias => aliasMap.get(alias)).find(Boolean) ??
+        // Fallback: player previously stored without username (only nm: key),
+        // now appears with a username — same person, different alias set.
+        (p.username ? aliasMap.get(`nm:${normalizePlayerName(p.name)}`) : undefined);
       if (existing) {
         existing.tournaments.push(entry);
         // Always update identity from the latest tournament
