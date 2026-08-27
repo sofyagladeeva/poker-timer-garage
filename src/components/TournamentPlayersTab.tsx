@@ -124,6 +124,9 @@ export function TournamentPlayersTab({
   const [seatModalBusy, setSeatModalBusy] = useState(false);
   const [outDialogBusy, setOutDialogBusy] = useState(false);
   const [contactPlayer, setContactPlayer] = useState<LiveTournamentPlayer | null>(null);
+  const [contactEditMode, setContactEditMode] = useState(false);
+  const [contactDraft, setContactDraft] = useState<{ realName: string; phone: string; instagram: string }>({ realName: '', phone: '', instagram: '' });
+  const [contactSaving, setContactSaving] = useState(false);
   const [returnBountyNotice, setReturnBountyNotice] = useState<{ playerName: string; bounty: number } | null>(null);
   const [giftArrivalNotice, setGiftArrivalNotice] = useState<{ player: LiveTournamentPlayer; gifts: PlayerGift[] } | null>(null);
   const [giftDialogPlayer, setGiftDialogPlayer] = useState<LiveTournamentPlayer | null>(null);
@@ -961,7 +964,7 @@ export function TournamentPlayersTab({
       {contactPlayer && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-3 sm:items-center sm:p-6"
-          onClick={() => setContactPlayer(null)}
+          onClick={() => { setContactPlayer(null); setContactEditMode(false); }}
         >
           <div
             className="w-full max-w-sm rounded-3xl border border-[#2D2D2D] bg-[#111] shadow-2xl"
@@ -970,76 +973,153 @@ export function TournamentPlayersTab({
             <div className="border-b border-[#2D2D2D] px-5 py-4 flex items-start justify-between gap-3">
               <div>
                 <div className="text-white font-black text-base break-words">{contactPlayer.name}</div>
-                {contactPlayer.realName && (
+                {contactPlayer.realName && !contactEditMode && (
                   <div className="mt-0.5 text-sm text-[#999]">{contactPlayer.realName}</div>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => setContactPlayer(null)}
-                className="shrink-0 text-[#666] hover:text-white text-lg leading-none"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (contactEditMode) {
+                      setContactEditMode(false);
+                    } else {
+                      setContactDraft({
+                        realName: contactPlayer.realName ?? '',
+                        phone: contactPlayer.phone ?? '',
+                        instagram: contactPlayer.instagram ?? '',
+                      });
+                      setContactEditMode(true);
+                    }
+                  }}
+                  className="text-[#888] hover:text-white text-xs border border-[#3D3D3D] hover:border-[#888] rounded-full px-3 py-1 transition-colors"
+                >
+                  {contactEditMode ? 'Отмена' : 'Изменить'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setContactPlayer(null); setContactEditMode(false); }}
+                  className="text-[#666] hover:text-white text-lg leading-none"
+                >✕</button>
+              </div>
             </div>
-            <div className="px-5 py-4 flex flex-col gap-3">
-              {contactPlayer.phone ? (
-                <a
-                  href={`tel:${contactPlayer.phone}`}
-                  className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 hover:border-[#444] transition-colors"
-                >
-                  <span className="text-lg">📞</span>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Телефон</div>
-                    <div className="text-white font-bold text-sm mt-0.5">{contactPlayer.phone}</div>
-                  </div>
-                </a>
-              ) : (
-                <div className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 opacity-40">
-                  <span className="text-lg">📞</span>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Телефон</div>
-                    <div className="text-[#666] text-sm mt-0.5">Не указан</div>
-                  </div>
+
+            {contactEditMode ? (
+              <div className="px-5 py-4 flex flex-col gap-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1">Настоящее имя</div>
+                  <input
+                    className="admin-input"
+                    placeholder="Иван Иванов"
+                    value={contactDraft.realName}
+                    onChange={e => setContactDraft(d => ({ ...d, realName: e.target.value }))}
+                  />
                 </div>
-              )}
-              {contactPlayer.instagram && (
-                <a
-                  href={`https://instagram.com/${contactPlayer.instagram.replace(/^@/, '')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 hover:border-[#444] transition-colors"
-                >
-                  <span className="text-lg">📸</span>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Instagram</div>
-                    <div className="text-white font-bold text-sm mt-0.5">{contactPlayer.instagram}</div>
-                  </div>
-                </a>
-              )}
-              {contactPlayer.username ? (
-                <a
-                  href={`https://t.me/${contactPlayer.username}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 hover:border-[#444] transition-colors"
-                >
-                  <span className="text-lg">✈️</span>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Telegram</div>
-                    <div className="text-white font-bold text-sm mt-0.5">@{contactPlayer.username}</div>
-                  </div>
-                </a>
-              ) : contactPlayer.telegramId ? (
-                <div className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3">
-                  <span className="text-lg">✈️</span>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Telegram ID</div>
-                    <div className="text-white font-bold text-sm mt-0.5">{contactPlayer.telegramId}</div>
-                  </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1">Телефон</div>
+                  <input
+                    className="admin-input"
+                    placeholder="+7 900 000 00 00"
+                    value={contactDraft.phone}
+                    onChange={e => setContactDraft(d => ({ ...d, phone: e.target.value }))}
+                  />
                 </div>
-              ) : null}
-            </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-[#666] mb-1">Instagram</div>
+                  <input
+                    className="admin-input"
+                    placeholder="@username"
+                    value={contactDraft.instagram}
+                    onChange={e => setContactDraft(d => ({ ...d, instagram: e.target.value }))}
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={contactSaving}
+                  onClick={async () => {
+                    setContactSaving(true);
+                    try {
+                      await onUpdatePlayerField(contactPlayer.id, {
+                        realName: contactDraft.realName.trim() || null,
+                        phone: contactDraft.phone.trim() || null,
+                        instagram: contactDraft.instagram.trim() || null,
+                      });
+                      setContactPlayer(prev => prev ? {
+                        ...prev,
+                        realName: contactDraft.realName.trim() || null,
+                        phone: contactDraft.phone.trim() || null,
+                        instagram: contactDraft.instagram.trim() || null,
+                      } : null);
+                      setContactEditMode(false);
+                    } finally {
+                      setContactSaving(false);
+                    }
+                  }}
+                  className="admin-btn-primary w-full py-2.5"
+                >
+                  {contactSaving ? 'Сохранение...' : 'Сохранить'}
+                </button>
+              </div>
+            ) : (
+              <div className="px-5 py-4 flex flex-col gap-3">
+                {contactPlayer.phone ? (
+                  <a
+                    href={`tel:${contactPlayer.phone}`}
+                    className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 hover:border-[#444] transition-colors"
+                  >
+                    <span className="text-lg">📞</span>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Телефон</div>
+                      <div className="text-white font-bold text-sm mt-0.5">{contactPlayer.phone}</div>
+                    </div>
+                  </a>
+                ) : (
+                  <div className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 opacity-40">
+                    <span className="text-lg">📞</span>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Телефон</div>
+                      <div className="text-[#666] text-sm mt-0.5">Не указан</div>
+                    </div>
+                  </div>
+                )}
+                {contactPlayer.instagram && (
+                  <a
+                    href={`https://instagram.com/${contactPlayer.instagram.replace(/^@/, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 hover:border-[#444] transition-colors"
+                  >
+                    <span className="text-lg">📸</span>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Instagram</div>
+                      <div className="text-white font-bold text-sm mt-0.5">{contactPlayer.instagram}</div>
+                    </div>
+                  </a>
+                )}
+                {contactPlayer.username ? (
+                  <a
+                    href={`https://t.me/${contactPlayer.username}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3 hover:border-[#444] transition-colors"
+                  >
+                    <span className="text-lg">✈️</span>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Telegram</div>
+                      <div className="text-white font-bold text-sm mt-0.5">@{contactPlayer.username}</div>
+                    </div>
+                  </a>
+                ) : contactPlayer.telegramId ? (
+                  <div className="flex items-center gap-3 rounded-2xl border border-[#2D2D2D] bg-[#0A0A0A] px-4 py-3">
+                    <span className="text-lg">✈️</span>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-[#666]">Telegram ID</div>
+                      <div className="text-white font-bold text-sm mt-0.5">{contactPlayer.telegramId}</div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
         </div>
       )}
