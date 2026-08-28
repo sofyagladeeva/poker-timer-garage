@@ -439,6 +439,7 @@ export interface PlayerGift {
   validTournamentTitle: string | null;
   validUntil: string | null;
   status: PlayerGiftStatus;
+  multiUse: boolean;
   source: PlayerGiftSource;
   sourceMonth: string | null;
   issuedAtSessionId: number | null;

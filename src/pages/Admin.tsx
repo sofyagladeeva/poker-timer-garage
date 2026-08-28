@@ -943,6 +943,7 @@ export function Admin() {
     validCondition: PlayerGiftValidCondition;
     validUntil: string;
     validTournamentTitle: string;
+    multiUse: boolean;
   } | null>(null);
   const [giftPlayerSearch, setGiftPlayerSearch] = useState('');
   const [selectedGiftPlayer, setSelectedGiftPlayer] = useState<MergedPlayerAggregate | null>(null);
@@ -2771,8 +2772,7 @@ export function Admin() {
     setCustomGameTitle('');
   };
 
-  const isMultiUseGift = (gift: PlayerGift) =>
-    gift.validCondition === 'until_date' || gift.validCondition === 'next_month';
+  const isMultiUseGift = (gift: PlayerGift) => gift.multiUse === true;
 
   const handleRedeemGift = useCallback(async (gift: PlayerGift, player: LiveTournamentPlayer) => {
     if (gift.type === 'free_entry') {
@@ -2838,6 +2838,7 @@ export function Admin() {
     validCondition: PlayerGiftValidCondition,
     validUntil: string | null,
     validTournamentTitle: string | null,
+    multiUse: boolean,
   ) => {
     const gift = await createGift({
       telegramId: player.telegramId ?? null,
@@ -2848,6 +2849,7 @@ export function Admin() {
       validCondition,
       validUntil,
       validTournamentTitle,
+      multiUse,
       issuedAtSessionId: floorSessionId,
       issuedAtTournamentBotId: gameState.tournamentBotId ?? null,
       issuedAtTournamentTitle: gameState.tournamentTitle || null,
@@ -2919,6 +2921,7 @@ export function Admin() {
         validCondition: giftDraft.validCondition,
         validUntil,
         validTournamentTitle,
+        multiUse: giftDraft.multiUse,
         issuedBy: 'admin',
       });
       let notifyStatus: 'sent' | 'skipped' | 'error' | null = null;
@@ -3260,6 +3263,7 @@ export function Admin() {
         comment: null,
         validCondition: 'next_month',
         validUntil,
+        multiUse: true,
         source,
         sourceMonth: month,
       });
@@ -3303,6 +3307,7 @@ export function Admin() {
           comment: null,
           validCondition: 'next_month',
           validUntil,
+          multiUse: true,
           source: 'auto_monthly_rating',
           sourceMonth: month,
         }),
@@ -3314,6 +3319,7 @@ export function Admin() {
           comment: null,
           validCondition: 'next_month',
           validUntil,
+          multiUse: true,
           source: 'auto_monthly_double',
           sourceMonth: month,
         }),
@@ -6643,7 +6649,7 @@ export function Admin() {
               <div className="text-xs font-bold uppercase tracking-widest text-[#666]">Призы игроков</div>
               <button
                 type="button"
-                onClick={() => { setGiftDraft({ type: 'free_entry', comment: '', validCondition: 'next_tournament', validUntil: '', validTournamentTitle: '' }); setSelectedGiftPlayer(null); setGiftPlayerSearch(''); }}
+                onClick={() => { setGiftDraft({ type: 'free_entry', comment: '', validCondition: 'next_tournament', validUntil: '', validTournamentTitle: '', multiUse: false }); setSelectedGiftPlayer(null); setGiftPlayerSearch(''); }}
                 className="admin-btn-primary min-h-10 w-full px-4 py-2 text-sm sm:w-auto"
               >
                 + Создать приз
@@ -6727,6 +6733,20 @@ export function Admin() {
                       className="admin-input"
                     />
                   )}
+                  <button
+                    type="button"
+                    onClick={() => setGiftDraft(d => d && ({ ...d, multiUse: !d.multiUse }))}
+                    className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-xs font-bold transition-colors ${
+                      giftDraft.multiUse
+                        ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
+                        : 'border-[#2D2D2D] bg-[#141414] text-[#888]'
+                    }`}
+                  >
+                    <span>Многоразовый</span>
+                    <span className="text-[10px] font-normal opacity-60">
+                      {giftDraft.multiUse ? 'Использовать в каждой игре до конца срока' : 'Использовать один раз'}
+                    </span>
+                  </button>
                   <div className="flex flex-col gap-2">
                     <div className="text-[10px] uppercase tracking-widest text-[#666]">Получатель</div>
                     <input

@@ -14,6 +14,7 @@ function normalizeGiftRow(row: Record<string, unknown>): PlayerGift {
     validTournamentTitle: row.valid_tournament_title != null ? String(row.valid_tournament_title) : null,
     validUntil: row.valid_until != null ? String(row.valid_until) : null,
     status: (row.status as PlayerGiftStatus) ?? 'active',
+    multiUse: Boolean(row.multi_use ?? false),
     source: (row.source as PlayerGiftSource) ?? 'manual',
     sourceMonth: row.source_month != null ? String(row.source_month) : null,
     issuedAtSessionId: row.issued_at_session_id != null ? Number(row.issued_at_session_id) : null,
@@ -87,6 +88,7 @@ export interface CreateGiftParams {
   validTournamentBotId?: number | null;
   validTournamentTitle?: string | null;
   validUntil?: string | null;
+  multiUse?: boolean;
   source?: PlayerGiftSource;
   sourceMonth?: string | null;
   issuedAtSessionId?: number | null;
@@ -109,6 +111,7 @@ export async function createGift(params: CreateGiftParams): Promise<PlayerGift> 
       valid_tournament_title: params.validTournamentTitle ?? null,
       valid_until: params.validUntil ?? null,
       status: 'active',
+      multi_use: params.multiUse ?? false,
       source: params.source ?? 'manual',
       source_month: params.sourceMonth ?? null,
       issued_at_session_id: params.issuedAtSessionId ?? null,

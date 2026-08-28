@@ -66,7 +66,7 @@ type Props = {
   currentSessionId?: number | null;
   onRedeemGift?: (gift: PlayerGift, player: LiveTournamentPlayer) => Promise<void>;
   onUnredeemGift?: (gift: PlayerGift) => void;
-  onCreateGift?: (player: LiveTournamentPlayer, type: PlayerGiftType, comment: string | null, validCondition: PlayerGiftValidCondition, validUntil: string | null, validTournamentTitle: string | null) => Promise<{ notifyStatus: 'sent' | 'skipped' | 'error' | null }>;
+  onCreateGift?: (player: LiveTournamentPlayer, type: PlayerGiftType, comment: string | null, validCondition: PlayerGiftValidCondition, validUntil: string | null, validTournamentTitle: string | null, multiUse: boolean) => Promise<{ notifyStatus: 'sent' | 'skipped' | 'error' | null }>;
   botGames?: Array<{ id: number; title: string; date: string }>;
 };
 
@@ -135,6 +135,7 @@ export function TournamentPlayersTab({
   const [giftDialogDate, setGiftDialogDate] = useState('');
   const [giftDialogTournamentTitle, setGiftDialogTournamentTitle] = useState('');
   const [giftDialogComment, setGiftDialogComment] = useState('');
+  const [giftDialogMultiUse, setGiftDialogMultiUse] = useState(false);
   const [giftDialogBusy, setGiftDialogBusy] = useState(false);
   const [giftDialogNotifyStatus, setGiftDialogNotifyStatus] = useState<'sent' | 'skipped' | 'error' | null>(null);
 
@@ -207,7 +208,7 @@ export function TournamentPlayersTab({
     try {
       const validUntil = giftDialogValidity === 'until_date' ? (giftDialogDate || null) : null;
       const validTournamentTitle = giftDialogValidity === 'specific_tournament' ? (giftDialogTournamentTitle || null) : null;
-      const result = await onCreateGift(giftDialogPlayer, giftDialogType, giftDialogComment.trim() || null, giftDialogValidity, validUntil, validTournamentTitle);
+      const result = await onCreateGift(giftDialogPlayer, giftDialogType, giftDialogComment.trim() || null, giftDialogValidity, validUntil, validTournamentTitle, giftDialogMultiUse);
       setGiftDialogNotifyStatus(result.notifyStatus);
       setTimeout(() => {
         setGiftDialogPlayer(null);
@@ -216,6 +217,7 @@ export function TournamentPlayersTab({
         setGiftDialogValidity('next_tournament');
         setGiftDialogDate('');
         setGiftDialogTournamentTitle('');
+        setGiftDialogMultiUse(false);
         setGiftDialogNotifyStatus(null);
       }, 2000);
     } finally {
@@ -1297,6 +1299,20 @@ export function TournamentPlayersTab({
                   className="admin-input"
                 />
               )}
+              <button
+                type="button"
+                onClick={() => setGiftDialogMultiUse(v => !v)}
+                className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-xs font-bold transition-colors ${
+                  giftDialogMultiUse
+                    ? 'border-[#C0392B] bg-[#2A0C0A] text-white'
+                    : 'border-[#2D2D2D] bg-[#141414] text-[#888]'
+                }`}
+              >
+                <span>Многоразовый</span>
+                <span className="text-[10px] font-normal opacity-60">
+                  {giftDialogMultiUse ? 'Использовать в каждой игре до конца срока' : 'Использовать один раз'}
+                </span>
+              </button>
             </div>
             {giftDialogNotifyStatus && (
               <div className={`mx-5 mb-2 rounded-xl px-3 py-2 text-xs ${giftDialogNotifyStatus === 'sent' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-amber-900/30 text-amber-400'}`}>
