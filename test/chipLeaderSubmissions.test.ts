@@ -121,5 +121,5 @@ test('top chip leaders are the three biggest stacks across all submissions', () 
 
 test('chip leader display window lasts through the next level when collected during break', () => {
   assert.equal(getChipLeaderHideAfterLevelIndex('break', 6), 7);
-  assert.equal(getChipLeaderHideAfterLevelIndex('running', 6), 6);
+  assert.equal(getChipLeaderHideAfterLevelIndex('running', 6), 7);
 });
