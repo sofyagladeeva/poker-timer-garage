@@ -1291,10 +1291,10 @@ export function Admin() {
     earlyBirdBonusEnabled: selectedTournamentIsClassic,
   });
   const floorSessionId = Math.max(1, Math.round(gameState.resetAt || 0));
-  const [playerEvents, setPlayerEvents] = useState<PlayerEventRecord[]>([]);
+  const [playerEvents, setPlayerEvents] = useState<PlayerEventRecord[]>(() => loadStoredPlayerEvents(floorSessionId));
 
   useEffect(() => {
-    setPlayerEvents(loadStoredPlayerEvents(floorSessionId));
+    queueMicrotask(() => setPlayerEvents(loadStoredPlayerEvents(floorSessionId)));
   }, [floorSessionId]);
 
   const appendPlayerEvents = useCallback((events: PlayerEventRecord[]) => {
