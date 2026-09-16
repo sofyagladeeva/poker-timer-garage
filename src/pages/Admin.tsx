@@ -35,10 +35,12 @@ import type {
   GameState,
   ChipLeaderEntry,
   LiveTournamentPlayer,
+  LiveTournamentArrivalStatus,
   FloorNotification,
   PersonnelRecord,
   StaffMember,
   PlayerProfileDefaultStatus,
+  PlayerEventRecord,
 } from '../types';
 import { PersonnelForm } from '../components/PersonnelForm';
 import { formatPersonnelRole, personnelTotals } from '../personnel';
@@ -149,6 +151,9 @@ const DISPLAY_CLIENTS_REFRESH_MS = 3_000;
 const ADMIN_WAKE_GUARD_MS = 60_000;
 const BOT_PLAYER_LIST_CACHE_KEY = 'poker_bot_player_list_cache';
 const BOT_PLAYER_LIST_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const PLAYER_EVENTS_STORAGE_PREFIX = 'garage_player_events';
+const PLAYER_EVENT_CLUB_ID = 'garage';
+const PLAYER_EVENT_OPERATOR = 'Админ';
 
 type BotPlayerListCache = { players: BotPlayerListItem[]; cachedAt: string };
 
@@ -447,6 +452,236 @@ function formatArchiveStatus(player: TournamentArchivePlayerRecord) {
   if (player.arrivalStatus === 'absent') return 'Не в игре';
   if (player.status === 'waitlist') return 'Waitlist';
   return 'В игре';
+}
+
+function playerEventsStorageKey(sessionId: number) {
+  return `${PLAYER_EVENTS_STORAGE_PREFIX}:${PLAYER_EVENT_CLUB_ID}:${sessionId}`;
+}
+
+function makePlayerEventId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `player-event-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function loadStoredPlayerEvents(sessionId: number): PlayerEventRecord[] {
+  try {
+    const raw = localStorage.getItem(playerEventsStorageKey(sessionId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((event): event is PlayerEventRecord => (
+      event &&
+      typeof event.id === 'string' &&
+      event.clubId === PLAYER_EVENT_CLUB_ID &&
+      event.sessionId === sessionId
+    ));
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredPlayerEvents(sessionId: number, events: PlayerEventRecord[]) {
+  try {
+    localStorage.setItem(playerEventsStorageKey(sessionId), JSON.stringify(events));
+  } catch {
+    // local event history is best-effort; archive_details is the durable snapshot.
+  }
+}
+
+function formatPlayerEventType(type: PlayerEventRecord['type']) {
+  if (type === 'rebuy') return 'Ребай';
+  if (type === 'addon') return 'Аддон';
+  if (type === 'bonus') return 'Бонус';
+  if (type === 'bustout') return 'Вылет';
+  return 'Оплата';
+}
+
+function formatPlayerEventTime(value: string) {
+  return new Date(value).toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatPlayerEventDetails(event: PlayerEventRecord) {
+  const payload = event.payload ?? {};
+  const operator = typeof payload.operator === 'string' ? payload.operator : PLAYER_EVENT_OPERATOR;
+  if (event.type === 'payment') {
+    const label = typeof payload.label === 'string' ? payload.label : 'изменение оплаты';
+    const before = typeof payload.before === 'string' ? payload.before : '';
+    const after = typeof payload.after === 'string' ? payload.after : '';
+    return `${label}${before || after ? `: ${before || '—'} → ${after || '—'}` : ''} · ${operator}`;
+  }
+  const before = typeof payload.before === 'number' ? payload.before : null;
+  const after = typeof payload.after === 'number' ? payload.after : null;
+  if (before !== null && after !== null) return `${before} → ${after} · ${operator}`;
+  if (after !== null) return `${after} · ${operator}`;
+  return operator;
+}
+
+function buildPlayerEvent(
+  sessionId: number,
+  gameState: GameState,
+  player: LiveTournamentPlayer,
+  type: PlayerEventRecord['type'],
+  payload: Record<string, unknown>,
+): PlayerEventRecord {
+  return {
+    id: makePlayerEventId(),
+    clubId: PLAYER_EVENT_CLUB_ID,
+    sessionId,
+    tournamentBotId: gameState.tournamentBotId ?? null,
+    tournamentTitle: gameState.tournamentTitle || '',
+    playerId: player.id,
+    playerName: player.name,
+    telegramId: player.telegramId,
+    type,
+    tableNumber: player.tableNumber,
+    seatNumber: player.seatNumber,
+    occurredAt: new Date().toISOString(),
+    dealer: null,
+    payload: { operator: PLAYER_EVENT_OPERATOR, ...payload },
+  };
+}
+
+function archiveFallbackEvent(
+  tournament: { id?: number; title?: string | null },
+  player: TournamentArchivePlayerRecord,
+  type: PlayerEventRecord['type'],
+  suffix: string,
+  payload: Record<string, unknown>,
+): PlayerEventRecord {
+  return {
+    id: `archive-fallback:${tournament.id ?? 'unknown'}:${player.id}:${suffix}`,
+    clubId: PLAYER_EVENT_CLUB_ID,
+    sessionId: 0,
+    tournamentBotId: null,
+    tournamentTitle: tournament.title ?? '',
+    playerId: player.id,
+    playerName: player.name,
+    telegramId: player.telegramId ?? null,
+    type,
+    tableNumber: player.tableNumber ?? null,
+    seatNumber: player.seatNumber ?? null,
+    occurredAt: player.updatedAt || player.createdAt || new Date(0).toISOString(),
+    dealer: null,
+    payload: { operator: 'Архив', ...payload },
+  };
+}
+
+function buildArchiveFallbackPlayerEvents(
+  tournament: { id?: number; title?: string | null },
+  players: TournamentArchivePlayerRecord[],
+): PlayerEventRecord[] {
+  return players.flatMap(player => {
+    const events: PlayerEventRecord[] = [];
+    if (player.arrivalStatus !== 'absent') {
+      events.push(archiveFallbackEvent(tournament, player, 'payment', 'entry', {
+        label: 'Вход',
+        after: formatArchiveArrivalStatus(player.arrivalStatus),
+      }));
+    }
+    if (player.rebuyCount > 0) {
+      events.push(archiveFallbackEvent(tournament, player, 'rebuy', 'rebuy', {
+        before: 0,
+        after: player.rebuyCount,
+      }));
+    }
+    if (player.addonCount > 0) {
+      events.push(archiveFallbackEvent(tournament, player, 'addon', 'addon', {
+        before: 0,
+        after: player.addonCount,
+      }));
+    }
+    if (player.bonusCount > 0) {
+      events.push(archiveFallbackEvent(tournament, player, 'bonus', 'bonus', {
+        before: 0,
+        after: player.bonusCount,
+      }));
+    }
+    return events;
+  });
+}
+
+function buildArchiveTableEventRows(events: PlayerEventRecord[], players: TournamentArchivePlayerRecord[] = []) {
+  const playerMap = new Map(players.map(player => [player.id, player]));
+  const tableMap = new Map<string, {
+    key: string;
+    label: string;
+    entries: number;
+    rebuys: number;
+    addons: number;
+    bonuses: number;
+    bustouts: number;
+    players: Map<string, {
+      name: string;
+      username: string | null;
+      entries: number;
+      rebuys: number;
+      addons: number;
+      bonuses: number;
+      bustouts: number;
+    }>;
+  }>();
+
+  for (const event of events) {
+    const tableKey = event.tableNumber != null ? String(event.tableNumber) : 'unknown';
+    const table = tableMap.get(tableKey) ?? {
+      key: tableKey,
+      label: event.tableNumber != null ? `Стол ${event.tableNumber}` : 'Без стола',
+      entries: 0,
+      rebuys: 0,
+      addons: 0,
+      bonuses: 0,
+      bustouts: 0,
+      players: new Map(),
+    };
+    tableMap.set(tableKey, table);
+
+    const archivedPlayer = playerMap.get(event.playerId);
+    const player = table.players.get(event.playerId) ?? {
+      name: event.playerName || archivedPlayer?.name || 'Игрок',
+      username: archivedPlayer?.username ?? null,
+      entries: 0,
+      rebuys: 0,
+      addons: 0,
+      bonuses: 0,
+      bustouts: 0,
+    };
+    table.players.set(event.playerId, player);
+
+    if (event.type === 'payment') {
+      table.entries += 1;
+      player.entries += 1;
+    }
+    if (event.type === 'rebuy') {
+      const count = typeof event.payload?.after === 'number' ? event.payload.after : 1;
+      table.rebuys += count;
+      player.rebuys += count;
+    }
+    if (event.type === 'addon') {
+      const count = typeof event.payload?.after === 'number' ? event.payload.after : 1;
+      table.addons += count;
+      player.addons += count;
+    }
+    if (event.type === 'bonus') {
+      const count = typeof event.payload?.after === 'number' ? event.payload.after : 1;
+      table.bonuses += count;
+      player.bonuses += count;
+    }
+    if (event.type === 'bustout') {
+      table.bustouts += 1;
+      player.bustouts += 1;
+    }
+  }
+
+  return Array.from(tableMap.values())
+    .sort((a, b) => (a.key === 'unknown' ? 1 : b.key === 'unknown' ? -1 : Number(a.key) - Number(b.key)))
+    .map(row => ({ ...row, players: Array.from(row.players.values()).sort((a, b) => a.name.localeCompare(b.name, 'ru')) }));
 }
 
 function sortArchivePlayers(players: TournamentArchivePlayerRecord[]) {
@@ -1056,6 +1291,75 @@ export function Admin() {
     earlyBirdBonusEnabled: selectedTournamentIsClassic,
   });
   const floorSessionId = Math.max(1, Math.round(gameState.resetAt || 0));
+  const [playerEvents, setPlayerEvents] = useState<PlayerEventRecord[]>([]);
+
+  useEffect(() => {
+    setPlayerEvents(loadStoredPlayerEvents(floorSessionId));
+  }, [floorSessionId]);
+
+  const appendPlayerEvents = useCallback((events: PlayerEventRecord[]) => {
+    if (events.length === 0) return;
+    setPlayerEvents(current => {
+      const nextById = new Map(current.map(event => [event.id, event]));
+      events.forEach(event => nextById.set(event.id, event));
+      const next = Array.from(nextById.values()).sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+      saveStoredPlayerEvents(floorSessionId, next);
+      return next;
+    });
+  }, [floorSessionId]);
+
+  const auditedUpdatePlayerField = useCallback(async (playerId: string, patch: Partial<LiveTournamentPlayer>) => {
+    const before = tournamentPlayers.find(player => player.id === playerId);
+    const ok = await updatePlayerField(playerId, patch);
+    if (!ok || !before) return ok;
+
+    const events: PlayerEventRecord[] = [];
+    const countFields: Array<[keyof LiveTournamentPlayer, PlayerEventRecord['type'], string]> = [
+      ['rebuyCount', 'rebuy', 'Ребай'],
+      ['addonCount', 'addon', 'Аддон'],
+      ['bonusCount', 'bonus', 'Бонус'],
+    ];
+    for (const [field, type, label] of countFields) {
+      if (typeof patch[field] !== 'number') continue;
+      const prev = before[field];
+      const next = patch[field];
+      if (typeof prev === 'number' && typeof next === 'number' && prev !== next) {
+        events.push(buildPlayerEvent(floorSessionId, gameState, before, type, { label, before: prev, after: next }));
+      }
+    }
+
+    const paymentFields: Array<[keyof LiveTournamentPlayer, string, (value: unknown) => string]> = [
+      ['cashPaid', 'Наличные', value => `${Number(value || 0).toLocaleString('ru-RU')} ₽`],
+      ['cardPaid', 'Карта', value => `${Number(value || 0).toLocaleString('ru-RU')} ₽`],
+      ['paymentDue', 'К оплате', value => `${Number(value || 0).toLocaleString('ru-RU')} ₽`],
+    ];
+    for (const [field, label, format] of paymentFields) {
+      if (!(field in patch)) continue;
+      const prev = before[field];
+      const next = patch[field];
+      if (prev !== next) {
+        events.push(buildPlayerEvent(floorSessionId, gameState, before, 'payment', {
+          label,
+          before: format(prev),
+          after: format(next),
+        }));
+      }
+    }
+
+    appendPlayerEvents(events);
+    return ok;
+  }, [appendPlayerEvents, floorSessionId, gameState, tournamentPlayers, updatePlayerField]);
+
+  const auditedSetPlayerArrival = useCallback(async (playerId: string, arrivalStatus: LiveTournamentArrivalStatus) => {
+    const before = tournamentPlayers.find(player => player.id === playerId);
+    await setPlayerArrival(playerId, arrivalStatus);
+    if (!before || before.arrivalStatus === arrivalStatus) return;
+    appendPlayerEvents([buildPlayerEvent(floorSessionId, gameState, before, 'payment', {
+      label: 'Статус входа',
+      before: formatArchiveArrivalStatus(before.arrivalStatus),
+      after: formatArchiveArrivalStatus(arrivalStatus),
+    })]);
+  }, [appendPlayerEvents, floorSessionId, gameState, setPlayerArrival, tournamentPlayers]);
 
   // ── Player gifts ───────────────────────────────────────────────────────
   const tournamentTelegramIdsKey = tournamentPlayers.map(p => p.telegramId).join(',');
@@ -1269,12 +1573,15 @@ export function Admin() {
           paymentDue: player.paymentDue,
           place: player.place,
           bustoutOrder: player.bustoutOrder,
+          tableNumber: player.tableNumber,
+          seatNumber: player.seatNumber,
           createdAt: player.createdAt,
           updatedAt: player.updatedAt,
         })),
         summary: tournamentPlayersSummary,
         savedAt: new Date().toISOString(),
         personnel: finishPersonnel.length > 0 ? mergePersonnelRecords(finishPersonnel) : undefined,
+        playerEvents: playerEvents.length > 0 ? playerEvents : undefined,
       }
     : null;
   const playersMissingFinalPlace = finishReviewPlayers.filter(player => (
@@ -4891,8 +5198,8 @@ export function Admin() {
               onRefreshFromBot={refreshFromBot}
               onAddManualPlayer={addManualPlayer}
               onRemovePlayer={removePlayer}
-              onUpdatePlayerField={updatePlayerField}
-              onSetPlayerArrival={setPlayerArrival}
+              onUpdatePlayerField={auditedUpdatePlayerField}
+              onSetPlayerArrival={auditedSetPlayerArrival}
               onMarkPlayerOut={markPlayerOut}
               onRestorePlayer={restorePlayer}
               onRestorePlayersFromBackup={restorePlayersFromBackup}
@@ -4921,7 +5228,7 @@ export function Admin() {
             onAssignSeat={async (playerId, tableNumber, seatNumber) => {
               await assignPlayerSeat(playerId, tableNumber, seatNumber);
             }}
-            onUpdatePlayerField={updatePlayerField}
+            onUpdatePlayerField={auditedUpdatePlayerField}
             onMarkPlayerOut={markPlayerOut}
           />
         )}
@@ -5305,6 +5612,12 @@ export function Admin() {
                     return sum + p.paymentDue;
                   }, 0);
                   const archiveDiscountTotal = archiveFullTotal - (archiveDetails?.summary?.totalDue ?? 0);
+                  const archivePlayerEvents = archiveDetails
+                    ? (archiveDetails.playerEvents && archiveDetails.playerEvents.length > 0
+                      ? archiveDetails.playerEvents
+                      : buildArchiveFallbackPlayerEvents(t, archiveDetails.players))
+                    : [];
+                  const archiveTableEventRows = buildArchiveTableEventRows(archivePlayerEvents, archiveDetails?.players ?? []);
                   return (
                     <div key={t.id} className="bg-[#111] border border-[#2D2D2D] rounded-2xl p-4 flex flex-col gap-3">
                       <div className="flex items-start justify-between gap-2">
@@ -5533,6 +5846,68 @@ export function Admin() {
                                     );
                                   })()}
                                 </div>
+                              )}
+
+                              {archiveTableEventRows.length > 0 && (
+                                <div className="rounded-xl border border-[#2D2D2D] bg-[#111] p-3">
+                                  <div className="mb-2 flex items-center justify-between gap-2">
+                                    <div className="text-[#666] text-[10px] uppercase">Сводка по столам</div>
+                                    <div className="text-[#888] text-xs">{archivePlayerEvents.length} действий</div>
+                                  </div>
+                                  <div className="grid gap-2 lg:grid-cols-2">
+                                    {archiveTableEventRows.map(row => (
+                                      <details key={row.key} className="rounded-lg bg-[#0A0A0A] p-3">
+                                        <summary className="cursor-pointer list-none">
+                                          <div className="flex items-center justify-between gap-2">
+                                            <div className="text-white text-sm font-bold">{row.label}</div>
+                                            <div className="text-[#666] text-[10px] uppercase">
+                                              Входы {row.entries} · R {row.rebuys} · A {row.addons} · B {row.bonuses}
+                                            </div>
+                                          </div>
+                                        </summary>
+                                        <div className="mt-2 flex flex-col gap-1.5">
+                                          {row.players.map(player => (
+                                            <div key={`${row.key}-${player.name}-${player.username ?? ''}`} className="flex items-start justify-between gap-2 rounded-lg border border-[#1D1D1D] px-2.5 py-2">
+                                              <div className="min-w-0">
+                                                <div className="truncate text-xs font-bold text-white">{player.name}</div>
+                                                {player.username && <div className="truncate text-[10px] text-[#555]">@{player.username.replace(/^@/, '')}</div>}
+                                              </div>
+                                              <div className="shrink-0 text-right text-[10px] text-[#888]">
+                                                <div>Входы {player.entries}</div>
+                                                <div>R {player.rebuys} · A {player.addons} · B {player.bonuses}</div>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </details>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {archivePlayerEvents.length > 0 && (
+                                <details className="rounded-xl border border-[#2D2D2D] bg-[#111] p-3">
+                                  <summary className="cursor-pointer list-none text-[#666] text-[10px] uppercase">
+                                    Действия по оплатам и докупам
+                                  </summary>
+                                  <div className="mt-2 flex max-h-72 flex-col gap-1.5 overflow-y-auto">
+                                    {[...archivePlayerEvents].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)).map(event => (
+                                      <div key={event.id} className="flex items-start justify-between gap-2 rounded-lg bg-[#0A0A0A] px-3 py-2">
+                                        <div className="min-w-0">
+                                          <div className="text-xs font-bold text-white">
+                                            {formatPlayerEventType(event.type)} · {event.playerName}
+                                          </div>
+                                          <div className="mt-0.5 text-[10px] text-[#777]">
+                                            {formatPlayerEventDetails(event)}
+                                            {event.tableNumber != null && ` · стол ${event.tableNumber}`}
+                                            {event.seatNumber != null && ` · место ${event.seatNumber}`}
+                                          </div>
+                                        </div>
+                                        <div className="shrink-0 text-[10px] text-[#555]">{formatPlayerEventTime(event.occurredAt)}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </details>
                               )}
 
                               <div className="flex flex-col gap-2">
@@ -7518,8 +7893,8 @@ export function Admin() {
                       onRefreshFromBot={refreshFromBot}
                       onAddManualPlayer={addManualPlayer}
                       onRemovePlayer={removePlayer}
-                      onUpdatePlayerField={updatePlayerField}
-                      onSetPlayerArrival={setPlayerArrival}
+                      onUpdatePlayerField={auditedUpdatePlayerField}
+                      onSetPlayerArrival={auditedSetPlayerArrival}
                       onMarkPlayerOut={markPlayerOut}
                       onRestorePlayer={restorePlayer}
                       onRestorePlayersFromBackup={restorePlayersFromBackup}

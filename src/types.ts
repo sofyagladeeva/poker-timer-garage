@@ -251,8 +251,35 @@ export interface TournamentArchivePlayerRecord {
   paymentDue: number;
   place: number | null;
   bustoutOrder: number | null;
+  tableNumber?: number | null;
+  seatNumber?: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type PlayerEventType = 'rebuy' | 'addon' | 'bonus' | 'bustout' | 'payment';
+
+export interface PlayerEventDealerSnapshot {
+  dealerId: string | null;
+  dealerName: string | null;
+  dealerRoleLabel: string | null;
+}
+
+export interface PlayerEventRecord {
+  id: string;
+  clubId: string;
+  sessionId: number;
+  tournamentBotId: number | null;
+  tournamentTitle: string;
+  playerId: string;
+  playerName: string;
+  telegramId: number | null;
+  type: PlayerEventType;
+  tableNumber: number | null;
+  seatNumber: number | null;
+  occurredAt: string;
+  dealer: PlayerEventDealerSnapshot | null;
+  payload: Record<string, unknown>;
 }
 
 export type PersonnelRole = 'dealer' | 'admin' | 'custom';
@@ -288,6 +315,7 @@ export interface TournamentArchiveDetails {
   summary: TournamentPlayersSummary | null;
   savedAt: string;
   personnel?: PersonnelRecord[];
+  playerEvents?: PlayerEventRecord[];
 }
 
 export interface TournamentFinancePlayerRecord {
